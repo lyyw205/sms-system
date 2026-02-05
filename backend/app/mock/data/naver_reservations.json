@@ -1,0 +1,22 @@
+[
+  {
+    "external_id": "naver_10001",
+    "customer_name": "김철수",
+    "phone": "010-1111-2222",
+    "date": "2026-02-10",
+    "time": "14:00",
+    "status": "confirmed",
+    "notes": "네이버 예약 - 프리미엄 서비스",
+    "source": "naver"
+  },
+  {
+    "external_id": "naver_10002",
+    "customer_name": "이영희",
+    "phone": "010-2222-3333",
+    "date": "2026-02-11",
+    "time": "15:00",
+    "status": "pending",
+    "notes": "네이버 예약 - 기본 서비스",
+    "source": "naver"
+  }
+]

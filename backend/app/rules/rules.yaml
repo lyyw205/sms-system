@@ -1,0 +1,30 @@
+rules:
+  - name: "영업시간 안내"
+    pattern: "(영업시간|몇시|언제|시간)"
+    response: "평일 09:00-18:00, 주말 10:00-17:00 영업합니다. 공휴일은 휴무입니다."
+    priority: 10
+    active: true
+
+  - name: "예약 문의"
+    pattern: "(예약|방문|언제|가능)"
+    response: "예약은 전화(010-9999-0000) 또는 네이버 예약으로 가능합니다."
+    priority: 9
+    active: true
+
+  - name: "가격 안내"
+    pattern: "(가격|비용|얼마|요금)"
+    response: "서비스 종류에 따라 가격이 다릅니다. 자세한 상담은 전화 주세요."
+    priority: 8
+    active: true
+
+  - name: "주차 안내"
+    pattern: "(주차|차|자동차)"
+    response: "건물 지하 1층에 무료 주차 가능합니다."
+    priority: 7
+    active: true
+
+  - name: "위치 안내"
+    pattern: "(위치|어디|주소|찾아가|길)"
+    response: "서울시 강남구 테헤란로 123 (강남역 2번 출구에서 도보 5분)"
+    priority: 6
+    active: true
