@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     # Demo mode flag - CRITICAL for hot-swapping providers
     DEMO_MODE: bool = True
 
-    # Database
-    DATABASE_URL: str = "postgresql://smsuser:smspass@localhost:5432/smsdb"
+    # Database (SQLite for demo, PostgreSQL for production)
+    DATABASE_URL: str = "sqlite:///./sms_demo.db"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379"

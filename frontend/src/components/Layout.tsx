@@ -4,8 +4,10 @@ import {
   DashboardOutlined,
   CalendarOutlined,
   MessageOutlined,
-  SettingOutlined,
-  FileTextOutlined,
+  ThunderboltOutlined,
+  HistoryOutlined,
+  ClockCircleOutlined,
+  HomeOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -32,19 +34,29 @@ const Layout = ({ children }: LayoutProps) => {
       label: '예약 관리',
     },
     {
+      key: '/rooms',
+      icon: <HomeOutlined />,
+      label: '객실 배정',
+    },
+    {
       key: '/messages',
       icon: <MessageOutlined />,
       label: 'SMS 모니터링',
     },
     {
-      key: '/rules',
-      icon: <SettingOutlined />,
-      label: '룰 관리',
+      key: '/auto-response',
+      icon: <ThunderboltOutlined />,
+      label: '자동 응답',
     },
     {
-      key: '/documents',
-      icon: <FileTextOutlined />,
-      label: '문서 관리',
+      key: '/campaigns',
+      icon: <HistoryOutlined />,
+      label: '발송 이력',
+    },
+    {
+      key: '/scheduler',
+      icon: <ClockCircleOutlined />,
+      label: '스케줄러',
     },
   ];
 

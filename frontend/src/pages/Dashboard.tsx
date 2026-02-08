@@ -4,6 +4,7 @@ import {
   CalendarOutlined,
   MessageOutlined,
   RiseOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { dashboardAPI } from '../services/api';
@@ -36,6 +37,11 @@ const Dashboard = () => {
     { name: '룰 기반', value: stats.auto_response.rule_responses, color: '#52c41a' },
     { name: 'LLM', value: stats.auto_response.llm_responses, color: '#1890ff' },
     { name: '수동', value: stats.auto_response.manual_responses, color: '#faad14' },
+  ];
+
+  const genderData = [
+    { name: '남성', value: stats.gender_stats?.male_count || 0, color: '#1890ff' },
+    { name: '여성', value: stats.gender_stats?.female_count || 0, color: '#eb2f96' },
   ];
 
   const reservationColumns = [
@@ -100,7 +106,7 @@ const Dashboard = () => {
       <h1>대시보드</h1>
 
       <Row gutter={16} style={{ marginTop: 24 }}>
-        <Col span={8}>
+        <Col span={6}>
           <Card>
             <Statistic
               title="전체 예약"
@@ -110,7 +116,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card>
             <Statistic
               title="전체 메시지"
@@ -120,7 +126,7 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card>
             <Statistic
               title="자동 응답률"
@@ -131,10 +137,21 @@ const Dashboard = () => {
             />
           </Card>
         </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="캠페인 발송"
+              value={stats.campaigns?.total_sent || 0}
+              suffix="건"
+              prefix={<SendOutlined />}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
       </Row>
 
       <Row gutter={16} style={{ marginTop: 24 }}>
-        <Col span={12}>
+        <Col span={8}>
           <Card title="응답 유형 분포">
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -158,7 +175,31 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col span={8}>
+          <Card title="오늘 성비 현황">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={genderData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={(entry) => `${entry.name}: ${entry.value}명`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {genderData.map((entry, index) => (
+                    <Cell key={`gender-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+        <Col span={8}>
           <Card title="예약 상태">
             <div style={{ fontSize: 16, lineHeight: 2 }}>
               <div>

@@ -16,7 +16,7 @@ class MockReservationProvider:
     def __init__(self):
         self.data_file = Path("app/mock/data/naver_reservations.json")
 
-    async def sync_reservations(self) -> List[Dict[str, Any]]:
+    async def sync_reservations(self, date: Any = None) -> List[Dict[str, Any]]:
         """Fetch reservations from JSON file (simulating Naver API)"""
         logger.info(
             f"📅 [MOCK NAVER SYNC]\n"

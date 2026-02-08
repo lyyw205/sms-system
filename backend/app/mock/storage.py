@@ -3,7 +3,7 @@ Mock Storage Provider for demo mode.
 Uses CSV files instead of actual Google Sheets.
 """
 import csv
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 import logging
 
@@ -72,3 +72,25 @@ class MockStorageProvider:
         except Exception as e:
             logger.error(f"   ❌ Import failed: {e}")
             return []
+
+    async def mark_sent_phone_numbers(self, phone_numbers: List[str], date: Any, mark_text: str) -> bool:
+        """Mock marking phone numbers as sent in Google Sheets"""
+        logger.info(
+            f"📊 [MOCK SHEETS MARK]\n"
+            f"   Phone numbers: {len(phone_numbers)}\n"
+            f"   Mark: {mark_text}\n"
+            f"   ⚠️  In production mode, this will update actual Google Sheets cells"
+        )
+        return True
+
+    async def get_cell_value(self, sheet_name: str, row: int, col: int) -> Optional[str]:
+        """Mock getting a cell value from Google Sheets"""
+        logger.info(
+            f"📊 [MOCK SHEETS READ]\n"
+            f"   Sheet: {sheet_name}, Row: {row}, Col: {col}\n"
+            f"   ⚠️  In production mode, this will read from actual Google Sheets"
+        )
+        # Return mock gender stats for the expected cell
+        if row == 134:
+            return "남: 18 / 여: 12"
+        return None

@@ -50,10 +50,11 @@ class Message(Base):
 
 
 class Reservation(Base):
-    """Reservation records"""
+    """Reservation records - Extended for SMS system integration"""
 
     __tablename__ = "reservations"
 
+    # Core fields (original)
     id = Column(Integer, primary_key=True, index=True)
     external_id = Column(String(100), unique=True, nullable=True, index=True)
     customer_name = Column(String(100), nullable=False)
@@ -64,9 +65,43 @@ class Reservation(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Source tracking
     source = Column(String(20), default="manual")  # 'naver', 'manual', 'phone'
+
+    # Naver Booking integration fields
+    naver_booking_id = Column(String(50), nullable=True, index=True)
+    naver_biz_item_id = Column(String(50), nullable=True)  # Room type ID
+    visitor_name = Column(String(100), nullable=True)  # Alternative contact
+    visitor_phone = Column(String(20), nullable=True)
+
+    # Room assignment fields
+    room_number = Column(String(20), nullable=True)  # e.g., A101, B205
+    room_password = Column(String(20), nullable=True)  # Auto-generated password
+    room_info = Column(String(200), nullable=True)  # Room type description
+
+    # User demographics (from Naver user info)
+    gender = Column(String(10), nullable=True)  # '남', '여'
+    age_group = Column(String(20), nullable=True)  # '20대', '30대', etc.
+    visit_count = Column(Integer, default=1)
+
+    # Party/dormitory fields
+    party_participants = Column(Integer, default=0)
+    party_gender = Column(String(10), nullable=True)  # For dormitory assignments
+
+    # Tag system (comma-separated tags)
+    tags = Column(Text, nullable=True)  # JSON or comma-separated: "객후,1초,2차만"
+
+    # SMS sending tracking
+    room_sms_sent = Column(Boolean, default=False)
+    party_sms_sent = Column(Boolean, default=False)
+    room_sms_sent_at = Column(DateTime, nullable=True)
+    party_sms_sent_at = Column(DateTime, nullable=True)
+
+    # Google Sheets sync tracking
+    sheets_row_number = Column(Integer, nullable=True)
+    sheets_last_synced = Column(DateTime, nullable=True)
+
+    # Multi-booking flag
+    is_multi_booking = Column(Boolean, default=False)
 
 
 class Rule(Base):
@@ -95,3 +130,50 @@ class Document(Base):
     file_path = Column(String(500), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     indexed = Column(Boolean, default=False)  # ChromaDB indexing status
+
+
+class MessageTemplate(Base):
+    """Message templates for SMS campaigns"""
+
+    __tablename__ = "message_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    variables = Column(Text, nullable=True)  # JSON list of variable names
+    category = Column(String(50), nullable=True)  # 'room_guide', 'party_guide', etc.
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CampaignLog(Base):
+    """SMS campaign execution logs"""
+
+    __tablename__ = "campaign_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_type = Column(String(50), nullable=False)  # 'tag_based', 'room_guide', 'party_guide'
+    target_tag = Column(String(50), nullable=True)
+    target_count = Column(Integer, default=0)
+    sent_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    extra_data = Column("metadata", Text, nullable=True)  # JSON for additional info
+
+
+class GenderStat(Base):
+    """Gender statistics for party planning"""
+
+    __tablename__ = "gender_stats"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String(20), nullable=False, index=True)  # YYYY-MM-DD
+    male_count = Column(Integer, default=0)
+    female_count = Column(Integer, default=0)
+    total_participants = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

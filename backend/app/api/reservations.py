@@ -8,11 +8,19 @@ from typing import List, Optional
 from app.db.database import get_db
 from app.db.models import Reservation, ReservationStatus
 from app.factory import get_reservation_provider, get_storage_provider
+from app.templates.renderer import TemplateRenderer
 from datetime import datetime
 import logging
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 logger = logging.getLogger(__name__)
+
+ROOM_INFO_MAP = {
+    "A101": "더블룸", "A102": "트윈룸", "A103": "패밀리룸",
+    "A104": "디럭스룸", "A105": "스탠다드룸",
+    "B201": "더블룸", "B202": "트윈룸", "B203": "패밀리룸",
+    "B204": "디럭스룸", "B205": "스탠다드룸",
+}
 
 
 class ReservationCreate(BaseModel):
@@ -33,6 +41,10 @@ class ReservationUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class RoomAssignRequest(BaseModel):
+    room_number: Optional[str] = None
+
+
 class ReservationResponse(BaseModel):
     id: int
     external_id: Optional[str] = None
@@ -43,6 +55,14 @@ class ReservationResponse(BaseModel):
     status: str
     notes: Optional[str] = None
     source: str
+    room_number: Optional[str] = None
+    room_password: Optional[str] = None
+    room_info: Optional[str] = None
+    gender: Optional[str] = None
+    tags: Optional[str] = None
+    party_participants: Optional[int] = None
+    room_sms_sent: bool = False
+    party_sms_sent: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -50,11 +70,36 @@ class ReservationResponse(BaseModel):
         from_attributes = True
 
 
+def _to_response(res: Reservation) -> ReservationResponse:
+    return ReservationResponse(
+        id=res.id,
+        external_id=res.external_id,
+        customer_name=res.customer_name,
+        phone=res.phone,
+        date=res.date,
+        time=res.time,
+        status=res.status.value,
+        notes=res.notes,
+        source=res.source,
+        room_number=res.room_number,
+        room_password=res.room_password,
+        room_info=res.room_info,
+        gender=res.gender,
+        tags=res.tags,
+        party_participants=res.party_participants,
+        room_sms_sent=res.room_sms_sent or False,
+        party_sms_sent=res.party_sms_sent or False,
+        created_at=res.created_at,
+        updated_at=res.updated_at,
+    )
+
+
 @router.get("", response_model=List[ReservationResponse])
 async def get_reservations(
     skip: int = 0,
     limit: int = 50,
     status: Optional[str] = None,
+    date: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Get reservations with pagination and filtering"""
@@ -63,24 +108,12 @@ async def get_reservations(
     if status:
         query = query.filter(Reservation.status == status)
 
+    if date:
+        query = query.filter(Reservation.date == date)
+
     reservations = query.order_by(Reservation.created_at.desc()).offset(skip).limit(limit).all()
 
-    return [
-        ReservationResponse(
-            id=res.id,
-            external_id=res.external_id,
-            customer_name=res.customer_name,
-            phone=res.phone,
-            date=res.date,
-            time=res.time,
-            status=res.status.value,
-            notes=res.notes,
-            source=res.source,
-            created_at=res.created_at,
-            updated_at=res.updated_at,
-        )
-        for res in reservations
-    ]
+    return [_to_response(res) for res in reservations]
 
 
 @router.post("", response_model=ReservationResponse)
@@ -105,19 +138,7 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
     db.commit()
     db.refresh(db_reservation)
 
-    return ReservationResponse(
-        id=db_reservation.id,
-        external_id=db_reservation.external_id,
-        customer_name=db_reservation.customer_name,
-        phone=db_reservation.phone,
-        date=db_reservation.date,
-        time=db_reservation.time,
-        status=db_reservation.status.value,
-        notes=db_reservation.notes,
-        source=db_reservation.source,
-        created_at=db_reservation.created_at,
-        updated_at=db_reservation.updated_at,
-    )
+    return _to_response(db_reservation)
 
 
 @router.put("/{reservation_id}", response_model=ReservationResponse)
@@ -144,19 +165,7 @@ async def update_reservation(
     db.commit()
     db.refresh(db_reservation)
 
-    return ReservationResponse(
-        id=db_reservation.id,
-        external_id=db_reservation.external_id,
-        customer_name=db_reservation.customer_name,
-        phone=db_reservation.phone,
-        date=db_reservation.date,
-        time=db_reservation.time,
-        status=db_reservation.status.value,
-        notes=db_reservation.notes,
-        source=db_reservation.source,
-        created_at=db_reservation.created_at,
-        updated_at=db_reservation.updated_at,
-    )
+    return _to_response(db_reservation)
 
 
 @router.delete("/{reservation_id}")
@@ -169,6 +178,49 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_db))
     db.delete(db_reservation)
     db.commit()
     return {"status": "success", "message": "Reservation deleted"}
+
+
+@router.put("/{reservation_id}/room", response_model=ReservationResponse)
+async def assign_room(
+    reservation_id: int, request: RoomAssignRequest, db: Session = Depends(get_db)
+):
+    """Assign or unassign a room to a reservation"""
+    db_reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+    if not db_reservation:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+
+    room_number = request.room_number
+
+    if room_number is None:
+        # Unassign room
+        db_reservation.room_number = None
+        db_reservation.room_password = None
+        db_reservation.room_info = None
+    else:
+        # Check for duplicate assignment on the same date
+        conflict = (
+            db.query(Reservation)
+            .filter(
+                Reservation.date == db_reservation.date,
+                Reservation.room_number == room_number,
+                Reservation.id != reservation_id,
+            )
+            .first()
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"객실 {room_number}은(는) 이미 {conflict.customer_name}에게 배정되어 있습니다.",
+            )
+
+        db_reservation.room_number = room_number
+        db_reservation.room_password = TemplateRenderer.generate_room_password(room_number)
+        db_reservation.room_info = ROOM_INFO_MAP.get(room_number, "")
+
+    db.commit()
+    db.refresh(db_reservation)
+
+    return _to_response(db_reservation)
 
 
 @router.post("/sync/naver")

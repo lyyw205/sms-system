@@ -3,7 +3,7 @@ Mock SMS Provider for demo mode.
 Logs SMS sending instead of actually sending, and allows simulating SMS reception.
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,29 @@ class MockSMSProvider:
             "message_id": message_id,
             "to": to,
             "message": message,
+            "timestamp": timestamp,
+            "provider": "mock",
+        }
+
+    async def send_bulk(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+        """Mock bulk SMS sending"""
+        timestamp = datetime.now().isoformat()
+
+        logger.info(
+            f"📤 [MOCK BULK SMS SENT]\n"
+            f"   Count: {len(messages)}\n"
+            f"   Timestamp: {timestamp}\n"
+            f"   ⚠️  In production mode, this will send actual bulk SMS via API"
+        )
+
+        for i, msg in enumerate(messages):
+            logger.info(f"   [{i+1}] To: {msg.get('to')} | Message: {msg.get('message', '')[:50]}...")
+
+        return {
+            "success": True,
+            "total": len(messages),
+            "sent": len(messages),
+            "failed": 0,
             "timestamp": timestamp,
             "provider": "mock",
         }

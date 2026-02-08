@@ -132,18 +132,46 @@ const Reservations = () => {
       },
     },
     {
+      title: '객실',
+      dataIndex: 'room_number',
+      key: 'room_number',
+      render: (v: string) => v ? <Tag color="cyan">{v}</Tag> : '-',
+    },
+    {
+      title: '성별',
+      dataIndex: 'gender',
+      key: 'gender',
+      render: (v: string) => v ? (
+        <Tag color={v === '남' ? 'blue' : 'magenta'}>{v}</Tag>
+      ) : '-',
+    },
+    {
+      title: '태그',
+      dataIndex: 'tags',
+      key: 'tags',
+      render: (tags: string) => tags ? tags.split(',').map((t: string) => (
+        <Tag key={t} color="orange">{t}</Tag>
+      )) : '-',
+    },
+    {
+      title: '객실문자',
+      dataIndex: 'room_sms_sent',
+      key: 'room_sms_sent',
+      render: (v: boolean) => v ? <Tag color="green">발송완료</Tag> : <Tag>미발송</Tag>,
+    },
+    {
+      title: '파티문자',
+      dataIndex: 'party_sms_sent',
+      key: 'party_sms_sent',
+      render: (v: boolean) => v ? <Tag color="green">발송완료</Tag> : <Tag>미발송</Tag>,
+    },
+    {
       title: '출처',
       dataIndex: 'source',
       key: 'source',
       render: (source: string) => (
         <Tag color={source === 'naver' ? 'green' : 'default'}>{source}</Tag>
       ),
-    },
-    {
-      title: '메모',
-      dataIndex: 'notes',
-      key: 'notes',
-      ellipsis: true,
     },
     {
       title: '작업',
@@ -189,6 +217,8 @@ const Reservations = () => {
           loading={loading}
           rowKey="id"
           pagination={{ pageSize: 20 }}
+          scroll={{ x: 1400 }}
+          size="small"
         />
       </Card>
 

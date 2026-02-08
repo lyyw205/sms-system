@@ -3,8 +3,9 @@ FastAPI application entry point
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import messages, webhooks, auto_response, rules, documents, reservations, dashboard
+from app.api import messages, webhooks, auto_response, rules, documents, reservations, dashboard, campaigns, scheduler
 from app.db.database import init_db
+from app.scheduler.jobs import start_scheduler, stop_scheduler
 import logging
 
 # Configure logging
@@ -28,11 +29,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database on startup
+# Initialize database and scheduler on startup
 @app.on_event("startup")
 async def startup_event():
     init_db()
     logging.info("Database initialized")
+
+    # Start scheduler for automated tasks
+    start_scheduler()
+    logging.info("Scheduler started")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Stop scheduler on shutdown
+    stop_scheduler()
+    logging.info("Scheduler stopped")
 
 
 # Include routers
@@ -43,6 +55,8 @@ app.include_router(rules.router)
 app.include_router(documents.router)
 app.include_router(reservations.router)
 app.include_router(dashboard.router)
+app.include_router(campaigns.router)
+app.include_router(scheduler.router)
 
 
 @app.get("/")

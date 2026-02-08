@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.database import get_db
-from app.db.models import Message, Reservation, MessageDirection, ReservationStatus
+from app.db.models import Message, Reservation, CampaignLog, GenderStat, MessageDirection, ReservationStatus
+from datetime import datetime
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -55,6 +56,14 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     # Recent messages (last 5)
     recent_messages = db.query(Message).order_by(Message.created_at.desc()).limit(5).all()
 
+    # Campaign stats
+    total_campaigns = db.query(CampaignLog).count()
+    total_campaign_sent = db.query(func.sum(CampaignLog.sent_count)).scalar() or 0
+
+    # Gender stats (today)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_gender = db.query(GenderStat).filter(GenderStat.date == today_str).first()
+
     return {
         "totals": {
             "reservations": total_reservations,
@@ -71,6 +80,15 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
             "manual_responses": manual_responses,
             "auto_response_rate": round(auto_response_rate, 1),
             "needs_review": needs_review,
+        },
+        "campaigns": {
+            "total_campaigns": total_campaigns,
+            "total_sent": int(total_campaign_sent),
+        },
+        "gender_stats": {
+            "male_count": today_gender.male_count if today_gender else 0,
+            "female_count": today_gender.female_count if today_gender else 0,
+            "total_participants": today_gender.total_participants if today_gender else 0,
         },
         "recent_reservations": [
             {

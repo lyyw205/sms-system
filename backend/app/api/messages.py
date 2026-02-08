@@ -3,10 +3,11 @@ Message API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List, Optional
 from app.db.database import get_db
-from app.db.models import Message, MessageDirection, MessageStatus
+from app.db.models import Message, MessageDirection, MessageStatus, Reservation
 from app.factory import get_sms_provider
 from datetime import datetime
 
@@ -42,9 +43,72 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class ContactResponse(BaseModel):
+    phone: str
+    last_message: str
+    last_message_time: datetime
+    last_direction: str
+    customer_name: Optional[str] = None
+
+
+# IMPORTANT: /contacts must be defined BEFORE /review-queue for correct route matching
+@router.get("/contacts", response_model=List[ContactResponse])
+async def get_contacts(db: Session = Depends(get_db)):
+    """Get unique contact list with last message preview"""
+    # Get all messages, find unique phone numbers (excluding our own number)
+    our_number = "010-9999-0000"
+
+    messages = (
+        db.query(Message)
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+
+    contacts_map: dict = {}
+    for msg in messages:
+        # Determine customer phone number
+        if msg.direction == MessageDirection.INBOUND:
+            phone = msg.from_
+        else:
+            phone = msg.to
+
+        # Skip our own number
+        if phone == our_number:
+            continue
+
+        if phone not in contacts_map:
+            contacts_map[phone] = {
+                "phone": phone,
+                "last_message": msg.message[:100],
+                "last_message_time": msg.created_at,
+                "last_direction": msg.direction.value,
+            }
+
+    # Look up customer names from reservations
+    contacts = []
+    for phone, contact in contacts_map.items():
+        reservation = (
+            db.query(Reservation)
+            .filter(Reservation.phone == phone)
+            .order_by(Reservation.created_at.desc())
+            .first()
+        )
+        contact["customer_name"] = reservation.customer_name if reservation else None
+        contacts.append(ContactResponse(**contact))
+
+    # Sort by last message time descending
+    contacts.sort(key=lambda c: c.last_message_time, reverse=True)
+
+    return contacts
+
+
 @router.get("", response_model=List[MessageResponse])
 async def get_messages(
-    skip: int = 0, limit: int = 50, direction: Optional[str] = None, db: Session = Depends(get_db)
+    skip: int = 0,
+    limit: int = 50,
+    direction: Optional[str] = None,
+    phone: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
     """Get message history with pagination"""
     query = db.query(Message)
@@ -52,7 +116,13 @@ async def get_messages(
     if direction:
         query = query.filter(Message.direction == direction)
 
-    messages = query.order_by(Message.created_at.desc()).offset(skip).limit(limit).all()
+    if phone:
+        query = query.filter(or_(Message.from_ == phone, Message.to == phone))
+        # Chat view: ascending order for conversation flow
+        messages = query.order_by(Message.created_at.asc()).offset(skip).limit(limit).all()
+    else:
+        # Default: descending (newest first)
+        messages = query.order_by(Message.created_at.desc()).offset(skip).limit(limit).all()
 
     return [
         MessageResponse(

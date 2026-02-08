@@ -5,8 +5,10 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Reservations from './pages/Reservations';
 import Messages from './pages/Messages';
-import Rules from './pages/Rules';
-import Documents from './pages/Documents';
+import AutoResponse from './pages/AutoResponse';
+import Campaigns from './pages/Campaigns';
+import Scheduler from './pages/Scheduler';
+import RoomAssignment from './pages/RoomAssignment';
 
 function App() {
   return (
@@ -16,9 +18,11 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/reservations" element={<Reservations />} />
+            <Route path="/rooms" element={<RoomAssignment />} />
             <Route path="/messages" element={<Messages />} />
-            <Route path="/rules" element={<Rules />} />
-            <Route path="/documents" element={<Documents />} />
+            <Route path="/auto-response" element={<AutoResponse />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/scheduler" element={<Scheduler />} />
           </Routes>
         </Layout>
       </Router>

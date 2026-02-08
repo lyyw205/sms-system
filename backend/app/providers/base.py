@@ -13,6 +13,10 @@ class SMSProvider(Protocol):
         """Send SMS message"""
         ...
 
+    async def send_bulk(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+        """Send bulk SMS messages"""
+        ...
+
     async def simulate_receive(self, from_: str, to: str, message: str) -> Dict[str, Any]:
         """Simulate receiving SMS (for demo mode)"""
         ...
@@ -21,7 +25,7 @@ class SMSProvider(Protocol):
 class ReservationProvider(Protocol):
     """Reservation sync abstraction (Naver Booking)"""
 
-    async def sync_reservations(self) -> List[Dict[str, Any]]:
+    async def sync_reservations(self, date: Any = None) -> List[Dict[str, Any]]:
         """Fetch reservations from external source"""
         ...
 
@@ -56,4 +60,12 @@ class StorageProvider(Protocol):
 
     async def sync_from_storage(self, sheet_name: str) -> List[Dict[str, Any]]:
         """Import data from external storage"""
+        ...
+
+    async def mark_sent_phone_numbers(self, phone_numbers: List[str], date: Any, mark_text: str) -> bool:
+        """Mark phone numbers as sent in storage"""
+        ...
+
+    async def get_cell_value(self, sheet_name: str, row: int, col: int) -> Optional[str]:
+        """Get a specific cell value from storage"""
         ...

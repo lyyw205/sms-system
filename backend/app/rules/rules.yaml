@@ -6,7 +6,7 @@ rules:
     active: true
 
   - name: "예약 문의"
-    pattern: "(예약|방문|언제|가능)"
+    pattern: "(예약|방문|예약.+가능)"
     response: "예약은 전화(010-9999-0000) 또는 네이버 예약으로 가능합니다."
     priority: 9
     active: true
