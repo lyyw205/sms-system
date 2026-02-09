@@ -134,6 +134,7 @@ export const templatesAPI = {
   delete: (id: number) => api.delete(`/api/templates/${id}`),
   preview: (id: number, variables: any) =>
     api.post(`/api/templates/${id}/preview`, { variables }),
+  getAvailableVariables: () => api.get('/api/template-variables'),
 };
 
 // Template Schedules API

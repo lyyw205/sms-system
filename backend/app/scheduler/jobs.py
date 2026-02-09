@@ -23,6 +23,11 @@ async def sync_naver_reservations_job():
     Sync reservations from Naver Booking API
     Runs every 10 minutes from 10:10 to 21:59
 
+    TODO: Once Naver webhook is implemented (see app/api/webhooks.py),
+    reduce this job frequency to 1 hour as a backup/safety mechanism.
+    Webhook will provide real-time updates, and this scheduler will catch
+    any missed events or handle initial sync.
+
     Ported from: stable-clasp-main/03_trigger.js:1-16 (processTodayAuto - first part)
     """
     logger.info("Running Naver reservations sync job")

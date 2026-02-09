@@ -27,12 +27,56 @@ import {
   PlayCircleOutlined,
   SyncOutlined,
   ReloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { templatesAPI, templateSchedulesAPI, campaignsAPI } from '../services/api';
 
 const { TextArea } = Input;
 const { Option } = Select;
 const { Text } = Typography;
+
+/**
+ * 템플릿 내용에서 {{변수명}} 패턴을 추출하고 유효성 검증
+ */
+const extractAndValidateVariables = (
+  content: string,
+  availableVars: any
+): { valid: string[]; invalid: string[] } => {
+  if (!content || !availableVars) {
+    return { valid: [], invalid: [] };
+  }
+
+  // {{variableName}} 패턴 매칭
+  const variablePattern = /\{\{(\w+)\}\}/g;
+  const matches = content.matchAll(variablePattern);
+
+  // Set으로 중복 제거
+  const foundVariables = new Set<string>();
+  for (const match of matches) {
+    const varName = match[1];
+    if (varName) {  // 빈 변수명 무시 ({{}} 같은 경우)
+      foundVariables.add(varName);
+    }
+  }
+
+  // 유효성 검사
+  const valid: string[] = [];
+  const invalid: string[] = [];
+
+  foundVariables.forEach(varName => {
+    if (availableVars.variables && availableVars.variables[varName]) {
+      valid.push(varName);
+    } else {
+      invalid.push(varName);
+    }
+  });
+
+  return {
+    valid: valid.sort(),
+    invalid: invalid.sort()
+  };
+};
 
 interface Template {
   id: number;
@@ -80,6 +124,11 @@ const Templates: React.FC = () => {
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [templateForm] = Form.useForm();
+  const [availableVariables, setAvailableVariables] = useState<any>(null);
+  const [detectedVariables, setDetectedVariables] = useState<{
+    valid: string[];
+    invalid: string[];
+  }>({ valid: [], invalid: [] });
 
   // Schedules state
   const [schedules, setSchedules] = useState<TemplateSchedule[]>([]);
@@ -123,9 +172,20 @@ const Templates: React.FC = () => {
     }
   };
 
+  // Fetch available variables
+  const fetchAvailableVariables = async () => {
+    try {
+      const response = await templatesAPI.getAvailableVariables();
+      setAvailableVariables(response.data);
+    } catch (error) {
+      console.error('Failed to fetch variables:', error);
+    }
+  };
+
   useEffect(() => {
     fetchTemplates();
     fetchSchedules();
+    fetchAvailableVariables();
   }, []);
 
   // Load campaigns when tab changes
@@ -153,12 +213,24 @@ const Templates: React.FC = () => {
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
     templateForm.resetFields();
+
+    // 감지된 변수 초기화
+    setDetectedVariables({ valid: [], invalid: [] });
+
     setTemplateModalVisible(true);
   };
 
   const handleEditTemplate = (template: Template) => {
     setEditingTemplate(template);
     templateForm.setFieldsValue(template);
+
+    // 기존 content에서 변수 감지 (모달 열 때 초기화)
+    const detected = extractAndValidateVariables(
+      template.content,
+      availableVariables
+    );
+    setDetectedVariables(detected);
+
     setTemplateModalVisible(true);
   };
 
@@ -889,27 +961,130 @@ const Templates: React.FC = () => {
           >
             <TextArea
               rows={8}
-              placeholder={`예시:\n안녕하세요 {{customerName}}님!\n금일 객실은 {{building}}동 {{roomNum}}호입니다.\n비밀번호: {{password}}\n\n즐거운 하루 되세요!`}
+              placeholder={`예시:\n안녕하세요 {{name}}님!\n금일 객실은 {{building}}동 {{roomNum}}호입니다.\n비밀번호: {{password}}\n파티 시간: {{partyTime}}\n총 인원: {{totalParticipants}}명\n\n즐거운 하루 되세요!`}
               style={{ fontFamily: 'monospace' }}
+              onChange={(e) => {
+                // 실시간 변수 감지
+                const detected = extractAndValidateVariables(e.target.value, availableVariables);
+                setDetectedVariables(detected);
+
+                // variables 필드 자동 채우기 (쉼표 구분 문자열)
+                const variablesString = detected.valid.join(',');
+                templateForm.setFieldsValue({ variables: variablesString });
+              }}
             />
           </Form.Item>
 
+          {/* 사용된 변수 - 읽기 전용 표시 */}
           <Form.Item
-            label="사용 가능한 변수"
-            name="variables"
+            label="사용된 변수"
             extra={
               <div style={{ marginTop: 8 }}>
                 <Text type="secondary">
-                  💡 쉼표(,)로 구분하여 입력하세요
-                </Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  자주 쓰는 변수: customerName(고객명), roomNumber(객실번호), building(동), roomNum(호수), password(비밀번호), date(날짜), time(시간)
+                  💡 메시지 내용에서 자동으로 감지된 변수입니다.
+                  변수를 사용하려면 위 메시지 내용에 <code>{`{{변수명}}`}</code> 형식으로 입력하세요.
                 </Text>
               </div>
             }
           >
-            <Input placeholder="예: customerName, roomNumber, password" />
+            {/* ✅ 유효한 변수 */}
+            {detectedVariables.valid.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text type="secondary" strong style={{ display: 'block', marginBottom: 8 }}>
+                  ✅ 유효한 변수:
+                </Text>
+                <Space size={[0, 8]} wrap>
+                  {detectedVariables.valid.map((varName) => (
+                    <Tag
+                      key={varName}
+                      color="success"
+                      icon={<CheckCircleOutlined />}
+                      style={{ fontSize: 13, padding: '4px 10px' }}
+                    >
+                      <code>{`{{${varName}}}`}</code>
+                      {availableVariables?.variables[varName] && (
+                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
+                          - {availableVariables.variables[varName].description}
+                        </Text>
+                      )}
+                    </Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* ❌ 유효하지 않은 변수 */}
+            {detectedVariables.invalid.length > 0 && (
+              <div>
+                <Text type="danger" strong style={{ display: 'block', marginBottom: 8 }}>
+                  ❌ 유효하지 않은 변수 (사용 불가):
+                </Text>
+                <Space size={[0, 8]} wrap>
+                  {detectedVariables.invalid.map((varName) => (
+                    <Tag
+                      key={varName}
+                      color="error"
+                      icon={<CloseCircleOutlined />}
+                      style={{ fontSize: 13, padding: '4px 10px' }}
+                    >
+                      <code>{`{{${varName}}}`}</code>
+                      <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
+                        - 정의되지 않음
+                      </Text>
+                    </Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* 빈 상태 */}
+            {detectedVariables.valid.length === 0 && detectedVariables.invalid.length === 0 && (
+              <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 4 }}>
+                <Text type="secondary">
+                  메시지 내용에 변수가 감지되지 않았습니다.
+                  변수를 사용하려면 <code>{`{{변수명}}`}</code> 형식으로 입력하세요.
+                </Text>
+              </div>
+            )}
+          </Form.Item>
+
+          {/* Form 제출용 숨겨진 필드 */}
+          <Form.Item name="variables" hidden>
+            <Input />
+          </Form.Item>
+
+          {/* 사용 가능한 변수 참고 */}
+          <Form.Item
+            label="사용 가능한 변수 참고"
+            extra={
+              <Text type="secondary">
+                💡 아래는 시스템에서 사용 가능한 모든 변수 목록입니다.
+                메시지 내용에 <code>{`{{변수명}}`}</code> 형식으로 입력하면 자동으로 감지됩니다.
+              </Text>
+            }
+          >
+            {availableVariables && (
+              <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 4, maxHeight: 200, overflow: 'auto' }}>
+                {Object.entries(availableVariables.categories || {}).map(([category, vars]: [string, any]) => (
+                  <div key={category} style={{ marginBottom: 12 }}>
+                    <Text strong style={{ fontSize: 12, color: '#1890ff' }}>
+                      {category === 'reservation' && '📋 예약 정보'}
+                      {category === 'room' && '🏨 객실 정보'}
+                      {category === 'party' && '🎉 파티 정보'}
+                      {category === 'datetime' && '📅 날짜/시간'}
+                      {category === 'other' && '🔧 기타'}
+                    </Text>
+                    <div style={{ marginTop: 4, marginLeft: 12 }}>
+                      {vars.map((v: any) => (
+                        <Tag key={v.name} style={{ margin: '2px', fontSize: 11 }}>
+                          <code>{`{{${v.name}}}`}</code> - {v.description}
+                        </Tag>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Form.Item>
 
           <Form.Item label="활성 상태" name="active" valuePropName="checked" extra={<Text type="secondary">💡 비활성화하면 이 템플릿을 사용할 수 없습니다</Text>}>

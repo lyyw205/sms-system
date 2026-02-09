@@ -330,6 +330,81 @@ def create_sample_templates(db: Session):
             "category": "party_guide",
             "active": True,
         },
+        {
+            "key": "tag_객후",
+            "name": "객후 태그 메시지",
+            "content": (
+                "{{name}}님 안녕하세요!\n\n"
+                "객실 이용 후 파티 참여 안내드립니다.\n\n"
+                "📍 파티 장소: 스테이블 B동 1층 포차\n"
+                "⏰ 파티 시작: 저녁 8시\n"
+                "💰 파티 참여비: {{priceInfo}}\n\n"
+                "객실 체크인 후 편하게 파티에 참여하실 수 있습니다."
+            ),
+            "variables": json.dumps(["name", "priceInfo"]),
+            "category": "tag_based",
+            "active": True,
+        },
+        {
+            "key": "tag_1초",
+            "name": "1초 태그 메시지",
+            "content": (
+                "{{name}}님 안녕하세요!\n\n"
+                "1차 파티 안내드립니다.\n\n"
+                "⏰ 시작 시간: 저녁 8시\n"
+                "💰 참여비: {{priceInfo}}\n"
+                "👥 예상 인원: {{totalParticipants}}명\n\n"
+                "많은 참여 부탁드립니다!"
+            ),
+            "variables": json.dumps(["name", "priceInfo", "totalParticipants"]),
+            "category": "tag_based",
+            "active": True,
+        },
+        {
+            "key": "tag_2차만",
+            "name": "2차만 태그 메시지",
+            "content": (
+                "{{name}}님 안녕하세요!\n\n"
+                "2차 파티만 참여 안내드립니다.\n\n"
+                "⏰ 2차 시작: 밤 10시\n"
+                "💰 참여비: {{priceInfo}}\n\n"
+                "2차부터 편하게 오셔도 됩니다!"
+            ),
+            "variables": json.dumps(["name", "priceInfo"]),
+            "category": "tag_based",
+            "active": True,
+        },
+        {
+            "key": "tag_객후1초",
+            "name": "객후+1초 태그 메시지",
+            "content": (
+                "{{name}}님 안녕하세요!\n\n"
+                "객실 이용 후 1차 파티 참여 안내드립니다.\n\n"
+                "🏨 객실: {{building}}동 {{roomNum}}호\n"
+                "🔐 비밀번호: {{password}}\n"
+                "⏰ 파티 시작: {{partyTime}}\n"
+                "💰 파티 참여비: {{priceInfo}}\n\n"
+                "체크인 후 파티 참여 부탁드립니다!"
+            ),
+            "variables": json.dumps(["name", "building", "roomNum", "password", "partyTime", "priceInfo"]),
+            "category": "tag_based",
+            "active": True,
+        },
+        {
+            "key": "tag_1초2차만",
+            "name": "1초+2차만 태그 메시지",
+            "content": (
+                "{{name}}님 안녕하세요!\n\n"
+                "1차와 2차 파티 모두 참여 안내드립니다.\n\n"
+                "⏰ 1차: {{partyTime}}\n"
+                "⏰ 2차: {{secondPartyTime}}\n"
+                "💰 참여비: {{priceInfo}}\n\n"
+                "많은 참여 부탁드립니다!"
+            ),
+            "variables": json.dumps(["name", "partyTime", "secondPartyTime", "priceInfo"]),
+            "category": "tag_based",
+            "active": True,
+        },
     ]
 
     for tmpl_data in templates:

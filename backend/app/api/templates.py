@@ -243,3 +243,18 @@ def preview_template(
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to render template: {str(e)}")
+
+
+@router.get("/api/template-variables")
+def get_available_variables():
+    """
+    Get list of all available template variables
+
+    Returns variables grouped by category with descriptions and examples
+    """
+    from app.templates.variables import AVAILABLE_VARIABLES, get_variable_categories
+
+    return {
+        "variables": AVAILABLE_VARIABLES,
+        "categories": get_variable_categories()
+    }

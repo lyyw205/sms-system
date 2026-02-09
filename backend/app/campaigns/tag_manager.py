@@ -133,17 +133,19 @@ class TagCampaignManager:
             messages = []
 
             for reservation in targets:
-                # Build message (template rendering would go here)
-                # For now, use simple message
+                # Build message with auto-calculated variables
                 from ..templates.renderer import TemplateRenderer
+                from ..templates.variables import calculate_template_variables
+
                 renderer = TemplateRenderer(self.db)
 
-                message_vars = variables or {}
-                message_vars.update({
-                    'name': reservation.customer_name,
-                    'roomNumber': reservation.room_number or '',
-                    'roomPassword': reservation.room_password or ''
-                })
+                # Calculate all available template variables
+                message_vars = calculate_template_variables(
+                    reservation=reservation,
+                    db=self.db,
+                    date=date,
+                    custom_vars=variables  # Override with custom variables if provided
+                )
 
                 message = renderer.render(template_key, message_vars)
 
@@ -163,12 +165,22 @@ class TagCampaignManager:
 
                 # Mark as sent (from line 38-57)
                 for reservation in targets:
+                    # Update boolean flags
                     if sms_type == 'room':
                         reservation.room_sms_sent = True
                         reservation.room_sms_sent_at = datetime.utcnow()
                     elif sms_type == 'party':
                         reservation.party_sms_sent = True
                         reservation.party_sms_sent_at = datetime.utcnow()
+
+                    # Update sent_sms_types for detailed tracking
+                    current_types = reservation.sent_sms_types or ""
+                    types_list = [t.strip() for t in current_types.split(',') if t.strip()]
+
+                    # Add tag to sent_sms_types (avoid duplicates)
+                    if tag not in types_list:
+                        types_list.append(tag)
+                        reservation.sent_sms_types = ','.join(types_list)
 
                 logger.info(f"Campaign successful: {campaign.sent_count} messages sent")
 

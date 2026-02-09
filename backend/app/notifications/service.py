@@ -113,6 +113,13 @@ class NotificationService:
                     reservation.room_sms_sent = True
                     reservation.room_sms_sent_at = datetime.utcnow()
 
+                    # Update sent_sms_types
+                    current_types = reservation.sent_sms_types or ""
+                    types_list = [t.strip() for t in current_types.split(',') if t.strip()]
+                    if "객실안내" not in types_list:
+                        types_list.append("객실안내")
+                        reservation.sent_sms_types = ','.join(types_list)
+
                 # Mark in Google Sheets if provider available
                 if self.storage_provider:
                     await self.storage_provider.mark_sent_phone_numbers(
@@ -247,6 +254,13 @@ class NotificationService:
                 for reservation in reservations:
                     reservation.party_sms_sent = True
                     reservation.party_sms_sent_at = datetime.utcnow()
+
+                    # Update sent_sms_types
+                    current_types = reservation.sent_sms_types or ""
+                    types_list = [t.strip() for t in current_types.split(',') if t.strip()]
+                    if "파티안내" not in types_list:
+                        types_list.append("파티안내")
+                        reservation.sent_sms_types = ','.join(types_list)
 
                 # Mark in Google Sheets if provider available
                 if self.storage_provider:

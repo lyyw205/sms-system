@@ -570,7 +570,8 @@ const RoomAssignment = () => {
       time: '18:00',
       status: 'confirmed',
       source: 'manual',
-      tags: '파티만',  // Auto-tag as party-only
+      guest_type: 'manual',  // Default to manual input
+      tags: '',
     });
     setModalVisible(true);
   };
@@ -606,6 +607,18 @@ const RoomAssignment = () => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+
+      // Process based on guest_type (only for new guests)
+      if (!editingId && values.guest_type) {
+        if (values.guest_type === 'party_only') {
+          // Ensure "파티만" tag for party-only guests
+          if (!values.tags?.includes('파티만')) {
+            values.tags = values.tags ? `${values.tags},파티만` : '파티만';
+          }
+        }
+        // Remove guest_type field before sending to API
+        delete values.guest_type;
+      }
 
       // Ensure "파티만" tag for party-only guests (when no room is assigned)
       if (!values.room_number && !values.tags?.includes('파티만')) {
@@ -829,7 +842,11 @@ const RoomAssignment = () => {
             ) : (
               // Display mode
               <>
-                <div style={CELL}>{res.customer_name}</div>
+                <div style={CELL}>
+                  {res.customer_name}
+                  {res.source === 'naver' && <Tag color="green" style={{ fontSize: 10, marginLeft: 4 }}>네이버</Tag>}
+                  {res.source === 'manual' && <Tag color="blue" style={{ fontSize: 10, marginLeft: 4 }}>직접입력</Tag>}
+                </div>
                 <div style={CELL}>{res.phone}</div>
                 <div style={{ ...CELL, textAlign: 'center' }}>{genderPeople || '-'}</div>
                 <div style={{ ...CELL, textAlign: 'center' }}>{party}</div>
@@ -868,6 +885,13 @@ const RoomAssignment = () => {
     const genderPeople = [res.gender, res.party_participants].filter(Boolean).join('');
     const party = getPartyLabel(res.tags);
 
+    // 출처별 라벨 설정
+    const sourceLabel = res.source === 'naver' ? (
+      <Tag color="green" style={{ fontSize: 10, marginLeft: 4 }}>네이버</Tag>
+    ) : res.source === 'manual' ? (
+      <Tag color="blue" style={{ fontSize: 10, marginLeft: 4 }}>직접입력</Tag>
+    ) : null;
+
     return (
       <div
         key={res.id}
@@ -884,7 +908,10 @@ const RoomAssignment = () => {
           userSelect: 'none',
         }}
       >
-        <div><strong>{res.customer_name}</strong> {res.phone}</div>
+        <div>
+          <strong>{res.customer_name}</strong> {res.phone}
+          {sourceLabel}
+        </div>
         <div style={{ color: '#8c8c8c', marginTop: 2 }}>
           {genderPeople || '-'}
           {party && <> · 파티 {party}</>}
@@ -1025,7 +1052,11 @@ const RoomAssignment = () => {
           ) : (
             // Display mode
             <>
-              <div style={CELL}>{res.customer_name}</div>
+              <div style={CELL}>
+                {res.customer_name}
+                {res.source === 'naver' && <Tag color="green" style={{ fontSize: 10, marginLeft: 4 }}>네이버</Tag>}
+                {res.source === 'manual' && <Tag color="blue" style={{ fontSize: 10, marginLeft: 4 }}>직접입력</Tag>}
+              </div>
               <div style={CELL}>{res.phone}</div>
               <div style={{ ...CELL, textAlign: 'center' }}>{genderPeople || '-'}</div>
               <div style={{ ...CELL, textAlign: 'center' }}>{party}</div>
@@ -1080,7 +1111,7 @@ const RoomAssignment = () => {
                 icon={<UserAddOutlined />}
                 onClick={handleAddPartyGuest}
               >
-                파티만 추가
+                예약자 추가
               </Button>
               <Button
                 icon={<SettingOutlined />}
@@ -1391,13 +1422,43 @@ const RoomAssignment = () => {
 
         {/* Guest Form Modal */}
         <Modal
-          title={editingId ? '게스트 수정' : '파티만 게스트 추가'}
+          title={editingId ? '게스트 수정' : '예약자 추가'}
           open={modalVisible}
           onOk={handleSubmit}
           onCancel={() => setModalVisible(false)}
           width={600}
         >
           <Form form={form} layout="vertical">
+            {!editingId && (
+              <Form.Item
+                name="guest_type"
+                label="예약자 타입"
+                rules={[{ required: true, message: '예약자 타입을 선택하세요' }]}
+                initialValue="manual"
+              >
+                <Select
+                  placeholder="타입 선택"
+                  onChange={(value) => {
+                    // 파티만 선택 시 자동으로 태그 설정
+                    if (value === 'party_only') {
+                      const currentTags = form.getFieldValue('tags');
+                      if (!currentTags || !currentTags.includes('파티만')) {
+                        form.setFieldsValue({ tags: '파티만' });
+                      }
+                    }
+                  }}
+                >
+                  <Select.Option value="manual">
+                    <Tag color="blue">직접 입력</Tag>
+                    <span style={{ marginLeft: 8 }}>수동으로 추가된 예약자</span>
+                  </Select.Option>
+                  <Select.Option value="party_only">
+                    <Tag color="purple">파티만</Tag>
+                    <span style={{ marginLeft: 8 }}>객실 없이 파티만 참석</span>
+                  </Select.Option>
+                </Select>
+              </Form.Item>
+            )}
             <Form.Item
               name="customer_name"
               label="이름"
