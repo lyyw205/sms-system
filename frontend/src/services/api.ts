@@ -32,6 +32,16 @@ export const reservationsAPI = {
   syncSheets: () => api.post('/api/reservations/sync/sheets'),
 };
 
+// Rooms API
+export const roomsAPI = {
+  getAll: (params?: { include_inactive?: boolean }) => api.get('/api/rooms', { params }),
+  getById: (id: number) => api.get(`/api/rooms/${id}`),
+  create: (data: { room_number: string; room_type: string; is_active?: boolean; sort_order?: number }) =>
+    api.post('/api/rooms', data),
+  update: (id: number, data: any) => api.put(`/api/rooms/${id}`, data),
+  delete: (id: number) => api.delete(`/api/rooms/${id}`),
+};
+
 // Rules API
 export const rulesAPI = {
   getAll: () => api.get('/api/rules'),

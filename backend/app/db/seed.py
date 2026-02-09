@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal, init_db
 from app.db.models import (
     Message, Reservation, Rule, Document,
-    MessageTemplate, CampaignLog, GenderStat,
+    MessageTemplate, CampaignLog, GenderStat, Room,
     MessageDirection, MessageStatus, ReservationStatus,
 )
 from datetime import datetime, timedelta
@@ -428,6 +428,28 @@ def create_sample_gender_stats(db: Session):
     logger.info(f"Created {len(stats_data)} gender stat records")
 
 
+def create_sample_rooms(db: Session):
+    """Create initial room configurations"""
+    rooms_data = [
+        {"room_number": "A101", "room_type": "더블룸", "sort_order": 1},
+        {"room_number": "A102", "room_type": "트윈룸", "sort_order": 2},
+        {"room_number": "A103", "room_type": "패밀리룸", "sort_order": 3},
+        {"room_number": "A104", "room_type": "디럭스룸", "sort_order": 4},
+        {"room_number": "A105", "room_type": "스탠다드룸", "sort_order": 5},
+        {"room_number": "B201", "room_type": "더블룸", "sort_order": 6},
+        {"room_number": "B202", "room_type": "트윈룸", "sort_order": 7},
+        {"room_number": "B203", "room_type": "패밀리룸", "sort_order": 8},
+        {"room_number": "B204", "room_type": "디럭스룸", "sort_order": 9},
+        {"room_number": "B205", "room_type": "스탠다드룸", "sort_order": 10},
+    ]
+
+    for room_data in rooms_data:
+        room = Room(**room_data, is_active=True)
+        db.add(room)
+
+    logger.info(f"Created {len(rooms_data)} rooms")
+
+
 def seed_all():
     """Run all seed functions"""
     logger.info("Initializing database...")
@@ -444,9 +466,11 @@ def seed_all():
         db.query(MessageTemplate).delete()
         db.query(CampaignLog).delete()
         db.query(GenderStat).delete()
+        db.query(Room).delete()
         db.commit()
 
         # Create sample data
+        create_sample_rooms(db)  # Create rooms first
         create_sample_messages(db)
         create_sample_reservations(db)
         create_sample_rules(db)

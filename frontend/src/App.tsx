@@ -9,6 +9,7 @@ import AutoResponse from './pages/AutoResponse';
 import Campaigns from './pages/Campaigns';
 import Scheduler from './pages/Scheduler';
 import RoomAssignment from './pages/RoomAssignment';
+import RoomManagement from './pages/RoomManagement';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/reservations" element={<Reservations />} />
             <Route path="/rooms" element={<RoomAssignment />} />
+            <Route path="/rooms/manage" element={<RoomManagement />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/auto-response" element={<AutoResponse />} />
             <Route path="/campaigns" element={<Campaigns />} />

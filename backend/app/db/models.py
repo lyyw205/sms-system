@@ -95,6 +95,7 @@ class Reservation(Base):
     party_sms_sent = Column(Boolean, default=False)
     room_sms_sent_at = Column(DateTime, nullable=True)
     party_sms_sent_at = Column(DateTime, nullable=True)
+    sent_sms_types = Column(Text, nullable=True)  # Comma-separated list: "객후,파티안내,객실안내"
 
     # Google Sheets sync tracking
     sheets_row_number = Column(Integer, nullable=True)
@@ -175,5 +176,19 @@ class GenderStat(Base):
     male_count = Column(Integer, default=0)
     female_count = Column(Integer, default=0)
     total_participants = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Room(Base):
+    """Room configuration for room assignment"""
+
+    __tablename__ = "rooms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_number = Column(String(20), nullable=False, index=True)  # e.g., A101, B205, 별관 (duplicates allowed)
+    room_type = Column(String(50), nullable=False)  # e.g., 더블룸, 트윈룸, 패밀리룸
+    is_active = Column(Boolean, default=True)  # Active/inactive flag
+    sort_order = Column(Integer, default=0)  # Display order
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
