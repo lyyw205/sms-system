@@ -1,32 +1,39 @@
 import { useEffect, useState } from 'react';
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card } from 'antd';
+import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, DatePicker, Row, Col, Statistic } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  SyncOutlined,
-  CloudUploadOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { reservationsAPI } from '../services/api';
+import dayjs, { Dayjs } from 'dayjs';
+
+const TAG_OPTIONS = ['1초', '2차만', '객후', '객후,1초', '1초,2차만'];
 
 const Reservations = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadReservations();
-  }, []);
+  }, [selectedDate]);
 
   const loadReservations = async () => {
     setLoading(true);
     try {
-      const response = await reservationsAPI.getAll({ limit: 100 });
+      const response = await reservationsAPI.getAll({
+        date: selectedDate.format('YYYY-MM-DD'),
+        limit: 200
+      });
       setReservations(response.data);
     } catch (error) {
       console.error('Failed to load reservations:', error);
+      message.error('파티 신청자 목록 로드 실패');
     } finally {
       setLoading(false);
     }
@@ -35,6 +42,12 @@ const Reservations = () => {
   const handleCreate = () => {
     setEditingId(null);
     form.resetFields();
+    form.setFieldsValue({
+      date: selectedDate.format('YYYY-MM-DD'),
+      time: '18:00',
+      status: 'confirmed',
+      source: 'manual',
+    });
     setModalVisible(true);
   };
 
@@ -45,13 +58,19 @@ const Reservations = () => {
   };
 
   const handleDelete = async (id: number) => {
-    try {
-      await reservationsAPI.delete(id);
-      message.success('예약 삭제 완료');
-      loadReservations();
-    } catch (error) {
-      message.error('예약 삭제 실패');
-    }
+    Modal.confirm({
+      title: '파티 신청자 삭제',
+      content: '정말 삭제하시겠습니까?',
+      onOk: async () => {
+        try {
+          await reservationsAPI.delete(id);
+          message.success('삭제 완료');
+          loadReservations();
+        } catch (error) {
+          message.error('삭제 실패');
+        }
+      },
+    });
   };
 
   const handleSubmit = async () => {
@@ -59,123 +78,85 @@ const Reservations = () => {
       const values = await form.validateFields();
       if (editingId) {
         await reservationsAPI.update(editingId, values);
-        message.success('예약 수정 완료');
+        message.success('수정 완료');
       } else {
         await reservationsAPI.create(values);
-        message.success('예약 생성 완료');
+        message.success('신청자 추가 완료');
       }
       setModalVisible(false);
       loadReservations();
     } catch (error) {
-      message.error('예약 저장 실패');
+      message.error('저장 실패');
     }
   };
 
-  const handleSyncNaver = async () => {
-    try {
-      const response = await reservationsAPI.syncNaver();
-      message.success(response.data.message);
-      loadReservations();
-    } catch (error) {
-      message.error('네이버 동기화 실패');
-    }
-  };
-
-  const handleSyncSheets = async () => {
-    try {
-      const response = await reservationsAPI.syncSheets();
-      message.success(response.data.message);
-    } catch (error) {
-      message.error('Google Sheets 동기화 실패');
-    }
-  };
+  const maleCount = reservations.filter((r: any) => r.gender === '남').length;
+  const femaleCount = reservations.filter((r: any) => r.gender === '여').length;
+  const totalParticipants = reservations.reduce((sum: number, r: any) =>
+    sum + (r.party_participants || 1), 0
+  );
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '고객명',
+      title: '이름',
       dataIndex: 'customer_name',
       key: 'customer_name',
+      width: 100,
     },
     {
       title: '전화번호',
       dataIndex: 'phone',
       key: 'phone',
+      width: 130,
     },
     {
-      title: '예약 날짜',
-      dataIndex: 'date',
-      key: 'date',
+      title: '성별',
+      dataIndex: 'gender',
+      key: 'gender',
+      width: 70,
+      render: (v: string) => v ? (
+        <Tag color={v === '남' ? 'blue' : 'magenta'}>{v}</Tag>
+      ) : '-',
     },
     {
-      title: '시간',
-      dataIndex: 'time',
-      key: 'time',
+      title: '인원',
+      dataIndex: 'party_participants',
+      key: 'party_participants',
+      width: 70,
+      render: (v: number) => v || 1,
     },
     {
-      title: '상태',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        const colorMap: Record<string, string> = {
-          pending: 'blue',
-          confirmed: 'green',
-          cancelled: 'red',
-          completed: 'default',
-        };
-        return <Tag color={colorMap[status]}>{status}</Tag>;
+      title: '태그',
+      dataIndex: 'tags',
+      key: 'tags',
+      width: 150,
+      render: (tags: string) => {
+        if (!tags) return '-';
+        return tags.split(',').map((t: string) => (
+          <Tag key={t} color="orange" style={{ marginBottom: 4 }}>
+            {t.trim()}
+          </Tag>
+        ));
       },
     },
     {
       title: '객실',
       dataIndex: 'room_number',
       key: 'room_number',
-      render: (v: string) => v ? <Tag color="cyan">{v}</Tag> : '-',
+      width: 100,
+      render: (v: string) => v ? <Tag color="cyan">{v}</Tag> : <Tag color="default">미배정</Tag>,
     },
     {
-      title: '성별',
-      dataIndex: 'gender',
-      key: 'gender',
-      render: (v: string) => v ? (
-        <Tag color={v === '남' ? 'blue' : 'magenta'}>{v}</Tag>
-      ) : '-',
-    },
-    {
-      title: '태그',
-      dataIndex: 'tags',
-      key: 'tags',
-      render: (tags: string) => tags ? tags.split(',').map((t: string) => (
-        <Tag key={t} color="orange">{t}</Tag>
-      )) : '-',
-    },
-    {
-      title: '객실문자',
-      dataIndex: 'room_sms_sent',
-      key: 'room_sms_sent',
-      render: (v: boolean) => v ? <Tag color="green">발송완료</Tag> : <Tag>미발송</Tag>,
-    },
-    {
-      title: '파티문자',
-      dataIndex: 'party_sms_sent',
-      key: 'party_sms_sent',
-      render: (v: boolean) => v ? <Tag color="green">발송완료</Tag> : <Tag>미발송</Tag>,
-    },
-    {
-      title: '출처',
-      dataIndex: 'source',
-      key: 'source',
-      render: (source: string) => (
-        <Tag color={source === 'naver' ? 'green' : 'default'}>{source}</Tag>
-      ),
+      title: '메모',
+      dataIndex: 'notes',
+      key: 'notes',
+      ellipsis: true,
     },
     {
       title: '작업',
       key: 'action',
+      width: 100,
+      fixed: 'right' as const,
       render: (record: any) => (
         <Space>
           <Button
@@ -196,18 +177,48 @@ const Reservations = () => {
 
   return (
     <div>
-      <h1>예약 관리</h1>
+      <h1>파티 신청자 관리</h1>
 
-      <Card style={{ marginTop: 24 }}>
+      <Row gutter={16} align="middle" style={{ marginBottom: 20 }}>
+        <Col>
+          <DatePicker
+            value={selectedDate}
+            onChange={(d) => d && setSelectedDate(d)}
+            style={{ width: 200 }}
+          />
+        </Col>
+        <Col>
+          <Statistic title="총 신청자" value={reservations.length} suffix="명" prefix={<UserOutlined />} />
+        </Col>
+        <Col>
+          <Statistic
+            title="남성"
+            value={maleCount}
+            suffix="명"
+            valueStyle={{ color: '#1890ff' }}
+          />
+        </Col>
+        <Col>
+          <Statistic
+            title="여성"
+            value={femaleCount}
+            suffix="명"
+            valueStyle={{ color: '#eb2f96' }}
+          />
+        </Col>
+        <Col>
+          <Statistic
+            title="총 참여 인원"
+            value={totalParticipants}
+            suffix="명"
+          />
+        </Col>
+      </Row>
+
+      <Card>
         <Space style={{ marginBottom: 16 }}>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-            신규 예약
-          </Button>
-          <Button icon={<SyncOutlined />} onClick={handleSyncNaver}>
-            네이버 예약 동기화
-          </Button>
-          <Button icon={<CloudUploadOutlined />} onClick={handleSyncSheets}>
-            Google Sheets 동기화
+            파티 신청자 추가
           </Button>
         </Space>
 
@@ -216,23 +227,24 @@ const Reservations = () => {
           columns={columns}
           loading={loading}
           rowKey="id"
-          pagination={{ pageSize: 20 }}
-          scroll={{ x: 1400 }}
+          pagination={{ pageSize: 50 }}
+          scroll={{ x: 1000 }}
           size="small"
         />
       </Card>
 
       <Modal
-        title={editingId ? '예약 수정' : '신규 예약'}
+        title={editingId ? '파티 신청자 수정' : '파티 신청자 추가'}
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
+        width={600}
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="customer_name"
-            label="고객명"
-            rules={[{ required: true, message: '고객명을 입력하세요' }]}
+            label="이름"
+            rules={[{ required: true, message: '이름을 입력하세요' }]}
           >
             <Input />
           </Form.Item>
@@ -243,35 +255,67 @@ const Reservations = () => {
           >
             <Input placeholder="010-1234-5678" />
           </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="date"
+                label="날짜"
+                rules={[{ required: true }]}
+              >
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="time"
+                label="시간"
+                rules={[{ required: true }]}
+              >
+                <Input type="time" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="gender"
+                label="성별"
+              >
+                <Select placeholder="성별 선택">
+                  <Select.Option value="남">남</Select.Option>
+                  <Select.Option value="여">여</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="party_participants"
+                label="참여 인원"
+                initialValue={1}
+              >
+                <Input type="number" min={1} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item
-            name="date"
-            label="예약 날짜"
-            rules={[{ required: true, message: '날짜를 입력하세요' }]}
+            name="tags"
+            label="태그"
+            tooltip="쉼표로 구분하여 입력 (예: 1초,2차만)"
           >
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item
-            name="time"
-            label="시간"
-            rules={[{ required: true, message: '시간을 입력하세요' }]}
-          >
-            <Input type="time" />
-          </Form.Item>
-          <Form.Item
-            name="status"
-            label="상태"
-            initialValue="pending"
-            rules={[{ required: true }]}
-          >
-            <Select>
-              <Select.Option value="pending">대기중</Select.Option>
-              <Select.Option value="confirmed">확정</Select.Option>
-              <Select.Option value="cancelled">취소</Select.Option>
-              <Select.Option value="completed">완료</Select.Option>
-            </Select>
+            <Select
+              mode="tags"
+              placeholder="태그 선택 또는 입력"
+              options={TAG_OPTIONS.map(tag => ({ value: tag, label: tag }))}
+            />
           </Form.Item>
           <Form.Item name="notes" label="메모">
-            <Input.TextArea rows={3} />
+            <Input.TextArea rows={3} placeholder="추가 정보나 요청사항" />
+          </Form.Item>
+          <Form.Item name="status" hidden initialValue="confirmed">
+            <Input />
+          </Form.Item>
+          <Form.Item name="source" hidden initialValue="manual">
+            <Input />
           </Form.Item>
         </Form>
       </Modal>
