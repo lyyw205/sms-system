@@ -3,8 +3,8 @@ Reservations API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, field_validator
+from typing import List, Optional, Union
 from app.db.database import get_db
 from app.db.models import Reservation, ReservationStatus
 from app.factory import get_reservation_provider, get_storage_provider
@@ -30,6 +30,21 @@ class ReservationCreate(BaseModel):
     time: str  # HH:MM
     status: str = "pending"
     notes: Optional[str] = None
+    gender: Optional[str] = None
+    tags: Optional[Union[str, List[str]]] = None  # Accepts both string and array
+    party_participants: Optional[int] = 1
+    source: str = "manual"
+    room_info: Optional[str] = None  # Original reservation room type
+
+    @field_validator('tags')
+    @classmethod
+    def convert_tags_to_string(cls, v):
+        """Convert tags array to comma-separated string"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return ",".join(v)
+        return v
 
 
 class ReservationUpdate(BaseModel):
@@ -39,6 +54,21 @@ class ReservationUpdate(BaseModel):
     time: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    gender: Optional[str] = None
+    tags: Optional[Union[str, List[str]]] = None
+    party_participants: Optional[int] = None
+    room_info: Optional[str] = None  # Original reservation room type
+    sent_sms_types: Optional[str] = None  # "객후,파티안내,객실안내"
+
+    @field_validator('tags')
+    @classmethod
+    def convert_tags_to_string(cls, v):
+        """Convert tags array to comma-separated string"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return ",".join(v)
+        return v
 
 
 class RoomAssignRequest(BaseModel):
@@ -63,6 +93,7 @@ class ReservationResponse(BaseModel):
     party_participants: Optional[int] = None
     room_sms_sent: bool = False
     party_sms_sent: bool = False
+    sent_sms_types: Optional[str] = None  # "객후,파티안내,객실안내"
     created_at: datetime
     updated_at: datetime
 
@@ -89,6 +120,7 @@ def _to_response(res: Reservation) -> ReservationResponse:
         party_participants=res.party_participants,
         room_sms_sent=res.room_sms_sent or False,
         party_sms_sent=res.party_sms_sent or False,
+        sent_sms_types=res.sent_sms_types,
         created_at=res.created_at,
         updated_at=res.updated_at,
     )
@@ -132,7 +164,11 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
         time=reservation.time,
         status=status_enum,
         notes=reservation.notes,
-        source="manual",
+        source=reservation.source,
+        gender=reservation.gender,
+        tags=reservation.tags,  # Already converted by validator
+        party_participants=reservation.party_participants,
+        room_info=reservation.room_info,  # Original reservation room type
     )
     db.add(db_reservation)
     db.commit()
@@ -192,10 +228,9 @@ async def assign_room(
     room_number = request.room_number
 
     if room_number is None:
-        # Unassign room
+        # Unassign room (keep room_info to preserve original reservation)
         db_reservation.room_number = None
         db_reservation.room_password = None
-        db_reservation.room_info = None
     else:
         # Check for duplicate assignment on the same date
         conflict = (
@@ -215,7 +250,7 @@ async def assign_room(
 
         db_reservation.room_number = room_number
         db_reservation.room_password = TemplateRenderer.generate_room_password(room_number)
-        db_reservation.room_info = ROOM_INFO_MAP.get(room_number, "")
+        # Don't update room_info here - it should preserve the original reservation
 
     db.commit()
     db.refresh(db_reservation)
