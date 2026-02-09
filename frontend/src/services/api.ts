@@ -69,6 +69,14 @@ export const dashboardAPI = {
 
 // Campaigns API
 export const campaignsAPI = {
+  // New independent campaign APIs
+  getList: () => api.get('/campaigns/list'),
+  send: (data: { campaign_type: string; date?: string; variables?: any }) =>
+    api.post('/campaigns/send', data),
+  preview: (campaignType: string, date?: string) =>
+    api.get('/campaigns/preview', { params: { campaign_type: campaignType, date } }),
+
+  // Legacy APIs
   getTargets: (tag: string, smsType: string = 'room', date?: string) =>
     api.get('/campaigns/targets', { params: { tag, sms_type: smsType, date } }),
   sendByTag: (data: { tag: string; template_key: string; variables?: any; sms_type?: string; date?: string }) =>

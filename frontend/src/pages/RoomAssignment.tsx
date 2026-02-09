@@ -62,11 +62,6 @@ const CELL: React.CSSProperties = {
   lineHeight: '32px',
 };
 
-const TAG_OPTIONS = ['객후', '1초', '2차만', '객후,1초', '1초,2차만'];
-const SMS_TYPES = [
-  { value: 'room', label: '객실 문자' },
-  { value: 'party', label: '파티 문자' },
-];
 
 const RoomAssignment = () => {
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
@@ -76,12 +71,10 @@ const RoomAssignment = () => {
   const [dragOverPool, setDragOverPool] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // Campaign sending state
-  const [selectedTag, setSelectedTag] = useState<string>('객후');
-  const [smsType, setSmsType] = useState<string>('room');
+  // Independent campaign state
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<string>('');
   const [targets, setTargets] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [guideSending, setGuideSending] = useState(false);
@@ -103,18 +96,24 @@ const RoomAssignment = () => {
     setTargets([]);
   }, [selectedDate, fetchReservations]);
 
-  // --- Campaign functions ---
+  // --- Load campaign list ---
   useEffect(() => {
-    campaignsAPI.getTemplates().then((res) => {
-      setTemplates(res.data);
-      if (res.data.length > 0) setSelectedTemplate(res.data[0].key);
-    }).catch(() => {});
+    campaignsAPI.getList().then((res) => {
+      setCampaigns(res.data);
+      if (res.data.length > 0) setSelectedCampaign(res.data[0].id);
+    }).catch(() => {
+      message.error('캠페인 목록 로드 실패');
+    });
   }, []);
 
   const loadTargets = async () => {
+    if (!selectedCampaign) {
+      message.warning('캠페인을 선택하세요');
+      return;
+    }
     setTargetsLoading(true);
     try {
-      const response = await campaignsAPI.getTargets(selectedTag, smsType, selectedDate.format('YYYY-MM-DD'));
+      const response = await campaignsAPI.preview(selectedCampaign, selectedDate.format('YYYY-MM-DD'));
       setTargets(response.data.targets || []);
     } catch {
       message.error('대상자 조회 실패');
@@ -124,20 +123,19 @@ const RoomAssignment = () => {
   };
 
   const handleSendCampaign = async () => {
-    if (!selectedTag || !selectedTemplate) {
-      message.warning('태그와 템플릿을 선택하세요');
+    if (!selectedCampaign) {
+      message.warning('캠페인을 선택하세요');
       return;
     }
     setSending(true);
     try {
-      const response = await campaignsAPI.sendByTag({
-        tag: selectedTag,
-        template_key: selectedTemplate,
-        sms_type: smsType,
+      const response = await campaignsAPI.send({
+        campaign_type: selectedCampaign,
         date: selectedDate.format('YYYY-MM-DD'),
       });
       message.success(`발송 완료: ${response.data.sent_count}건 성공`);
-      loadTargets();
+      await loadTargets();
+      await fetchReservations(selectedDate);
     } catch {
       message.error('발송 실패');
     } finally {
@@ -379,25 +377,21 @@ const RoomAssignment = () => {
         }}>
           <Space wrap>
             <Select
-              style={{ width: 130 }}
-              value={selectedTag}
-              onChange={setSelectedTag}
-              options={TAG_OPTIONS.map(t => ({ value: t, label: t }))}
-              placeholder="태그"
-            />
-            <Select
-              style={{ width: 130 }}
-              value={smsType}
-              onChange={setSmsType}
-              options={SMS_TYPES}
-            />
-            <Select
-              style={{ width: 170 }}
-              value={selectedTemplate}
-              onChange={setSelectedTemplate}
-              options={templates.map((t: any) => ({ value: t.key, label: t.name }))}
-              placeholder="템플릿"
-            />
+              style={{ width: 200 }}
+              value={selectedCampaign}
+              onChange={setSelectedCampaign}
+              placeholder="캠페인 선택"
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            >
+              {campaigns.map((campaign: any) => (
+                <Select.Option key={campaign.id} value={campaign.id} label={campaign.name}>
+                  {campaign.name}
+                </Select.Option>
+              ))}
+            </Select>
             <Button onClick={loadTargets} loading={targetsLoading} icon={<ReloadOutlined />}>
               대상조회
             </Button>

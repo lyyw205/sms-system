@@ -17,6 +17,86 @@ from ..analytics.gender_analyzer import GenderAnalyzer
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 
+# Campaign definitions - each campaign is independent
+CAMPAIGN_DEFINITIONS = {
+    # Tag-based campaigns
+    "tag_객후": {
+        "name": "객후",
+        "description": "객후 태그가 있는 사람에게 객후 메시지 발송",
+        "target_type": "tag",
+        "target_value": "객후",
+        "sms_type": "room",
+        "template_key": "tag_객후"
+    },
+    "tag_1초": {
+        "name": "1초",
+        "description": "1초 태그가 있는 사람에게 1초 메시지 발송",
+        "target_type": "tag",
+        "target_value": "1초",
+        "sms_type": "party",
+        "template_key": "tag_1초"
+    },
+    "tag_2차만": {
+        "name": "2차만",
+        "description": "2차만 태그가 있는 사람에게 2차만 메시지 발송",
+        "target_type": "tag",
+        "target_value": "2차만",
+        "sms_type": "party",
+        "template_key": "tag_2차만"
+    },
+    "tag_객후1초": {
+        "name": "객후,1초",
+        "description": "객후,1초 태그가 있는 사람에게 메시지 발송",
+        "target_type": "tag",
+        "target_value": "객후,1초",
+        "sms_type": "room",
+        "template_key": "tag_객후1초"
+    },
+    "tag_1초2차만": {
+        "name": "1초,2차만",
+        "description": "1초,2차만 태그가 있는 사람에게 메시지 발송",
+        "target_type": "tag",
+        "target_value": "1초,2차만",
+        "sms_type": "party",
+        "template_key": "tag_1초2차만"
+    },
+    # SMS type campaigns
+    "sms_room": {
+        "name": "객실 문자",
+        "description": "객실이 배정된 사람에게 객실 안내 발송",
+        "target_type": "sms_type",
+        "target_value": "room",
+        "sms_type": "room",
+        "template_key": "room_guide"
+    },
+    "sms_party": {
+        "name": "파티 문자",
+        "description": "파티 참여자에게 파티 안내 발송",
+        "target_type": "sms_type",
+        "target_value": "party",
+        "sms_type": "party",
+        "template_key": "party_guide"
+    },
+    # Template-based campaigns
+    "template_welcome": {
+        "name": "환영 메시지",
+        "description": "신규 예약자에게 환영 메시지 발송",
+        "target_type": "all_reservations",
+        "target_value": None,
+        "sms_type": "room",
+        "template_key": "welcome"
+    },
+    "template_confirm": {
+        "name": "확인 메시지",
+        "description": "확정된 예약자에게 확인 메시지 발송",
+        "target_type": "confirmed",
+        "target_value": None,
+        "sms_type": "room",
+        "template_key": "confirmation"
+    },
+}
+
+
 # Request/Response models
 class CampaignRequest(BaseModel):
     tag: str
@@ -44,6 +124,135 @@ class GenderStatsResponse(BaseModel):
     female_count: int
     total_participants: int
     balance: Dict[str, Any]
+
+
+@router.get("/list")
+async def get_campaign_list():
+    """Get list of available independent campaigns"""
+    return [
+        {
+            "id": campaign_id,
+            "name": campaign["name"],
+            "description": campaign["description"],
+            "target_type": campaign["target_type"],
+        }
+        for campaign_id, campaign in CAMPAIGN_DEFINITIONS.items()
+    ]
+
+
+class IndependentCampaignRequest(BaseModel):
+    campaign_type: str
+    date: Optional[str] = None  # YYYY-MM-DD
+    variables: Optional[Dict[str, Any]] = None
+
+
+@router.post("/send")
+async def send_campaign(
+    request: IndependentCampaignRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Send independent campaign by campaign_type
+
+    Args:
+        request.campaign_type: One of the predefined campaign types (e.g., "tag_객후", "sms_room")
+        request.date: Optional date filter
+    """
+    campaign_def = CAMPAIGN_DEFINITIONS.get(request.campaign_type)
+
+    if not campaign_def:
+        raise HTTPException(status_code=400, detail=f"Unknown campaign type: {request.campaign_type}")
+
+    sms_provider = get_sms_provider()
+    manager = TagCampaignManager(db, sms_provider)
+
+    try:
+        # Use existing send_campaign but with campaign definition
+        if campaign_def["target_type"] == "tag":
+            campaign = await manager.send_campaign(
+                tag=campaign_def["target_value"],
+                template_key=campaign_def["template_key"],
+                variables=request.variables,
+                sms_type=campaign_def["sms_type"],
+                date=request.date,
+            )
+        else:
+            # For non-tag campaigns, pass empty tag to get all matching sms_type
+            campaign = await manager.send_campaign(
+                tag="",  # Empty tag = all
+                template_key=campaign_def["template_key"],
+                variables=request.variables,
+                sms_type=campaign_def["sms_type"],
+                date=request.date,
+            )
+
+        return {
+            "campaign_id": campaign.id,
+            "campaign_type": request.campaign_type,
+            "campaign_name": campaign_def["name"],
+            "target_count": campaign.target_count,
+            "sent_count": campaign.sent_count,
+            "failed_count": campaign.failed_count,
+            "status": "completed" if campaign.completed_at else "running"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/preview")
+async def preview_campaign_targets(
+    campaign_type: str,
+    date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Preview targets for a campaign before sending
+
+    Args:
+        campaign_type: One of the predefined campaign types
+        date: Optional date filter in YYYY-MM-DD format
+    """
+    campaign_def = CAMPAIGN_DEFINITIONS.get(campaign_type)
+
+    if not campaign_def:
+        raise HTTPException(status_code=400, detail=f"Unknown campaign type: {campaign_type}")
+
+    sms_provider = get_sms_provider()
+    manager = TagCampaignManager(db, sms_provider)
+
+    # Get targets based on campaign definition
+    if campaign_def["target_type"] == "tag":
+        targets = manager.get_targets_by_tag(
+            tag=campaign_def["target_value"],
+            exclude_sent=True,
+            sms_type=campaign_def["sms_type"],
+            date=date
+        )
+    else:
+        targets = manager.get_targets_by_tag(
+            tag="",  # Empty tag = all
+            exclude_sent=True,
+            sms_type=campaign_def["sms_type"],
+            date=date
+        )
+
+    return {
+        "campaign_type": campaign_type,
+        "campaign_name": campaign_def["name"],
+        "total_count": len(targets),
+        "targets": [
+            {
+                "id": t.id,
+                "name": t.customer_name,
+                "phone": t.phone,
+                "date": t.date,
+                "room_number": t.room_number,
+                "tags": t.tags,
+            }
+            for t in targets
+        ]
+    }
 
 
 @router.get("/targets")
