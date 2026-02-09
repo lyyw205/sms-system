@@ -5,9 +5,8 @@ import {
   CalendarOutlined,
   MessageOutlined,
   ThunderboltOutlined,
-  HistoryOutlined,
-  ClockCircleOutlined,
   HomeOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -49,14 +48,9 @@ const Layout = ({ children }: LayoutProps) => {
       label: '자동 응답',
     },
     {
-      key: '/campaigns',
-      icon: <HistoryOutlined />,
-      label: '발송 이력',
-    },
-    {
-      key: '/scheduler',
-      icon: <ClockCircleOutlined />,
-      label: '스케줄러',
+      key: '/templates',
+      icon: <FileTextOutlined />,
+      label: '메시지 관리',
     },
   ];
 

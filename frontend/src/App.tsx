@@ -6,10 +6,9 @@ import Dashboard from './pages/Dashboard';
 import Reservations from './pages/Reservations';
 import Messages from './pages/Messages';
 import AutoResponse from './pages/AutoResponse';
-import Campaigns from './pages/Campaigns';
-import Scheduler from './pages/Scheduler';
 import RoomAssignment from './pages/RoomAssignment';
 import RoomManagement from './pages/RoomManagement';
+import Templates from './pages/Templates';
 
 function App() {
   return (
@@ -23,8 +22,7 @@ function App() {
             <Route path="/rooms/manage" element={<RoomManagement />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/auto-response" element={<AutoResponse />} />
-            <Route path="/campaigns" element={<Campaigns />} />
-            <Route path="/scheduler" element={<Scheduler />} />
+            <Route path="/templates" element={<Templates />} />
           </Routes>
         </Layout>
       </Router>
