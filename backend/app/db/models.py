@@ -1,7 +1,8 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, Enum, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 import enum
@@ -192,3 +193,43 @@ class Room(Base):
     sort_order = Column(Integer, default=0)  # Display order
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TemplateSchedule(Base):
+    """Template-based scheduled messaging"""
+
+    __tablename__ = "template_schedules"
+
+    # Basic information
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey('message_templates.id'), nullable=False)
+    schedule_name = Column(String(200), nullable=False)
+
+    # Schedule configuration
+    schedule_type = Column(String(20), nullable=False)  # 'daily', 'weekly', 'hourly', 'interval'
+    hour = Column(Integer, nullable=True)  # 0-23
+    minute = Column(Integer, nullable=True)  # 0-59
+    day_of_week = Column(String(20), nullable=True)  # 'mon,tue,wed,...'
+    interval_minutes = Column(Integer, nullable=True)  # For interval type
+    timezone = Column(String(50), default="Asia/Seoul")
+
+    # Target filters
+    target_type = Column(String(50), nullable=False)  # 'all', 'tag', 'room_assigned', 'party_only'
+    target_value = Column(String(200), nullable=True)  # Tag name if target_type='tag'
+    date_filter = Column(String(20), nullable=True)  # 'today', 'tomorrow', 'YYYY-MM-DD', null
+
+    # SMS tracking
+    sms_type = Column(String(20), default='room')  # 'room' or 'party'
+    exclude_sent = Column(Boolean, default=True)  # Prevent duplicate sending
+
+    # Activation
+    active = Column(Boolean, default=True)
+
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_run = Column(DateTime, nullable=True)
+    next_run = Column(DateTime, nullable=True)
+
+    # Relationship
+    template = relationship("MessageTemplate", backref="schedules")

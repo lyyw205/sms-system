@@ -67,37 +67,23 @@ async def sync_naver_reservations_job():
         db.close()
 
 
-async def send_party_guide_job():
+async def load_template_schedules():
     """
-    Send party guide to unassigned guests
-    Runs hourly from 12:10 to 21:59
-
-    Ported from: stable-clasp-main/03_trigger.js:18-23 (processTodayAuto - second part)
+    Load all active template schedules into APScheduler
+    Called on startup
     """
-    logger.info("Running party guide job")
+    logger.info("Loading template schedules")
 
     db = SessionLocal()
     try:
-        sms_provider = get_sms_provider()
-        storage_provider = get_storage_provider()
+        from .schedule_manager import ScheduleManager
+        schedule_manager = ScheduleManager(scheduler)
+        schedule_manager.sync_all_schedules(db)
 
-        notification_service = NotificationService(db, sms_provider, storage_provider)
-
-        # Send party guide for unassigned guests (rows 100-117)
-        # These are guests without room assignments
-        today = datetime.now()
-
-        campaign = await notification_service.send_party_guide(
-            date=today,
-            start_row=100,  # Unassigned start
-            end_row=117     # Unassigned end
-        )
-
-        logger.info(f"Party guide job completed: {campaign.sent_count} sent")
+        logger.info("Template schedules loaded successfully")
 
     except Exception as e:
-        logger.error(f"Error in party guide job: {e}")
-        db.rollback()
+        logger.error(f"Error loading template schedules: {e}")
     finally:
         db.close()
 
@@ -138,8 +124,8 @@ def setup_scheduler():
 
     Schedule based on stable-clasp-main/03_trigger.js:
     - Naver sync: Every 10 min, 10:10-21:59
-    - Party guide: Every hour, 12:10-21:59
     - Gender stats: Every hour, 10:00-22:00
+    - Template schedules: Loaded dynamically from DB
     """
     # Naver reservations sync - every 10 minutes from 10:10 to 21:59
     # Ported from line 6-16
@@ -155,20 +141,6 @@ def setup_scheduler():
         replace_existing=True
     )
 
-    # Party guide - hourly from 12:00 to 21:00
-    # Ported from line 18-23
-    scheduler.add_job(
-        send_party_guide_job,
-        trigger=CronTrigger(
-            hour='12-21',
-            minute='10',
-            timezone='Asia/Seoul'
-        ),
-        id='send_party_guide',
-        name='Send Party Guide',
-        replace_existing=True
-    )
-
     # Gender stats extraction - hourly
     scheduler.add_job(
         extract_gender_stats_job,
@@ -179,6 +151,16 @@ def setup_scheduler():
         ),
         id='extract_gender_stats',
         name='Extract Gender Stats',
+        replace_existing=True
+    )
+
+    # Load template schedules on startup
+    scheduler.add_job(
+        load_template_schedules,
+        trigger='date',
+        run_date=datetime.now(),
+        id='load_template_schedules',
+        name='Load Template Schedules',
         replace_existing=True
     )
 

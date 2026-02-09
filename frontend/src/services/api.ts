@@ -117,4 +117,51 @@ export const genderStatsAPI = {
   refresh: (date?: string) => api.post('/campaigns/gender-stats/refresh', null, { params: { date } }),
 };
 
+// Templates API
+export const templatesAPI = {
+  getAll: (params?: { category?: string; active?: boolean }) =>
+    api.get('/api/templates', { params }),
+  getById: (id: number) => api.get(`/api/templates/${id}`),
+  create: (data: {
+    key: string;
+    name: string;
+    content: string;
+    variables?: string;
+    category?: string;
+    active?: boolean;
+  }) => api.post('/api/templates', data),
+  update: (id: number, data: any) => api.put(`/api/templates/${id}`, data),
+  delete: (id: number) => api.delete(`/api/templates/${id}`),
+  preview: (id: number, variables: any) =>
+    api.post(`/api/templates/${id}/preview`, { variables }),
+};
+
+// Template Schedules API
+export const templateSchedulesAPI = {
+  getAll: (params?: { active?: boolean; template_id?: number }) =>
+    api.get('/api/template-schedules', { params }),
+  getById: (id: number) => api.get(`/api/template-schedules/${id}`),
+  create: (data: {
+    template_id: number;
+    schedule_name: string;
+    schedule_type: string;
+    hour?: number;
+    minute?: number;
+    day_of_week?: string;
+    interval_minutes?: number;
+    timezone?: string;
+    target_type: string;
+    target_value?: string;
+    date_filter?: string;
+    sms_type?: string;
+    exclude_sent?: boolean;
+    active?: boolean;
+  }) => api.post('/api/template-schedules', data),
+  update: (id: number, data: any) => api.put(`/api/template-schedules/${id}`, data),
+  delete: (id: number) => api.delete(`/api/template-schedules/${id}`),
+  run: (id: number) => api.post(`/api/template-schedules/${id}/run`),
+  preview: (id: number) => api.get(`/api/template-schedules/${id}/preview`),
+  sync: () => api.post('/api/template-schedules/sync'),
+};
+
 export default api;

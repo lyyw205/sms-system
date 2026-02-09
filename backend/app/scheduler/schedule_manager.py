@@ -1,0 +1,229 @@
+"""
+Schedule manager for APScheduler and DB synchronization
+"""
+import logging
+from datetime import datetime
+from typing import Optional
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.orm import Session
+
+from app.db.models import TemplateSchedule
+from app.scheduler.template_scheduler import TemplateScheduleExecutor
+
+logger = logging.getLogger(__name__)
+
+
+class ScheduleManager:
+    """Manage template schedules with APScheduler"""
+
+    def __init__(self, scheduler: AsyncIOScheduler):
+        self.scheduler = scheduler
+
+    def sync_all_schedules(self, db: Session):
+        """
+        Sync all active template schedules from DB to APScheduler
+
+        Args:
+            db: Database session
+        """
+        logger.info("Syncing all template schedules to APScheduler")
+
+        # Get all active schedules
+        schedules = db.query(TemplateSchedule).filter(
+            TemplateSchedule.active == True
+        ).all()
+
+        # Remove existing template schedule jobs
+        existing_jobs = self.scheduler.get_jobs()
+        for job in existing_jobs:
+            if job.id.startswith('template_schedule_'):
+                self.scheduler.remove_job(job.id)
+                logger.info(f"Removed existing job: {job.id}")
+
+        # Add all active schedules
+        for schedule in schedules:
+            try:
+                self.add_schedule_job(schedule, db)
+                logger.info(f"Added schedule #{schedule.id}: {schedule.schedule_name}")
+            except Exception as e:
+                logger.error(f"Failed to add schedule #{schedule.id}: {str(e)}")
+
+        logger.info(f"Sync completed: {len(schedules)} schedules loaded")
+
+    def add_schedule_job(self, schedule: TemplateSchedule, db: Session):
+        """
+        Add a schedule to APScheduler
+
+        Args:
+            schedule: TemplateSchedule instance
+            db: Database session for updating next_run
+        """
+        job_id = f"template_schedule_{schedule.id}"
+
+        # Create trigger based on schedule_type
+        trigger = self._create_trigger(schedule)
+
+        if not trigger:
+            logger.error(f"Failed to create trigger for schedule #{schedule.id}")
+            return
+
+        # Create executor function
+        async def execute_job():
+            from app.db.database import SessionLocal
+            db_session = SessionLocal()
+            try:
+                executor = TemplateScheduleExecutor(db_session)
+                await executor.execute_schedule(schedule.id)
+            finally:
+                db_session.close()
+
+        # Add job to scheduler
+        job = self.scheduler.add_job(
+            execute_job,
+            trigger=trigger,
+            id=job_id,
+            name=schedule.schedule_name,
+            replace_existing=True
+        )
+
+        # Update next_run in database
+        if job.next_run_time:
+            schedule.next_run = job.next_run_time
+            db.commit()
+
+        logger.info(f"Added job {job_id}, next run: {job.next_run_time}")
+
+    def remove_schedule_job(self, schedule_id: int):
+        """
+        Remove a schedule from APScheduler
+
+        Args:
+            schedule_id: Template schedule ID
+        """
+        job_id = f"template_schedule_{schedule_id}"
+
+        try:
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed job {job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to remove job {job_id}: {str(e)}")
+
+    def update_schedule_job(self, schedule: TemplateSchedule, db: Session):
+        """
+        Update an existing schedule job
+
+        Args:
+            schedule: Updated TemplateSchedule instance
+            db: Database session
+        """
+        # Remove old job and add new one
+        self.remove_schedule_job(schedule.id)
+
+        if schedule.active:
+            self.add_schedule_job(schedule, db)
+        else:
+            logger.info(f"Schedule #{schedule.id} is inactive, not adding to scheduler")
+
+    def _create_trigger(self, schedule: TemplateSchedule):
+        """
+        Create APScheduler trigger based on schedule configuration
+
+        Args:
+            schedule: TemplateSchedule instance
+
+        Returns:
+            CronTrigger or IntervalTrigger instance
+        """
+        timezone = schedule.timezone or "Asia/Seoul"
+
+        if schedule.schedule_type == 'daily':
+            # Daily at specific time
+            return CronTrigger(
+                hour=schedule.hour,
+                minute=schedule.minute,
+                timezone=timezone
+            )
+
+        elif schedule.schedule_type == 'weekly':
+            # Weekly on specific days at specific time
+            if not schedule.day_of_week:
+                logger.error(f"Weekly schedule #{schedule.id} missing day_of_week")
+                return None
+
+            # Convert 'mon,tue,wed' to 'mon-wed' or '0-2' format
+            days = schedule.day_of_week.lower()
+
+            return CronTrigger(
+                day_of_week=days,
+                hour=schedule.hour,
+                minute=schedule.minute,
+                timezone=timezone
+            )
+
+        elif schedule.schedule_type == 'hourly':
+            # Every hour at specific minute
+            return CronTrigger(
+                minute=schedule.minute,
+                timezone=timezone
+            )
+
+        elif schedule.schedule_type == 'interval':
+            # Every N minutes
+            if not schedule.interval_minutes:
+                logger.error(f"Interval schedule #{schedule.id} missing interval_minutes")
+                return None
+
+            return IntervalTrigger(
+                minutes=schedule.interval_minutes,
+                timezone=timezone
+            )
+
+        else:
+            logger.error(f"Unknown schedule_type: {schedule.schedule_type}")
+            return None
+
+    def get_schedule_info(self, schedule_id: int) -> Optional[dict]:
+        """
+        Get APScheduler job info for a schedule
+
+        Args:
+            schedule_id: Template schedule ID
+
+        Returns:
+            Job info dict or None
+        """
+        job_id = f"template_schedule_{schedule_id}"
+
+        try:
+            job = self.scheduler.get_job(job_id)
+            if job:
+                return {
+                    "id": job.id,
+                    "name": job.name,
+                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger)
+                }
+        except Exception as e:
+            logger.error(f"Error getting job info for {job_id}: {str(e)}")
+
+        return None
+
+    def get_all_jobs(self) -> list:
+        """
+        Get all scheduled jobs info
+
+        Returns:
+            List of job info dicts
+        """
+        jobs = self.scheduler.get_jobs()
+        return [
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                "trigger": str(job.trigger)
+            }
+            for job in jobs
+        ]
