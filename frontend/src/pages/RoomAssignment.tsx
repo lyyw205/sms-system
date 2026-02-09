@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, DragEvent, useMemo } from 'react';
+import { useState, useEffect, useCallback, DragEvent, useMemo, useRef } from 'react';
 import { DatePicker, Row, Col, Statistic, Tag, message, Spin, Space, Select, Button, Modal, Form, Input, InputNumber } from 'antd';
-import { HomeOutlined, CheckCircleOutlined, SendOutlined, ReloadOutlined, CloseOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, SettingOutlined, SaveOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { HomeOutlined, CheckCircleOutlined, SendOutlined, ReloadOutlined, CloseOutlined, UserAddOutlined, EditOutlined, DeleteOutlined, SettingOutlined, SaveOutlined, CloseCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { reservationsAPI, campaignsAPI, roomsAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
@@ -28,7 +28,6 @@ const TAG_OPTIONS = ['1초', '2차만', '객후', '파티만', '객후,1초', '1
 const ROOM_TYPE_OPTIONS = ['더블룸', '트윈룸', '패밀리룸', '디럭스룸', '스탠다드룸'];
 
 // Grid column template for guest area only (room label is separate)
-const GUEST_COLS = '56px 120px 40px 40px 72px 1fr 60px 80px'; // Added separate SMS and Action columns
 const ROOM_W = 140; // fixed width for room label area
 
 function getPartyLabel(tags: string | null): string {
@@ -90,6 +89,162 @@ const CELL: React.CSSProperties = {
   lineHeight: '32px',
 };
 
+const SMS_CELL: React.CSSProperties = {
+  ...CELL,
+  overflow: 'hidden',
+  whiteSpace: 'normal',
+  maxHeight: 32,
+  position: 'relative',
+};
+
+// SMS Cell Component with arrow navigation
+interface SmsCellProps {
+  smsStatus: { pending: string[]; sent: string[] };
+  isEditing: boolean;
+  onToggle?: (smsType: string) => void;
+}
+
+const SmsCell: React.FC<SmsCellProps> = ({ smsStatus, isEditing, onToggle }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showArrows, setShowArrows] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setShowArrows(scrollWidth > clientWidth);
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const handleResize = () => checkScroll();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [checkScroll, smsStatus]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const scrollAmount = 100;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+      setTimeout(checkScroll, 300);
+    }
+  };
+
+  return (
+    <div style={{ ...SMS_CELL, display: 'flex', alignItems: 'center' }}>
+      {showArrows && canScrollLeft && (
+        <Button
+          type="text"
+          size="small"
+          icon={<LeftOutlined />}
+          onClick={() => scroll('left')}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 10,
+            padding: '0 2px',
+            height: 24,
+            minWidth: 20,
+            background: 'linear-gradient(to right, white 50%, transparent)',
+            border: 'none',
+            boxShadow: '2px 0 4px rgba(0,0,0,0.1)',
+          }}
+        />
+      )}
+      <div
+        ref={scrollRef}
+        onScroll={checkScroll}
+        style={{
+          flex: 1,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          paddingLeft: showArrows && canScrollLeft ? 24 : 0,
+          paddingRight: showArrows && canScrollRight ? 24 : 0,
+        }}
+        className="hide-scrollbar"
+      >
+        <Space size={4} wrap={false}>
+          {smsStatus.pending.map(type => (
+            <Tag
+              key={type}
+              color="default"
+              style={{
+                margin: 0,
+                fontSize: 10,
+                flexShrink: 0,
+                cursor: isEditing ? 'pointer' : 'default',
+              }}
+              onClick={(e) => {
+                if (isEditing && onToggle) {
+                  e.stopPropagation();
+                  onToggle(type);
+                }
+              }}
+            >
+              {type}
+            </Tag>
+          ))}
+          {smsStatus.sent.map(type => (
+            <Tag
+              key={type}
+              color="green"
+              style={{
+                margin: 0,
+                fontSize: 10,
+                flexShrink: 0,
+                cursor: isEditing ? 'pointer' : 'default',
+              }}
+              onClick={(e) => {
+                if (isEditing && onToggle) {
+                  e.stopPropagation();
+                  onToggle(type);
+                }
+              }}
+            >
+              {type}
+            </Tag>
+          ))}
+          {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && '-'}
+        </Space>
+      </div>
+      {showArrows && canScrollRight && (
+        <Button
+          type="text"
+          size="small"
+          icon={<RightOutlined />}
+          onClick={() => scroll('right')}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 10,
+            padding: '0 2px',
+            height: 24,
+            minWidth: 20,
+            background: 'linear-gradient(to left, white 50%, transparent)',
+            border: 'none',
+            boxShadow: '-2px 0 4px rgba(0,0,0,0.1)',
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
 
 const RoomAssignment = () => {
   const navigate = useNavigate();
@@ -110,6 +265,17 @@ const RoomAssignment = () => {
   // Inline editing state
   const [inlineEditingId, setInlineEditingId] = useState<number | null>(null);
   const [inlineEditValues, setInlineEditValues] = useState<any>({});
+
+  // SMS column resizing state
+  const [smsColumnWidth, setSmsColumnWidth] = useState(200);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStartX, setResizeStartX] = useState(0);
+  const [resizeStartWidth, setResizeStartWidth] = useState(200);
+
+  // Dynamic grid column template
+  const GUEST_COLS = useMemo(() => {
+    return `56px 120px 40px 40px 72px 1fr ${smsColumnWidth}px 50px`;
+  }, [smsColumnWidth]);
 
   // Build room info map from loaded rooms
   const roomInfoMap = useMemo(() => {
@@ -164,6 +330,35 @@ const RoomAssignment = () => {
     fetchReservations(selectedDate);
     setTargets([]);
   }, [selectedDate, fetchReservations]);
+
+  // Handle column resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizing) {
+        const delta = e.clientX - resizeStartX;
+        const newWidth = Math.max(60, Math.min(400, resizeStartWidth + delta));
+        setSmsColumnWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, resizeStartX, resizeStartWidth]);
 
   // --- Load campaign list ---
   useEffect(() => {
@@ -465,24 +660,26 @@ const RoomAssignment = () => {
     setInlineEditValues({});
   };
 
-  // SMS 발송 완료 처리
-  const handleSmsComplete = async (res: Reservation, smsType: string) => {
+  // SMS 발송 상태 토글 (인라인 편집 모드에서만 호출됨)
+  const handleSmsToggle = async (res: Reservation, smsType: string) => {
     try {
       const currentTypes = res.sent_sms_types ? res.sent_sms_types.split(',').map(s => s.trim()) : [];
 
-      // 이미 발송 완료된 경우 무시
+      let newTypes: string;
       if (currentTypes.includes(smsType)) {
-        return;
+        // 이미 발송 완료된 경우 → 제거 (발송 미완료로 전환)
+        newTypes = currentTypes.filter(t => t !== smsType).join(',');
+        message.success(`${smsType} 발송 미완료로 변경됨`);
+      } else {
+        // 발송 미완료인 경우 → 추가 (발송 완료로 전환)
+        newTypes = [...currentTypes, smsType].join(',');
+        message.success(`${smsType} 발송 완료 처리됨`);
       }
 
-      // 새로운 타입 추가
-      const newTypes = [...currentTypes, smsType].join(',');
-
       await reservationsAPI.update(res.id, { sent_sms_types: newTypes });
-      message.success(`${smsType} 발송 완료 처리됨`);
       fetchReservations(selectedDate);
     } catch (error) {
-      message.error('발송 완료 처리 실패');
+      message.error('발송 상태 변경 실패');
     }
   };
 
@@ -608,28 +805,12 @@ const RoomAssignment = () => {
                     onChange={(e) => setInlineEditValues({ ...inlineEditValues, notes: e.target.value })}
                   />
                 </div>
-                <div style={CELL}>
-                  <Space size={4} wrap>
-                    {smsStatus.pending.map(type => (
-                      <Tag
-                        key={type}
-                        color="default"
-                        style={{ margin: 0, fontSize: 10, cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSmsComplete(res, type);
-                        }}
-                      >
-                        {type}
-                      </Tag>
-                    ))}
-                    {smsStatus.sent.map(type => (
-                      <Tag key={type} color="green" style={{ margin: 0, fontSize: 10 }}>{type}</Tag>
-                    ))}
-                    {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && '-'}
-                  </Space>
-                </div>
-                <div style={CELL}>
+                <SmsCell
+                  smsStatus={smsStatus}
+                  isEditing={isEditing}
+                  onToggle={(type) => handleSmsToggle(res, type)}
+                />
+                <div style={{ ...CELL, textAlign: 'center' }}>
                   <Space size={4}>
                     <Button
                       type="primary"
@@ -654,28 +835,11 @@ const RoomAssignment = () => {
                 <div style={{ ...CELL, textAlign: 'center' }}>{party}</div>
                 <div style={CELL}>{res.room_info || '-'}</div>
                 <div style={{ ...CELL, color: '#8c8c8c' }}>{res.notes || ''}</div>
-                <div style={CELL}>
-                  <Space size={4} wrap>
-                    {smsStatus.pending.map(type => (
-                      <Tag
-                        key={type}
-                        color="default"
-                        style={{ margin: 0, fontSize: 10, cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSmsComplete(res, type);
-                        }}
-                      >
-                        {type}
-                      </Tag>
-                    ))}
-                    {smsStatus.sent.map(type => (
-                      <Tag key={type} color="green" style={{ margin: 0, fontSize: 10 }}>{type}</Tag>
-                    ))}
-                    {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && '-'}
-                  </Space>
-                </div>
-                <div style={CELL}>
+                <SmsCell
+                  smsStatus={smsStatus}
+                  isEditing={false}
+                />
+                <div style={{ ...CELL, textAlign: 'center' }}>
                   <Button
                     type="text"
                     size="small"
@@ -837,28 +1001,12 @@ const RoomAssignment = () => {
                   onChange={(e) => setInlineEditValues({ ...inlineEditValues, notes: e.target.value })}
                 />
               </div>
-              <div style={CELL}>
-                <Space size={4} wrap>
-                  {smsStatus.pending.map(type => (
-                    <Tag
-                      key={type}
-                      color="default"
-                      style={{ margin: 0, fontSize: 10, cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSmsComplete(res, type);
-                      }}
-                    >
-                      {type}
-                    </Tag>
-                  ))}
-                  {smsStatus.sent.map(type => (
-                    <Tag key={type} color="green" style={{ margin: 0, fontSize: 10 }}>{type}</Tag>
-                  ))}
-                  {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && '-'}
-                </Space>
-              </div>
-              <div style={CELL}>
+              <SmsCell
+                smsStatus={smsStatus}
+                isEditing={isEditing}
+                onToggle={(type) => handleSmsToggle(res, type)}
+              />
+              <div style={{ ...CELL, textAlign: 'center' }}>
                 <Space size={4}>
                   <Button
                     type="primary"
@@ -883,28 +1031,11 @@ const RoomAssignment = () => {
               <div style={{ ...CELL, textAlign: 'center' }}>{party}</div>
               <div style={CELL}>파티만</div>
               <div style={{ ...CELL, color: '#8c8c8c' }}>{res.notes || ''}</div>
-              <div style={CELL}>
-                <Space size={4} wrap>
-                  {smsStatus.pending.map(type => (
-                    <Tag
-                      key={type}
-                      color="default"
-                      style={{ margin: 0, fontSize: 10, cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSmsComplete(res, type);
-                      }}
-                    >
-                      {type}
-                    </Tag>
-                  ))}
-                  {smsStatus.sent.map(type => (
-                    <Tag key={type} color="green" style={{ margin: 0, fontSize: 10 }}>{type}</Tag>
-                  ))}
-                  {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && '-'}
-                </Space>
-              </div>
-              <div style={CELL}>
+              <SmsCell
+                smsStatus={smsStatus}
+                isEditing={false}
+              />
+              <div style={{ ...CELL, textAlign: 'center' }}>
                 <Space size={4}>
                   <Button
                     type="text"
@@ -1094,7 +1225,37 @@ const RoomAssignment = () => {
                     <div style={{ textAlign: 'center' }}>파티</div>
                     <div>예약객실</div>
                     <div>메모</div>
-                    <div>문자</div>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      문자
+                      <div
+                        id="sms-column-resizer"
+                        onMouseDown={(e) => {
+                          setIsResizing(true);
+                          setResizeStartX(e.clientX);
+                          setResizeStartWidth(smsColumnWidth);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: -4,
+                          top: -6,
+                          bottom: -6,
+                          width: 8,
+                          cursor: 'col-resize',
+                          background: 'transparent',
+                          zIndex: 10,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isResizing) {
+                            e.currentTarget.style.background = '#1890ff';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isResizing) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
+                      />
+                    </div>
                     <div>작업</div>
                   </div>
                 </div>
@@ -1140,7 +1301,36 @@ const RoomAssignment = () => {
                     <div style={{ textAlign: 'center' }}>파티</div>
                     <div>구분</div>
                     <div>메모</div>
-                    <div>문자</div>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      문자
+                      <div
+                        onMouseDown={(e) => {
+                          setIsResizing(true);
+                          setResizeStartX(e.clientX);
+                          setResizeStartWidth(smsColumnWidth);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: -4,
+                          top: -6,
+                          bottom: -6,
+                          width: 8,
+                          cursor: 'col-resize',
+                          background: 'transparent',
+                          zIndex: 10,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isResizing) {
+                            e.currentTarget.style.background = '#722ed1';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isResizing) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
+                      />
+                    </div>
                     <div>작업</div>
                   </div>
                 </div>
@@ -1297,6 +1487,17 @@ const RoomAssignment = () => {
             </Form.Item>
           </Form>
         </Modal>
+
+        {/* Hide scrollbar CSS */}
+        <style>{`
+          .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+          }
+          .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
+        `}</style>
       </div>
     </Spin>
   );
