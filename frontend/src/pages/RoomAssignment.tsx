@@ -531,16 +531,21 @@ const RoomAssignment = () => {
     if (!resId) return;
 
     const guest = reservations.find(r => r.id === resId);
-    if (!guest?.room_number) return; // Already unassigned
+    if (!guest) return;
+    if (guest.tags?.includes('파티만')) return; // Already party-only
 
+    const hasRoom = !!guest.room_number;
     Modal.confirm({
       title: '파티만으로 전환',
-      content: '객실 배정을 해제하고 파티만 게스트로 변경하시겠습니까?',
+      content: hasRoom
+        ? '객실 배정을 해제하고 파티만 게스트로 변경하시겠습니까?'
+        : '파티만 게스트로 변경하시겠습니까?',
       onOk: async () => {
         setProcessing(true);
         try {
-          // Unassign room
-          await reservationsAPI.assignRoom(resId, { room_number: null });
+          if (hasRoom) {
+            await reservationsAPI.assignRoom(resId, { room_number: null });
+          }
 
           // Add "파티만" tag if not present
           if (!guest.tags?.includes('파티만')) {
