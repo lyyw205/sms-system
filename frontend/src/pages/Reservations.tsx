@@ -1,492 +1,705 @@
-import { useEffect, useState } from 'react';
-import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Card, DatePicker, Row, Col, Statistic, Tooltip } from 'antd';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SyncOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  ShopOutlined,
-} from '@ant-design/icons';
-import { reservationsAPI } from '../services/api';
-import dayjs, { Dayjs } from 'dayjs';
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle,
+  Clock,
+  XCircle,
+  ShoppingBag,
+  CalendarDays,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import dayjs from 'dayjs';
+
+import { reservationsAPI } from '@/services/api';
+
+import {
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableHeadCell,
+  TableCell,
+  Badge,
+  Button,
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Label,
+  Select,
+  TextInput,
+  Textarea,
+  Spinner,
+} from 'flowbite-react';
 
 const TAG_OPTIONS = ['1초', '2차만', '객후', '객후,1초', '1초,2차만'];
 
-const Reservations = () => {
-  const [reservations, setReservations] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
+interface Reservation {
+  id: number;
+  external_id?: string | null;
+  customer_name: string;
+  phone: string;
+  date: string;
+  time?: string | null;
+  status: string;
+  source?: string | null;
+  party_participants?: number | null;
+  gender?: string | null;
+  room_info?: string | null;
+  room_number?: string | null;
+  tags?: string | null;
+  notes?: string | null;
+}
+
+interface FormState {
+  customer_name: string;
+  phone: string;
+  reservation_date: string;
+  reservation_time: string;
+  status: string;
+  party_size: string;
+  gender: string;
+  room_type: string;
+  tags: string;
+  notes: string;
+}
+
+const EMPTY_FORM: FormState = {
+  customer_name: '',
+  phone: '',
+  reservation_date: '',
+  reservation_time: '',
+  status: 'pending',
+  party_size: '',
+  gender: '',
+  room_type: '',
+  tags: '',
+  notes: '',
+};
+
+function fmtDate(val: string | null | undefined): string {
+  if (!val) return '-';
+  return dayjs(val).format('YYYY.MM.DD');
+}
+
+function fmtTime(val: string | null | undefined): string {
+  if (!val) return '';
+  if (val.includes('T')) return dayjs(val).format('HH:mm');
+  return val.slice(0, 5);
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: 'success' | 'warning' | 'failure' | 'gray' }> = {
+    confirmed: { label: '확정', color: 'success' },
+    pending:   { label: '대기', color: 'warning' },
+    cancelled: { label: '취소', color: 'failure' },
+    completed: { label: '완료', color: 'gray' },
+  };
+  const m = map[status] ?? { label: status, color: 'gray' as const };
+  return <Badge color={m.color} size="sm">{m.label}</Badge>;
+}
+
+function SourceBadge({ source }: { source?: string | null }) {
+  const key = source ?? 'manual';
+  const map: Record<string, { label: string; color: 'success' | 'gray' }> = {
+    naver:  { label: '네이버', color: 'success' },
+    manual: { label: '수동',   color: 'gray' },
+    phone:  { label: '전화',   color: 'gray' },
+  };
+  const m = map[key] ?? { label: key, color: 'gray' as const };
+  return <Badge color={m.color} size="xs">{m.label}</Badge>;
+}
+
+export default function Reservations() {
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [syncing, setSyncing]           = useState(false);
+
+  const [filterDate,   setFilterDate]   = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSource, setFilterSource] = useState('all');
+
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [dateFilter, setDateFilter] = useState<Dayjs | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sourceFilter, setSourceFilter] = useState<string>('all');
-  const [form] = Form.useForm();
+  const [saving,    setSaving]    = useState(false);
+  const [form,      setForm]      = useState<FormState>(EMPTY_FORM);
 
-  useEffect(() => {
-    loadReservations();
-  }, [dateFilter]);
+  const [deleteId,  setDeleteId]  = useState<number | null>(null);
+  const [deleting,  setDeleting]  = useState(false);
 
-  const loadReservations = async () => {
+  async function fetchReservations() {
     setLoading(true);
     try {
-      const params: any = { limit: 500 };
-      if (dateFilter) {
-        params.date = dateFilter.format('YYYY-MM-DD');
-      }
-      const response = await reservationsAPI.getAll(params);
-      setReservations(response.data);
-    } catch (error) {
-      console.error('Failed to load reservations:', error);
-      message.error('예약 목록 로드 실패');
+      const params: { limit?: number; date?: string } = { limit: 200 };
+      if (filterDate) params.date = filterDate;
+      const res = await reservationsAPI.getAll(params);
+      setReservations(res.data ?? []);
+    } catch {
+      toast.error('예약 목록을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleSyncNaver = async () => {
+  useEffect(() => {
+    fetchReservations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDate]);
+
+  const filtered = useMemo(() => {
+    return reservations.filter((r) => {
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      const src = r.source ?? 'manual';
+      if (filterSource !== 'all' && src !== filterSource) return false;
+      return true;
+    });
+  }, [reservations, filterStatus, filterSource]);
+
+  const stats = useMemo(() => ({
+    total:     reservations.length,
+    confirmed: reservations.filter((r) => r.status === 'confirmed').length,
+    pending:   reservations.filter((r) => r.status === 'pending').length,
+    cancelled: reservations.filter((r) => r.status === 'cancelled').length,
+    naver:     reservations.filter((r) => !!r.external_id).length,
+  }), [reservations]);
+
+  async function handleSync() {
     setSyncing(true);
     try {
-      const response = await reservationsAPI.syncNaver();
-      message.success(`네이버 예약 동기화 완료: ${response.data.added}건 추가`);
-      loadReservations();
-    } catch (error) {
-      console.error('Failed to sync Naver reservations:', error);
-      message.error('네이버 예약 동기화 실패');
+      const res = await reservationsAPI.syncNaver();
+      const added = res.data?.added ?? 0;
+      toast.success(`네이버 동기화 완료 — ${added}건 추가`);
+      fetchReservations();
+    } catch {
+      toast.error('네이버 동기화에 실패했습니다.');
     } finally {
       setSyncing(false);
     }
-  };
+  }
 
-  const handleCreate = () => {
+  function openCreate() {
     setEditingId(null);
-    form.resetFields();
-    form.setFieldsValue({
-      date: (dateFilter || dayjs()).format('YYYY-MM-DD'),
-      time: '18:00',
-      status: 'confirmed',
-      source: 'manual',
+    setForm(EMPTY_FORM);
+    setModalOpen(true);
+  }
+
+  function openEdit(r: Reservation) {
+    setEditingId(r.id);
+    setForm({
+      customer_name:    r.customer_name ?? '',
+      phone:            r.phone ?? '',
+      reservation_date: r.date ? dayjs(r.date).format('YYYY-MM-DD') : '',
+      reservation_time: fmtTime(r.time ?? r.date),
+      status:           r.status ?? 'pending',
+      party_size:       r.party_participants != null ? String(r.party_participants) : '',
+      gender:           r.gender ?? '',
+      room_type:        r.room_info ?? '',
+      tags:             r.tags ?? '',
+      notes:            r.notes ?? '',
     });
-    setModalVisible(true);
-  };
+    setModalOpen(true);
+  }
 
-  const handleEdit = (record: any) => {
-    setEditingId(record.id);
-    form.setFieldsValue(record);
-    setModalVisible(true);
-  };
+  function setField(key: keyof FormState, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
 
-  const handleDelete = async (id: number) => {
-    Modal.confirm({
-      title: '예약 삭제',
-      content: '정말 삭제하시겠습니까?',
-      onOk: async () => {
-        try {
-          await reservationsAPI.delete(id);
-          message.success('삭제 완료');
-          loadReservations();
-        } catch (error) {
-          message.error('삭제 실패');
-        }
-      },
-    });
-  };
+  async function handleSave() {
+    if (!form.customer_name.trim()) { toast.error('예약자 이름을 입력하세요.'); return; }
+    if (!form.phone.trim())          { toast.error('전화번호를 입력하세요.');    return; }
+    if (!form.reservation_date)      { toast.error('예약 날짜를 선택하세요.');   return; }
 
-  const handleSubmit = async () => {
+    setSaving(true);
     try {
-      const values = await form.validateFields();
-      if (editingId) {
-        await reservationsAPI.update(editingId, values);
-        message.success('예약 수정 완료');
+      const payload: Record<string, unknown> = {
+        customer_name:      form.customer_name.trim(),
+        phone:              form.phone.trim(),
+        date:               form.reservation_date,
+        time:               form.reservation_time || null,
+        status:             form.status,
+        party_participants: form.party_size ? Number(form.party_size) : null,
+        gender:             form.gender || null,
+        room_info:          form.room_type.trim() || null,
+        tags:               form.tags.trim() || null,
+        notes:              form.notes.trim() || null,
+      };
+
+      if (editingId != null) {
+        await reservationsAPI.update(editingId, payload);
+        toast.success('예약이 수정되었습니다.');
       } else {
-        await reservationsAPI.create(values);
-        message.success('예약 추가 완료');
+        await reservationsAPI.create(payload);
+        toast.success('예약이 등록되었습니다.');
       }
-      setModalVisible(false);
-      loadReservations();
-    } catch (error) {
-      message.error('저장 실패');
+      setModalOpen(false);
+      fetchReservations();
+    } catch {
+      toast.error('저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
     }
-  };
+  }
 
-  // Filter reservations
-  const filteredReservations = reservations.filter((r: any) => {
-    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-    if (sourceFilter !== 'all' && r.source !== sourceFilter) return false;
-    return true;
-  });
+  async function handleDelete() {
+    if (deleteId == null) return;
+    setDeleting(true);
+    try {
+      await reservationsAPI.delete(deleteId);
+      toast.success('예약이 삭제되었습니다.');
+      setDeleteId(null);
+      fetchReservations();
+    } catch {
+      toast.error('삭제에 실패했습니다.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
-  // Statistics
-  const totalCount = filteredReservations.length;
-  const confirmedCount = filteredReservations.filter((r: any) => r.status === 'confirmed').length;
-  const pendingCount = filteredReservations.filter((r: any) => r.status === 'pending').length;
-  const cancelledCount = filteredReservations.filter((r: any) => r.status === 'cancelled').length;
-  const naverCount = filteredReservations.filter((r: any) => r.source === 'naver').length;
+  function clearFilters() {
+    setFilterDate('');
+    setFilterStatus('all');
+    setFilterSource('all');
+  }
 
-  const columns = [
-    {
-      title: '예약ID',
-      dataIndex: 'external_id',
-      key: 'external_id',
-      width: 120,
-      render: (v: string, record: any) => {
-        if (!v) return <Tag color="default">수동</Tag>;
-        return (
-          <Tooltip title={`네이버 예약 ID: ${v}`}>
-            <Tag color="green" icon={<ShopOutlined />}>
-              {v.substring(0, 8)}...
-            </Tag>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: '이름',
-      dataIndex: 'customer_name',
-      key: 'customer_name',
-      width: 100,
-    },
-    {
-      title: '전화번호',
-      dataIndex: 'phone',
-      key: 'phone',
-      width: 130,
-    },
-    {
-      title: '예약일시',
-      key: 'datetime',
-      width: 150,
-      render: (record: any) => (
-        <div>
-          <div>{record.date}</div>
-          <div style={{ fontSize: '12px', color: '#999' }}>{record.time}</div>
-        </div>
-      ),
-    },
-    {
-      title: '상태',
-      dataIndex: 'status',
-      key: 'status',
-      width: 90,
-      render: (status: string) => {
-        const statusConfig: any = {
-          confirmed: { color: 'green', icon: <CheckCircleOutlined />, text: '확정' },
-          pending: { color: 'orange', icon: <ClockCircleOutlined />, text: '대기' },
-          cancelled: { color: 'red', icon: <CloseCircleOutlined />, text: '취소' },
-          completed: { color: 'blue', icon: <CheckCircleOutlined />, text: '완료' },
-        };
-        const config = statusConfig[status] || { color: 'default', text: status };
-        return (
-          <Tag color={config.color} icon={config.icon}>
-            {config.text}
-          </Tag>
-        );
-      },
-    },
-    {
-      title: '출처',
-      dataIndex: 'source',
-      key: 'source',
-      width: 80,
-      render: (source: string) => {
-        const sourceConfig: any = {
-          naver: { color: 'green', text: '네이버' },
-          manual: { color: 'default', text: '수동' },
-          phone: { color: 'blue', text: '전화' },
-        };
-        const config = sourceConfig[source] || { color: 'default', text: source };
-        return <Tag color={config.color}>{config.text}</Tag>;
-      },
-    },
-    {
-      title: '객실',
-      dataIndex: 'room_number',
-      key: 'room_number',
-      width: 100,
-      render: (v: string, record: any) => {
-        if (!v) return <Tag color="default">미배정</Tag>;
-        return (
-          <Tooltip title={record.room_info}>
-            <Tag color="cyan">{v}</Tag>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: '메모',
-      dataIndex: 'notes',
-      key: 'notes',
-      ellipsis: true,
-    },
-    {
-      title: '작업',
-      key: 'action',
-      width: 120,
-      fixed: 'right' as const,
-      render: (record: any) => {
-        // 네이버 예약은 수정/삭제 불가 (읽기 전용)
-        if (record.source === 'naver') {
-          return <Tag color="default">네이버 관리</Tag>;
-        }
-        return (
-          <Space>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            />
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(record.id)}
-            />
-          </Space>
-        );
-      },
-    },
-  ];
+  const hasFilter = filterDate || filterStatus !== 'all' || filterSource !== 'all';
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+    <div className="space-y-6">
+
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 style={{ marginBottom: 0 }}>📋 예약 관리</h1>
-          <p style={{ color: '#999', marginTop: 4 }}>
-            전체 예약 리스트 • 네이버 예약 자동 동기화 (10분마다)
-            {dateFilter && ` • 필터: ${dateFilter.format('YYYY-MM-DD')}`}
-          </p>
+          <h1 className="page-title">예약 관리</h1>
+          <p className="page-subtitle">예약 현황을 확인하고 네이버 예약을 동기화합니다.</p>
         </div>
-        <Button
-          type="primary"
-          icon={<SyncOutlined spin={syncing} />}
-          onClick={handleSyncNaver}
-          loading={syncing}
-          size="large"
-        >
-          네이버 예약 동기화
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button color="light" size="sm" onClick={openCreate}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            예약 등록
+          </Button>
+          <Button color="blue" size="sm" onClick={handleSync} disabled={syncing}>
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5${syncing ? ' animate-spin' : ''}`} />
+            네이버 예약 동기화
+          </Button>
+        </div>
       </div>
 
-      <Row gutter={16} style={{ marginBottom: 20 }}>
-        <Col>
-          <Card size="small">
-            <Statistic
-              title="총 예약"
-              value={totalCount}
-              suffix="건"
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col>
-          <Card size="small">
-            <Statistic
-              title="확정"
-              value={confirmedCount}
-              suffix="건"
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col>
-          <Card size="small">
-            <Statistic
-              title="대기"
-              value={pendingCount}
-              suffix="건"
-              valueStyle={{ color: '#faad14' }}
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col>
-          <Card size="small">
-            <Statistic
-              title="취소"
-              value={cancelledCount}
-              suffix="건"
-              valueStyle={{ color: '#ff4d4f' }}
-              prefix={<CloseCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col>
-          <Card size="small">
-            <Statistic
-              title="네이버 예약"
-              value={naverCount}
-              suffix="건"
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<ShopOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="stat-card">
+          <div className="flex items-center gap-3">
+            <div className="stat-icon bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-[#3182F6]">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <p className="stat-value text-xl">{stats.total}<span className="ml-0.5 text-[13px] font-normal text-[#B0B8C1]">건</span></p>
+              <p className="stat-label">총 예약</p>
+            </div>
+          </div>
+        </div>
 
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <DatePicker
-            value={dateFilter}
-            onChange={setDateFilter}
-            placeholder="날짜 필터 (전체)"
-            style={{ width: 200 }}
-            allowClear
-          />
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 120 }}
-          >
-            <Select.Option value="all">전체 상태</Select.Option>
-            <Select.Option value="confirmed">확정</Select.Option>
-            <Select.Option value="pending">대기</Select.Option>
-            <Select.Option value="cancelled">취소</Select.Option>
-            <Select.Option value="completed">완료</Select.Option>
-          </Select>
-          <Select
-            value={sourceFilter}
-            onChange={setSourceFilter}
-            style={{ width: 120 }}
-          >
-            <Select.Option value="all">전체 출처</Select.Option>
-            <Select.Option value="naver">네이버</Select.Option>
-            <Select.Option value="manual">수동</Select.Option>
-            <Select.Option value="phone">전화</Select.Option>
-          </Select>
-          {dateFilter && (
-            <Button onClick={() => setDateFilter(null)}>
-              전체 보기
-            </Button>
+        <div className="stat-card">
+          <div className="flex items-center gap-3">
+            <div className="stat-icon bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]">
+              <CheckCircle size={18} />
+            </div>
+            <div>
+              <p className="stat-value text-xl">{stats.confirmed}<span className="ml-0.5 text-[13px] font-normal text-[#B0B8C1]">건</span></p>
+              <p className="stat-label">확정</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="flex items-center gap-3">
+            <div className="stat-icon bg-[#FFF5E6] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-[#FF9F00]">
+              <Clock size={18} />
+            </div>
+            <div>
+              <p className="stat-value text-xl">{stats.pending}<span className="ml-0.5 text-[13px] font-normal text-[#B0B8C1]">건</span></p>
+              <p className="stat-label">대기</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="flex items-center gap-3">
+            <div className="stat-icon bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-[#F04452]">
+              <XCircle size={18} />
+            </div>
+            <div>
+              <p className="stat-value text-xl">{stats.cancelled}<span className="ml-0.5 text-[13px] font-normal text-[#B0B8C1]">건</span></p>
+              <p className="stat-label">취소</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="flex items-center gap-3">
+            <div className="stat-icon bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]">
+              <ShoppingBag size={18} />
+            </div>
+            <div>
+              <p className="stat-value text-xl">{stats.naver}<span className="ml-0.5 text-[13px] font-normal text-[#B0B8C1]">건</span></p>
+              <p className="stat-label">네이버</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter bar + Table */}
+      <div className="section-card">
+
+        <div className="p-4">
+          <div className="filter-bar">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="filter-date" className="text-[12px]">날짜</Label>
+              <TextInput
+                id="filter-date"
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                sizing="sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="filter-status" className="text-[12px]">상태</Label>
+              <Select
+                id="filter-status"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                sizing="sm"
+              >
+                <option value="all">전체</option>
+                <option value="confirmed">확정</option>
+                <option value="pending">대기</option>
+                <option value="cancelled">취소</option>
+                <option value="completed">완료</option>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="filter-source" className="text-[12px]">출처</Label>
+              <Select
+                id="filter-source"
+                value={filterSource}
+                onChange={(e) => setFilterSource(e.target.value)}
+                sizing="sm"
+              >
+                <option value="all">전체</option>
+                <option value="naver">네이버</option>
+                <option value="manual">수동</option>
+                <option value="phone">전화</option>
+              </Select>
+            </div>
+
+            {hasFilter && (
+              <Button color="light" size="sm" onClick={clearFilters}>
+                필터 초기화
+              </Button>
+            )}
+
+            <span className="ml-auto self-end text-[12px] tabular-nums text-[#8B95A1]">
+              {filtered.length}건 표시
+            </span>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <Spinner size="lg" />
+              <span className="text-[14px] text-[#B0B8C1]">불러오는 중...</span>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="empty-state">
+              <CalendarDays size={40} strokeWidth={1} />
+              <p className="text-[14px]">예약 내역이 없습니다.</p>
+            </div>
+          ) : (
+            <Table hoverable striped>
+              <TableHead>
+                <TableRow>
+                  <TableHeadCell className="whitespace-nowrap">예약ID</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">이름</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">전화번호</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">예약일시</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">상태</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">출처</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">객실</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">메모</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">작업</TableHeadCell>
+                </TableRow>
+              </TableHead>
+              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                {filtered.map((r) => {
+                  const isNaver = !!r.external_id;
+                  const timeStr = fmtTime(r.time ?? r.date);
+
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <SourceBadge source={isNaver ? 'naver' : 'manual'} />
+                          <p className="text-[12px] tabular-nums text-[#B0B8C1]">
+                            {isNaver ? r.external_id?.slice(0, 10) : `#${r.id}`}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-[#191F28] dark:text-white">
+                          {r.customer_name}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="tabular-nums text-[#8B95A1]">
+                          {r.phone}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-[14px] text-[#191F28] dark:text-white">{fmtDate(r.date)}</p>
+                        {timeStr && <p className="text-[12px] text-[#B0B8C1]">{timeStr}</p>}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell>
+                        <SourceBadge source={r.source} />
+                      </TableCell>
+                      <TableCell>
+                        {r.room_number ? (
+                          <Badge color="info" size="sm">{r.room_number}</Badge>
+                        ) : (
+                          <span className="text-[12px] text-[#B0B8C1]">미배정</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <p className="line-clamp-1 max-w-[120px] text-[14px] text-[#8B95A1]" title={r.notes ?? ''}>
+                          {r.notes ?? '-'}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        {isNaver ? (
+                          <span className="text-[12px] text-[#B0B8C1]">네이버 관리</span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <Button color="light" size="xs" onClick={() => openEdit(r)} title="수정">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button color="failure" size="xs" onClick={() => setDeleteId(r.id)} title="삭제">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
-        </Space>
+        </div>
+      </div>
 
-        <Table
-          dataSource={filteredReservations}
-          columns={columns}
-          loading={loading}
-          rowKey="id"
-          pagination={{ pageSize: 50 }}
-          scroll={{ x: 1200 }}
-          size="small"
-        />
-      </Card>
-
+      {/* Create / Edit Modal */}
       <Modal
-        title={editingId ? '예약 수정' : '예약 추가'}
-        open={modalVisible}
-        onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
-        width={600}
-        okText="저장"
-        cancelText="취소"
+        show={modalOpen}
+        onClose={() => { if (!saving) setModalOpen(false); }}
+        size="2xl"
       >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="customer_name"
-            label="예약자 이름"
-            rules={[{ required: true, message: '예약자 이름을 입력하세요' }]}
-          >
-            <Input placeholder="홍길동" />
-          </Form.Item>
-          <Form.Item
-            name="phone"
-            label="전화번호"
-            rules={[{ required: true, message: '전화번호를 입력하세요' }]}
-          >
-            <Input placeholder="010-1234-5678" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="date"
-                label="예약 날짜"
-                rules={[{ required: true, message: '예약 날짜를 선택하세요' }]}
+        <ModalHeader>
+          {editingId != null ? '예약 수정' : '예약 등록'}
+        </ModalHeader>
+
+        <ModalBody>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="f-name">
+                예약자 이름 <span className="text-[#F04452]">*</span>
+              </Label>
+              <TextInput
+                id="f-name"
+                value={form.customer_name}
+                onChange={(e) => setField('customer_name', e.target.value)}
+                placeholder="홍길동"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-phone">
+                전화번호 <span className="text-[#F04452]">*</span>
+              </Label>
+              <TextInput
+                id="f-phone"
+                value={form.phone}
+                onChange={(e) => setField('phone', e.target.value)}
+                placeholder="010-0000-0000"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-date">
+                예약 날짜 <span className="text-[#F04452]">*</span>
+              </Label>
+              <TextInput
+                id="f-date"
+                type="date"
+                value={form.reservation_date}
+                onChange={(e) => setField('reservation_date', e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-time">예약 시간</Label>
+              <TextInput
+                id="f-time"
+                type="time"
+                value={form.reservation_time}
+                onChange={(e) => setField('reservation_time', e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-status">예약 상태</Label>
+              <Select
+                id="f-status"
+                value={form.status}
+                onChange={(e) => setField('status', e.target.value)}
               >
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="time"
-                label="예약 시간"
-                rules={[{ required: true, message: '예약 시간을 선택하세요' }]}
+                <option value="pending">대기</option>
+                <option value="confirmed">확정</option>
+                <option value="cancelled">취소</option>
+                <option value="completed">완료</option>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-party">인원 수</Label>
+              <TextInput
+                id="f-party"
+                type="number"
+                min={1}
+                value={form.party_size}
+                onChange={(e) => setField('party_size', e.target.value)}
+                placeholder="2"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-gender">성별</Label>
+              <Select
+                id="f-gender"
+                value={form.gender || '__none__'}
+                onChange={(e) => setField('gender', e.target.value === '__none__' ? '' : e.target.value)}
               >
-                <Input type="time" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="status"
-                label="예약 상태"
-                initialValue="confirmed"
-              >
-                <Select>
-                  <Select.Option value="pending">대기</Select.Option>
-                  <Select.Option value="confirmed">확정</Select.Option>
-                  <Select.Option value="cancelled">취소</Select.Option>
-                  <Select.Option value="completed">완료</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="party_participants"
-                label="인원 수"
-                initialValue={1}
-              >
-                <Input type="number" min={1} placeholder="1" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="gender"
-                label="성별"
-              >
-                <Select placeholder="성별 선택" allowClear>
-                  <Select.Option value="남">남</Select.Option>
-                  <Select.Option value="여">여</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="room_info"
-                label="객실 타입"
-              >
-                <Input placeholder="더블룸, 트윈룸 등" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item
-            name="tags"
-            label="태그"
-            tooltip="1초, 2차만, 객후 등의 태그를 선택하거나 입력하세요"
-          >
-            <Select
-              mode="tags"
-              placeholder="태그 선택 또는 입력"
-              options={TAG_OPTIONS.map(tag => ({ value: tag, label: tag }))}
-            />
-          </Form.Item>
-          <Form.Item name="notes" label="메모">
-            <Input.TextArea rows={3} placeholder="예약 관련 메모나 요청사항" />
-          </Form.Item>
-          <Form.Item name="source" hidden initialValue="manual">
-            <Input />
-          </Form.Item>
-        </Form>
+                <option value="__none__">선택 안 함</option>
+                <option value="male">남성</option>
+                <option value="female">여성</option>
+                <option value="mixed">혼성</option>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="f-room-type">객실 타입</Label>
+              <TextInput
+                id="f-room-type"
+                value={form.room_type}
+                onChange={(e) => setField('room_type', e.target.value)}
+                placeholder="스탠다드"
+              />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="f-tags">태그</Label>
+              <TextInput
+                id="f-tags"
+                value={form.tags}
+                onChange={(e) => setField('tags', e.target.value)}
+                placeholder="쉼표로 구분 (예: 1초,2차만)"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {TAG_OPTIONS.map((t) => (
+                  <Button
+                    key={t}
+                    type="button"
+                    color={form.tags === t ? 'blue' : 'light'}
+                    size="xs"
+                    pill
+                    onClick={() => setField('tags', t)}
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="f-notes">메모</Label>
+              <Textarea
+                id="f-notes"
+                value={form.notes}
+                onChange={(e) => setField('notes', e.target.value)}
+                rows={3}
+                placeholder="추가 메모를 입력하세요"
+              />
+            </div>
+          </div>
+        </ModalBody>
+
+        <ModalFooter>
+          <Button color="blue" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <Spinner size="sm" className="mr-2" />
+                저장 중...
+              </>
+            ) : (
+              editingId != null ? '수정 완료' : '등록'
+            )}
+          </Button>
+          <Button color="light" onClick={() => setModalOpen(false)} disabled={saving}>
+            취소
+          </Button>
+        </ModalFooter>
       </Modal>
+
+      {/* Delete Confirm Modal */}
+      <Modal
+        show={deleteId != null}
+        onClose={() => { if (!deleting) setDeleteId(null); }}
+        size="md"
+        popup
+      >
+        <ModalHeader />
+        <ModalBody>
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFEBEE] dark:bg-[#F04452]/10">
+              <Trash2 className="h-6 w-6 text-[#F04452]" />
+            </div>
+            <h3 className="mb-2 text-[18px] font-semibold text-[#191F28] dark:text-white">예약을 삭제하시겠습니까?</h3>
+            <p className="mb-5 text-[14px] text-[#8B95A1]">이 작업은 되돌릴 수 없습니다. 예약 정보가 영구적으로 삭제됩니다.</p>
+            <div className="flex justify-center gap-3">
+              <Button color="failure" onClick={handleDelete} disabled={deleting}>
+                {deleting ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    삭제 중...
+                  </>
+                ) : '삭제'}
+              </Button>
+              <Button color="light" onClick={() => setDeleteId(null)} disabled={deleting}>
+                취소
+              </Button>
+            </div>
+          </div>
+        </ModalBody>
+      </Modal>
+
     </div>
   );
-};
-
-export default Reservations;
+}

@@ -1,17 +1,147 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+@import "tailwindcss";
+@import "tw-animate-css";
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+/* ─── Toss Invest Design System ────────────────────────────────────────── */
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui,
     sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+
+  /* Toss brand colors */
+  --color-toss-blue: #3182F6;
+  --color-toss-blue-light: #E8F3FF;
+  --color-toss-text: #191F28;
+  --color-toss-text-secondary: #8B95A1;
+  --color-toss-text-tertiary: #B0B8C1;
+  --color-toss-border: #F2F4F6;
+  --color-toss-bg: #F2F4F6;
+  --color-toss-card: #FFFFFF;
+  --color-toss-positive: #F04452;
+  --color-toss-negative: #3182F6;
+  --color-toss-success: #00C9A7;
 }
 
-#root {
-  width: 100%;
-  height: 100vh;
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+
+@layer base {
+  * {
+    @apply border-[#F2F4F6] dark:border-gray-800;
+  }
+
+  /* Hide Flowbite Table shadow overlay — its -z-10 doesn't work in Tailwind v4 */
+  [data-testid="table-element"] > div:first-child {
+    display: none !important;
+  }
+
+  body {
+    @apply bg-white font-sans text-[#191F28] antialiased dark:bg-[#17171C] dark:text-gray-100;
+  }
+
+  /* Thin scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gray-200 dark:bg-gray-700;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-300 dark:bg-gray-600;
+  }
+}
+
+/* ─── Component Classes (Toss style) ──────────────────────────────────── */
+
+@layer components {
+  /* Page header */
+  .page-title {
+    @apply text-[22px] font-bold tracking-[-0.02em] text-[#191F28] dark:text-white;
+  }
+  .page-subtitle {
+    @apply mt-0.5 text-[13px] text-[#8B95A1] dark:text-gray-500;
+  }
+
+  /* Stat card — borderless, white, subtle hover */
+  .stat-card {
+    @apply rounded-2xl bg-[#F2F4F6] p-5 transition-colors
+      dark:bg-[#1E1E24];
+  }
+  .stat-value {
+    @apply text-[22px] font-bold tabular-nums text-[#191F28] dark:text-white;
+  }
+  .stat-label {
+    @apply text-[12px] font-medium text-[#8B95A1] dark:text-gray-500;
+  }
+  .stat-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl;
+  }
+
+  /* Section card — clean, subtle border */
+  .section-card {
+    @apply overflow-hidden rounded-2xl border border-[#F2F4F6] bg-white dark:border-gray-800 dark:bg-[#1E1E24];
+  }
+  .section-header {
+    @apply flex items-center justify-between px-5 py-4;
+  }
+  .section-body {
+    @apply p-5;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    @apply flex flex-wrap items-end gap-3 rounded-xl bg-[#F2F4F6] p-4 dark:bg-[#1E1E24];
+  }
+
+  /* Empty state */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-3 py-16 text-[#B0B8C1] dark:text-gray-600;
+  }
+
+  /* Chat bubbles — Toss style */
+  .inbound-bubble {
+    @apply max-w-[75%] rounded-[20px] rounded-bl-[4px] bg-[#F2F4F6] px-4 py-2.5 text-[14px] leading-relaxed text-[#191F28]
+      dark:bg-[#2C2C34] dark:text-gray-100;
+  }
+  .outbound-bubble {
+    @apply max-w-[75%] rounded-[20px] rounded-br-[4px] bg-[#3182F6] px-4 py-2.5 text-[14px] leading-relaxed text-white;
+  }
+  .contact-active {
+    @apply bg-[#E8F3FF] dark:bg-[#3182F6]/10;
+  }
+
+  /* Drag & drop */
+  .drag-handle {
+    @apply cursor-grab text-[#B0B8C1] hover:text-[#8B95A1] active:cursor-grabbing dark:text-gray-600 dark:hover:text-gray-400;
+  }
+
+  /* Guest card (room assignment) */
+  .guest-card {
+    @apply cursor-grab rounded-xl bg-[#F2F4F6] p-2 transition-all hover:bg-[#E8EBED]
+      active:cursor-grabbing dark:bg-[#2C2C34] dark:hover:bg-[#35353E];
+  }
+
+  /* Room cell */
+  .room-cell {
+    @apply rounded-xl border-2 border-dashed border-[#E5E8EB] bg-[#F8F9FA] p-2
+      transition-colors dark:border-gray-700 dark:bg-[#1E1E24];
+  }
+  .room-cell-hover {
+    @apply border-[#3182F6] bg-[#E8F3FF] dark:border-[#3182F6] dark:bg-[#3182F6]/10;
+  }
+}
+
+/* ─── Utilities ──────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
 }

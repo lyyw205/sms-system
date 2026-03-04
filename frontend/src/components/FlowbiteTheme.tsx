@@ -1,0 +1,122 @@
+import { ThemeProvider as FlowbiteThemeProvider } from 'flowbite-react'
+
+const customTheme = {
+  card: {
+    root: {
+      base: 'flex rounded-2xl bg-white dark:bg-[#1E1E24]',
+      children: 'flex h-full flex-col gap-4 p-5',
+    },
+  },
+  sidebar: {
+    root: {
+      base: 'h-full',
+      inner: 'h-full overflow-y-auto overflow-x-hidden bg-white px-3 py-4 dark:bg-[#17171C]',
+    },
+    item: {
+      base: 'flex items-center justify-center rounded-xl p-2.5 text-[14px] font-medium text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]',
+      active: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/10 dark:text-[#3182F6]',
+      icon: {
+        base: 'h-5 w-5 flex-shrink-0 transition duration-75',
+        active: 'text-[#3182F6] dark:text-[#3182F6]',
+      },
+    },
+  },
+  navbar: {
+    root: {
+      base: 'bg-white px-4 py-2.5 dark:bg-[#17171C]',
+    },
+  },
+  table: {
+    root: {
+      base: 'w-full text-left text-[14px] text-[#4E5968] dark:text-gray-400',
+      shadow: '',
+      wrapper: 'overflow-x-auto',
+    },
+    head: {
+      base: 'group/head text-[12px] uppercase text-[#8B95A1] dark:text-gray-500',
+      cell: {
+        base: 'bg-[#F8F9FA] px-5 py-3 font-medium whitespace-nowrap dark:bg-[#1E1E24]',
+      },
+    },
+    body: {
+      cell: {
+        base: 'px-5 py-3.5 text-[14px] whitespace-nowrap',
+      },
+    },
+    row: {
+      base: 'group/row',
+      hovered: 'hover:bg-[#F2F4F6] dark:hover:bg-[#1E1E24]',
+      striped:
+        'odd:bg-transparent even:bg-[#F2F4F6]/80 dark:odd:bg-transparent dark:even:bg-[#1E1E24]/50',
+    },
+  },
+  modal: {
+    content: {
+      inner:
+        'relative flex max-h-[90dvh] flex-col rounded-2xl bg-white shadow-2xl dark:bg-[#1E1E24]',
+    },
+  },
+  badge: {
+    root: {
+      base: 'flex h-fit items-center gap-1 rounded-lg px-2 py-0.5 font-medium',
+      color: {
+        info: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-[#3182F6]',
+        success:
+          'bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]',
+        warning:
+          'bg-[#FFF5E6] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-[#FF9F00]',
+        failure:
+          'bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-[#F04452]',
+        gray: 'bg-[#F2F4F6] text-[#8B95A1] dark:bg-[#2C2C34] dark:text-gray-400',
+      },
+    },
+  },
+  button: {
+    base: 'group relative flex items-center justify-center text-center font-medium focus:z-10 focus:outline-none transition-colors',
+    color: {
+      blue: 'bg-[#3182F6] text-white hover:bg-[#1B64DA] focus:ring-[#3182F6]/30',
+      light:
+        'bg-[#F2F4F6] text-[#191F28] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:hover:bg-[#35353E]',
+    },
+  },
+  tabs: {
+    tablist: {
+      tabitem: {
+        base: 'flex items-center justify-center rounded-t-lg p-4 text-[14px] font-medium',
+        variant: {
+          underline: {
+            base: '-mb-px border-b-2 border-transparent p-4',
+            active: {
+              on: 'border-[#3182F6] text-[#3182F6] dark:border-[#3182F6] dark:text-[#3182F6]',
+              off: 'border-transparent text-[#8B95A1] hover:border-[#B0B8C1] hover:text-[#4E5968] dark:text-gray-500',
+            },
+          },
+        },
+      },
+    },
+  },
+  spinner: {
+    color: {
+      info: 'fill-[#3182F6]',
+    },
+  },
+  toggleSwitch: {
+    toggle: {
+      checked: {
+        on: 'bg-[#3182F6] border-[#3182F6]',
+      },
+    },
+  },
+}
+
+export default function FlowbiteWrapper({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <FlowbiteThemeProvider theme={customTheme}>
+      {children}
+    </FlowbiteThemeProvider>
+  )
+}

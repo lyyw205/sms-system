@@ -1,82 +1,53 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
-  Tabs,
-  Table,
-  Button,
-  Modal,
-  Form,
-  Input,
-  Select,
-  Switch,
-  message,
-  Space,
-  Tag,
-  Badge,
-  Popconfirm,
+  Plus,
+  Pencil,
+  Trash2,
+  Play,
+  Eye,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Clock,
+  BarChart3,
+} from 'lucide-react';
+
+import {
   Card,
+  Tabs,
+  TabItem,
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Button,
+  TextInput,
+  Textarea,
+  Label,
+  ToggleSwitch,
   Checkbox,
+  Select,
   Radio,
-  InputNumber,
-  Typography,
-} from 'antd';
-import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  EyeOutlined,
-  PlayCircleOutlined,
-  SyncOutlined,
-  ReloadOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from '@ant-design/icons';
-import { templatesAPI, templateSchedulesAPI, campaignsAPI } from '../services/api';
+  Table,
+  TableHead,
+  TableHeadCell,
+  TableBody,
+  TableRow,
+  TableCell,
+  Badge,
+  Spinner,
+  Alert,
+} from 'flowbite-react';
 
-const { TextArea } = Input;
-const { Option } = Select;
-const { Text } = Typography;
+import { templatesAPI, templateSchedulesAPI, campaignsAPI } from '@/services/api';
 
-/**
- * 템플릿 내용에서 {{변수명}} 패턴을 추출하고 유효성 검증
- */
-const extractAndValidateVariables = (
-  content: string,
-  availableVars: any
-): { valid: string[]; invalid: string[] } => {
-  if (!content || !availableVars) {
-    return { valid: [], invalid: [] };
-  }
-
-  // {{variableName}} 패턴 매칭
-  const variablePattern = /\{\{(\w+)\}\}/g;
-  const matches = content.matchAll(variablePattern);
-
-  // Set으로 중복 제거
-  const foundVariables = new Set<string>();
-  for (const match of matches) {
-    const varName = match[1];
-    if (varName) {  // 빈 변수명 무시 ({{}} 같은 경우)
-      foundVariables.add(varName);
-    }
-  }
-
-  // 유효성 검사
-  const valid: string[] = [];
-  const invalid: string[] = [];
-
-  foundVariables.forEach(varName => {
-    if (availableVars.variables && availableVars.variables[varName]) {
-      valid.push(varName);
-    } else {
-      invalid.push(varName);
-    }
-  });
-
-  return {
-    valid: valid.sort(),
-    invalid: invalid.sort()
-  };
-};
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
 
 interface Template {
   id: number;
@@ -115,70 +86,246 @@ interface TemplateSchedule {
   next_run: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Helper – variable extraction
+// ---------------------------------------------------------------------------
+
+const extractAndValidateVariables = (
+  content: string,
+  availableVars: any
+): { valid: string[]; invalid: string[] } => {
+  if (!content || !availableVars) return { valid: [], invalid: [] };
+  const pattern = /\{\{(\w+)\}\}/g;
+  const found = new Set<string>();
+  for (const match of content.matchAll(pattern)) {
+    if (match[1]) found.add(match[1]);
+  }
+  const valid: string[] = [], invalid: string[] = [];
+  found.forEach(v => { (availableVars.variables?.[v] ? valid : invalid).push(v); });
+  return { valid: valid.sort(), invalid: invalid.sort() };
+};
+
+// ---------------------------------------------------------------------------
+// Tiny helpers
+// ---------------------------------------------------------------------------
+
+const DAY_MAP: Record<string, string> = {
+  mon: '월', tue: '화', wed: '수', thu: '목',
+  fri: '금', sat: '토', sun: '일',
+};
+
+function formatScheduleTime(s: TemplateSchedule): string {
+  if (s.schedule_type === 'daily') {
+    return `매일 ${s.hour}시 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+  }
+  if (s.schedule_type === 'weekly') {
+    const days = s.day_of_week?.split(',').map(d => DAY_MAP[d.trim()] ?? d).join(', ');
+    return `${days}요일 ${s.hour}시 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+  }
+  if (s.schedule_type === 'hourly') {
+    return `매시간 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+  }
+  if (s.schedule_type === 'interval') {
+    return `${s.interval_minutes}분마다`;
+  }
+  return '-';
+}
+
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return '-';
+  const date = new Date(iso);
+  const diff = date.getTime() - Date.now();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 0) return date.toLocaleString('ko-KR');
+  if (minutes < 60) return `${minutes}분 후`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 후`;
+  return date.toLocaleString('ko-KR');
+}
+
+function getCampaignTypeLabel(type: string): string {
+  if (type === 'room_guide') return '객실안내';
+  if (type === 'party_guide') return '파티안내';
+  if (type === 'tag_based') return '태그발송';
+  if (type.startsWith('template_schedule_') && type.includes('파티')) return '자동발송(파티)';
+  if (type.startsWith('template_schedule_') && type.includes('객실')) return '자동발송(객실)';
+  if (type.startsWith('template_schedule_')) return '자동발송';
+  return type;
+}
+
+function getScheduleTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    daily: '매일', weekly: '매주', hourly: '매시간', interval: '간격',
+  };
+  return map[type] ?? type;
+}
+
+function getTargetLabel(record: TemplateSchedule): string {
+  const map: Record<string, string> = {
+    all: '전체',
+    room_assigned: '객실배정자',
+    party_only: '파티만',
+  };
+  if (record.target_type === 'tag') return `태그: ${record.target_value}`;
+  return map[record.target_type] ?? record.target_type;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  room_guide: '객실안내',
+  party_guide: '파티안내',
+  confirmation: '예약확인',
+  reminder: '리마인더',
+  other: '기타',
+};
+
+const CATEGORY_ICON: Record<string, string> = {
+  reservation: '예약 정보',
+  room: '객실 정보',
+  party: '파티 정보',
+  datetime: '날짜/시간',
+  other: '기타',
+};
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+interface ConfirmDeleteProps {
+  open: boolean;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDeleteDialog({ open, message, onConfirm, onCancel }: ConfirmDeleteProps) {
+  return (
+    <Modal show={open} onClose={onCancel} size="sm">
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">삭제 확인</ModalHeader>
+      <ModalBody>
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#FFEBEE] dark:bg-red-900/20">
+            <Trash2 className="h-6 w-6 text-[#F04452]" />
+          </div>
+          <h3 className="mb-2 text-[14px] font-semibold text-[#191F28] dark:text-white">정말 삭제하시겠습니까?</h3>
+          <p className="mb-5 text-[13px] text-[#8B95A1] dark:text-gray-400">{message}</p>
+        </div>
+      </ModalBody>
+      <ModalFooter className="flex justify-center gap-3 border-t border-[#F2F4F6] dark:border-gray-800">
+        <Button color="failure" size="sm" onClick={onConfirm}>삭제</Button>
+        <Button color="light" size="sm" onClick={onCancel}>취소</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
 const Templates: React.FC = () => {
   const [activeTab, setActiveTab] = useState('templates');
 
-  // Templates state
+  // --- templates state ---
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [templateModalVisible, setTemplateModalVisible] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-  const [templateForm] = Form.useForm();
   const [availableVariables, setAvailableVariables] = useState<any>(null);
-  const [detectedVariables, setDetectedVariables] = useState<{
-    valid: string[];
-    invalid: string[];
-  }>({ valid: [], invalid: [] });
+  const [detectedVars, setDetectedVars] = useState<{ valid: string[]; invalid: string[] }>({ valid: [], invalid: [] });
+  const [showVarRef, setShowVarRef] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
-  // Schedules state
+  // template form
+  const [tKey, setTKey] = useState('');
+  const [tName, setTName] = useState('');
+  const [tCategory, setTCategory] = useState('');
+  const [tContent, setTContent] = useState('');
+  const [tVariables, setTVariables] = useState('');
+  const [tActive, setTActive] = useState(true);
+  const [tKeyError, setTKeyError] = useState('');
+
+  // delete template
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<Template | null>(null);
+
+  // --- schedules state ---
   const [schedules, setSchedules] = useState<TemplateSchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
-  const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<TemplateSchedule | null>(null);
-  const [scheduleForm] = Form.useForm();
-  const [previewTargets, setPreviewTargets] = useState<any[]>([]);
-  const [previewModalVisible, setPreviewModalVisible] = useState(false);
-  const [selectedScheduleType, setSelectedScheduleType] = useState('daily');
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
-  // Campaign history state
+  // schedule form
+  const [sName, setSName] = useState('');
+  const [sTemplateId, setSTemplateId] = useState<string>('');
+  const [sType, setSType] = useState('daily');
+  const [sHour, setSHour] = useState<string>('9');
+  const [sMinute, setSMinute] = useState<string>('0');
+  const [sDayOfWeek, setSDayOfWeek] = useState<string[]>([]);
+  const [sIntervalMinutes, setSIntervalMinutes] = useState('10');
+  const [sTargetType, setSTargetType] = useState('all');
+  const [sTargetValue, setSTargetValue] = useState('');
+  const [sDateFilter, setSDateFilter] = useState('');
+  const [sSmsType, setSSmsType] = useState('room');
+  const [sExcludeSent, setSExcludeSent] = useState(true);
+  const [sActive, setSActive] = useState(true);
+
+  // delete schedule
+  const [deleteScheduleTarget, setDeleteScheduleTarget] = useState<TemplateSchedule | null>(null);
+
+  // preview
+  const [previewTargets, setPreviewTargets] = useState<any[]>([]);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+
+  // --- campaigns state ---
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
 
-  // Fetch templates
+  // ---------------------------------------------------------------------------
+  // Data fetching
+  // ---------------------------------------------------------------------------
+
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
     try {
-      const response = await templatesAPI.getAll();
-      setTemplates(response.data);
-    } catch (error) {
-      message.error('❌ 템플릿 목록을 불러오지 못했습니다');
-      console.error(error);
+      const res = await templatesAPI.getAll();
+      setTemplates(res.data);
+    } catch {
+      toast.error('템플릿 목록을 불러오지 못했습니다');
     } finally {
       setLoadingTemplates(false);
     }
   };
 
-  // Fetch schedules
   const fetchSchedules = async () => {
     setLoadingSchedules(true);
     try {
-      const response = await templateSchedulesAPI.getAll();
-      setSchedules(response.data);
-    } catch (error) {
-      message.error('❌ 스케줄 목록을 불러오지 못했습니다');
-      console.error(error);
+      const res = await templateSchedulesAPI.getAll();
+      setSchedules(res.data);
+    } catch {
+      toast.error('스케줄 목록을 불러오지 못했습니다');
     } finally {
       setLoadingSchedules(false);
     }
   };
 
-  // Fetch available variables
   const fetchAvailableVariables = async () => {
     try {
-      const response = await templatesAPI.getAvailableVariables();
-      setAvailableVariables(response.data);
-    } catch (error) {
-      console.error('Failed to fetch variables:', error);
+      const res = await templatesAPI.getAvailableVariables();
+      setAvailableVariables(res.data);
+    } catch {
+      /* non-critical */
+    }
+  };
+
+  const fetchCampaigns = async () => {
+    setLoadingCampaigns(true);
+    try {
+      const res = await campaignsAPI.getHistory();
+      setCampaigns(res.data);
+    } catch {
+      toast.error('발송 이력을 불러오지 못했습니다');
+    } finally {
+      setLoadingCampaigns(false);
     }
   };
 
@@ -188,1093 +335,1145 @@ const Templates: React.FC = () => {
     fetchAvailableVariables();
   }, []);
 
-  // Load campaigns when tab changes
   useEffect(() => {
-    if (activeTab === 'campaigns') {
-      fetchCampaigns();
-    }
+    if (activeTab === 'campaigns') fetchCampaigns();
   }, [activeTab]);
 
-  // Fetch campaigns
-  const fetchCampaigns = async () => {
-    setLoadingCampaigns(true);
-    try {
-      const response = await campaignsAPI.getHistory();
-      setCampaigns(response.data);
-    } catch (error) {
-      message.error('❌ 발송 이력을 불러오지 못했습니다');
-      console.error(error);
-    } finally {
-      setLoadingCampaigns(false);
-    }
-  };
+  // ---------------------------------------------------------------------------
+  // Template CRUD
+  // ---------------------------------------------------------------------------
 
-  // Template CRUD operations
-  const handleCreateTemplate = () => {
+  const openCreateTemplate = () => {
     setEditingTemplate(null);
-    templateForm.resetFields();
-
-    // 감지된 변수 초기화
-    setDetectedVariables({ valid: [], invalid: [] });
-
-    setTemplateModalVisible(true);
+    setTKey(''); setTName(''); setTCategory(''); setTContent('');
+    setTVariables(''); setTActive(true); setTKeyError('');
+    setDetectedVars({ valid: [], invalid: [] });
+    setShowVarRef(false);
+    setTemplateDialogOpen(true);
   };
 
-  const handleEditTemplate = (template: Template) => {
-    setEditingTemplate(template);
-    templateForm.setFieldsValue(template);
+  const openEditTemplate = (t: Template) => {
+    setEditingTemplate(t);
+    setTKey(t.key); setTName(t.name); setTCategory(t.category ?? '');
+    setTContent(t.content); setTVariables(t.variables ?? '');
+    setTActive(t.active); setTKeyError('');
+    setDetectedVars(extractAndValidateVariables(t.content, availableVariables));
+    setShowVarRef(false);
+    setTemplateDialogOpen(true);
+  };
 
-    // 기존 content에서 변수 감지 (모달 열 때 초기화)
-    const detected = extractAndValidateVariables(
-      template.content,
-      availableVariables
-    );
-    setDetectedVariables(detected);
-
-    setTemplateModalVisible(true);
+  const handleContentChange = (val: string) => {
+    setTContent(val);
+    const detected = extractAndValidateVariables(val, availableVariables);
+    setDetectedVars(detected);
+    setTVariables(detected.valid.join(','));
   };
 
   const handleSaveTemplate = async () => {
-    try {
-      const values = await templateForm.validateFields();
+    if (!tKey.trim()) { setTKeyError('템플릿 키를 입력하세요'); return; }
+    if (!/^[a-z_]+$/.test(tKey)) { setTKeyError('영문 소문자와 언더스코어(_)만 사용 가능합니다'); return; }
+    if (!tName.trim()) { toast.error('템플릿 이름을 입력하세요'); return; }
+    if (!tContent.trim()) { toast.error('메시지 내용을 입력하세요'); return; }
 
+    setSavingTemplate(true);
+    try {
+      const data = {
+        key: tKey, name: tName, content: tContent,
+        variables: tVariables || undefined,
+        category: tCategory || undefined,
+        active: tActive,
+      };
       if (editingTemplate) {
-        await templatesAPI.update(editingTemplate.id, values);
-        message.success('✅ 템플릿이 수정되었습니다');
+        await templatesAPI.update(editingTemplate.id, data);
+        toast.success('템플릿이 수정되었습니다');
       } else {
-        await templatesAPI.create(values);
-        message.success('✅ 템플릿이 생성되었습니다');
+        await templatesAPI.create(data);
+        toast.success('템플릿이 생성되었습니다');
       }
-
-      setTemplateModalVisible(false);
+      setTemplateDialogOpen(false);
       fetchTemplates();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '❌ 템플릿 저장 실패');
-      console.error(error);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? '템플릿 저장 실패');
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
-  const handleDeleteTemplate = async (id: number) => {
+  const handleDeleteTemplate = async (t: Template) => {
     try {
-      await templatesAPI.delete(id);
-      message.success('✅ 템플릿이 삭제되었습니다');
+      await templatesAPI.delete(t.id);
+      toast.success('템플릿이 삭제되었습니다');
       fetchTemplates();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '❌ 템플릿 삭제 실패');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? '템플릿 삭제 실패');
+    } finally {
+      setDeleteTemplateTarget(null);
     }
   };
 
-  // Schedule CRUD operations
-  const handleCreateSchedule = () => {
-    setEditingSchedule(null);
-    scheduleForm.resetFields();
-    scheduleForm.setFieldsValue({
-      schedule_type: 'daily',
-      timezone: 'Asia/Seoul',
-      target_type: 'all',
-      sms_type: 'room',
-      exclude_sent: true,
-      active: true,
-    });
-    setSelectedScheduleType('daily');
-    setScheduleModalVisible(true);
+  // ---------------------------------------------------------------------------
+  // Schedule CRUD
+  // ---------------------------------------------------------------------------
+
+  const resetScheduleForm = () => {
+    setSName(''); setSTemplateId(''); setSType('daily');
+    setSHour('9'); setSMinute('0'); setSDayOfWeek([]);
+    setSIntervalMinutes('10'); setSTargetType('all');
+    setSTargetValue(''); setSDateFilter('');
+    setSSmsType('room'); setSExcludeSent(true); setSActive(true);
   };
 
-  const handleEditSchedule = (schedule: TemplateSchedule) => {
-    setEditingSchedule(schedule);
-    scheduleForm.setFieldsValue(schedule);
-    setSelectedScheduleType(schedule.schedule_type);
-    setScheduleModalVisible(true);
+  const openCreateSchedule = () => {
+    setEditingSchedule(null);
+    resetScheduleForm();
+    setScheduleDialogOpen(true);
   };
+
+  const openEditSchedule = (s: TemplateSchedule) => {
+    setEditingSchedule(s);
+    setSName(s.schedule_name);
+    setSTemplateId(String(s.template_id));
+    setSType(s.schedule_type);
+    setSHour(String(s.hour ?? 9));
+    setSMinute(String(s.minute ?? 0));
+    setSDayOfWeek(s.day_of_week ? s.day_of_week.split(',').map(d => d.trim()) : []);
+    setSIntervalMinutes(String(s.interval_minutes ?? 10));
+    setSTargetType(s.target_type);
+    setSTargetValue(s.target_value ?? '');
+    setSDateFilter(s.date_filter ?? '');
+    setSSmsType(s.sms_type);
+    setSExcludeSent(s.exclude_sent);
+    setSActive(s.active);
+    setScheduleDialogOpen(true);
+  };
+
+  const buildSchedulePayload = () => ({
+    schedule_name: sName,
+    template_id: Number(sTemplateId),
+    schedule_type: sType,
+    hour: sType === 'daily' || sType === 'weekly' ? Number(sHour) : undefined,
+    minute: sType === 'daily' || sType === 'weekly' || sType === 'hourly' ? Number(sMinute) : undefined,
+    day_of_week: sType === 'weekly' ? sDayOfWeek.join(',') : undefined,
+    interval_minutes: sType === 'interval' ? Number(sIntervalMinutes) : undefined,
+    timezone: 'Asia/Seoul',
+    target_type: sTargetType,
+    target_value: sTargetType === 'tag' ? sTargetValue : undefined,
+    date_filter: sDateFilter || undefined,
+    sms_type: sSmsType,
+    exclude_sent: sExcludeSent,
+    active: sActive,
+  });
 
   const handleSaveSchedule = async () => {
+    if (!sName.trim()) { toast.error('스케줄 이름을 입력하세요'); return; }
+    if (!sTemplateId) { toast.error('템플릿을 선택하세요'); return; }
+    if (sType === 'weekly' && sDayOfWeek.length === 0) { toast.error('요일을 선택하세요'); return; }
+    if (sTargetType === 'tag' && !sTargetValue.trim()) { toast.error('태그 이름을 입력하세요'); return; }
+
+    setSavingSchedule(true);
     try {
-      const values = await scheduleForm.validateFields();
-
+      const payload = buildSchedulePayload();
       if (editingSchedule) {
-        await templateSchedulesAPI.update(editingSchedule.id, values);
-        message.success('✅ 스케줄이 수정되었습니다');
+        await templateSchedulesAPI.update(editingSchedule.id, payload);
+        toast.success('스케줄이 수정되었습니다');
       } else {
-        await templateSchedulesAPI.create(values);
-        message.success('✅ 스케줄이 생성되었습니다');
+        await templateSchedulesAPI.create(payload);
+        toast.success('스케줄이 생성되었습니다');
       }
-
-      setScheduleModalVisible(false);
+      setScheduleDialogOpen(false);
       fetchSchedules();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '❌ 스케줄 저장 실패');
-      console.error(error);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? '스케줄 저장 실패');
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
-  const handleDeleteSchedule = async (id: number) => {
+  const handleDeleteSchedule = async (s: TemplateSchedule) => {
     try {
-      await templateSchedulesAPI.delete(id);
-      message.success('✅ 스케줄이 삭제되었습니다');
+      await templateSchedulesAPI.delete(s.id);
+      toast.success('스케줄이 삭제되었습니다');
       fetchSchedules();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '❌ 스케줄 삭제 실패');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? '스케줄 삭제 실패');
+    } finally {
+      setDeleteScheduleTarget(null);
     }
   };
 
   const handleRunSchedule = async (id: number) => {
+    const tid = toast.loading('실행 중...');
     try {
-      message.loading({ content: '⏳ 실행 중...', key: 'run' });
-      const response = await templateSchedulesAPI.run(id);
-      message.success({
-        content: `✅ 실행 완료: ${response.data.sent_count}명 발송, ${response.data.failed_count}명 실패`,
-        key: 'run',
-        duration: 5,
-      });
+      const res = await templateSchedulesAPI.run(id);
+      toast.success(`실행 완료: ${res.data.sent_count}명 발송, ${res.data.failed_count}명 실패`, { id: tid, duration: 5000 });
       fetchSchedules();
-    } catch (error: any) {
-      message.error({ content: '❌ 실행 실패', key: 'run' });
+    } catch {
+      toast.error('실행 실패', { id: tid });
     }
   };
 
   const handlePreviewTargets = async (id: number) => {
     try {
-      const response = await templateSchedulesAPI.preview(id);
-      setPreviewTargets(response.data);
-      setPreviewModalVisible(true);
-    } catch (error) {
-      message.error('❌ 대상 미리보기 실패');
+      const res = await templateSchedulesAPI.preview(id);
+      setPreviewTargets(res.data);
+      setPreviewDialogOpen(true);
+    } catch {
+      toast.error('대상 미리보기 실패');
     }
   };
 
   const handleSyncSchedules = async () => {
+    const tid = toast.loading('동기화 중...');
     try {
-      message.loading({ content: '⏳ 동기화 중...', key: 'sync' });
-      const response = await templateSchedulesAPI.sync();
-      message.success({
-        content: `✅ ${response.data.message}`,
-        key: 'sync',
-        duration: 2,
-      });
+      const res = await templateSchedulesAPI.sync();
+      toast.success(res.data.message, { id: tid, duration: 3000 });
       fetchSchedules();
-    } catch (error) {
-      message.error({ content: '❌ 동기화 실패', key: 'sync' });
+    } catch {
+      toast.error('동기화 실패', { id: tid });
     }
   };
 
-  // Template columns
-  const templateColumns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '템플릿 키',
-      dataIndex: 'key',
-      key: 'key',
-      width: 150,
-      render: (key: string) => <code style={{ color: '#1890ff' }}>{key}</code>,
-    },
-    {
-      title: '템플릿 이름',
-      dataIndex: 'name',
-      key: 'name',
-      width: 200,
-    },
-    {
-      title: '카테고리',
-      dataIndex: 'category',
-      key: 'category',
-      width: 120,
-      render: (category: string) => category && <Tag color="blue">{category}</Tag>,
-    },
-    {
-      title: '사용 변수',
-      dataIndex: 'variables',
-      key: 'variables',
-      width: 200,
-      render: (variables: string) => {
-        if (!variables) return <Text type="secondary">없음</Text>;
-        const varList = variables.split(',').map(v => v.trim());
-        return (
-          <Space size={[0, 4]} wrap>
-            {varList.map((v, i) => (
-              <Tag key={i} color="green">
-                {v}
-              </Tag>
-            ))}
-          </Space>
-        );
-      },
-    },
-    {
-      title: '활성 상태',
-      dataIndex: 'active',
-      key: 'active',
-      width: 100,
-      render: (active: boolean) => (
-        <Badge status={active ? 'success' : 'default'} text={active ? '활성' : '비활성'} />
-      ),
-    },
-    {
-      title: '연결된 스케줄',
-      dataIndex: 'schedule_count',
-      key: 'schedule_count',
-      width: 120,
-      render: (count: number) => <Badge count={count} showZero style={{ backgroundColor: '#52c41a' }} />,
-    },
-    {
-      title: '작업',
-      key: 'actions',
-      width: 150,
-      render: (_: any, record: Template) => (
-        <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditTemplate(record)}
-          >
-            수정
-          </Button>
-          <Popconfirm
-            title="템플릿을 삭제하시겠습니까?"
-            description={
-              record.schedule_count > 0
-                ? `이 템플릿에 ${record.schedule_count}개의 스케줄이 연결되어 있습니다. 정말 삭제하시겠습니까?`
-                : '정말로 삭제하시겠습니까?'
-            }
-            onConfirm={() => handleDeleteTemplate(record.id)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              삭제
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+  // ---------------------------------------------------------------------------
+  // Day-of-week toggle helper
+  // ---------------------------------------------------------------------------
+  const toggleDay = (day: string) => {
+    setSDayOfWeek(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
 
-  // Campaign columns
-  const campaignColumns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '발송 타입',
-      dataIndex: 'campaign_type',
-      key: 'campaign_type',
-      width: 140,
-      render: (type: string) => {
-        const typeMap: Record<string, { color: string; label: string }> = {
-          room_guide: { color: 'blue', label: '🏠 객실안내' },
-          party_guide: { color: 'purple', label: '🎉 파티안내' },
-          tag_based: { color: 'orange', label: '🏷️ 태그발송' },
-          template_schedule_파티안내: { color: 'magenta', label: '⏰ 자동발송(파티)' },
-          template_schedule_객실안내: { color: 'cyan', label: '⏰ 자동발송(객실)' },
-        };
-        const config = typeMap[type] || { color: 'default', label: type };
-        return <Tag color={config.color}>{config.label}</Tag>;
-      },
-    },
-    {
-      title: '대상 태그',
-      dataIndex: 'target_tag',
-      key: 'target_tag',
-      width: 120,
-      render: (tag: string) => tag ? <Tag color="geekblue">{tag}</Tag> : <Text type="secondary">-</Text>,
-    },
-    {
-      title: '대상 수',
-      dataIndex: 'target_count',
-      key: 'target_count',
-      width: 100,
-    },
-    {
-      title: '성공',
-      dataIndex: 'sent_count',
-      key: 'sent_count',
-      width: 80,
-      render: (count: number) => <Text style={{ color: '#52c41a', fontWeight: 'bold' }}>{count}</Text>,
-    },
-    {
-      title: '실패',
-      dataIndex: 'failed_count',
-      key: 'failed_count',
-      width: 80,
-      render: (count: number) =>
-        count > 0 ? (
-          <Text style={{ color: '#ff4d4f', fontWeight: 'bold' }}>{count}</Text>
+  // ---------------------------------------------------------------------------
+  // Render – Tab 1: Templates
+  // ---------------------------------------------------------------------------
+
+  const renderTemplatesTab = () => (
+    <div className="space-y-4">
+      {/* Info banner + action */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-[13px] text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          메시지 템플릿을 만들어두면 스케줄에서 자동으로 발송할 수 있습니다.{' '}
+          <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-blue-800/40">{'{{변수명}}'}</code>{' '}
+          형식으로 변수를 사용하세요.
+        </div>
+        <Button size="sm" onClick={openCreateTemplate}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          새 템플릿
+        </Button>
+      </div>
+
+      {/* Table card */}
+      <div className="section-card">
+        {loadingTemplates ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" />
+          </div>
+        ) : templates.length === 0 ? (
+          <div className="empty-state">
+            <FileText className="h-10 w-10" />
+            <p className="text-[14px] font-medium">템플릿이 없습니다</p>
+            <p className="text-[13px]">새 템플릿을 만들어 보세요</p>
+          </div>
         ) : (
-          <Text type="secondary">0</Text>
-        ),
-    },
-    {
-      title: '발송 일시',
-      dataIndex: 'sent_at',
-      key: 'sent_at',
-      width: 180,
-      render: (sentAt: string) => {
-        if (!sentAt) return <Text type="secondary">-</Text>;
-        const date = new Date(sentAt);
-        return <Text>{date.toLocaleString('ko-KR')}</Text>;
-      },
-    },
-  ];
-
-  // Schedule columns
-  const scheduleColumns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '스케줄 이름',
-      dataIndex: 'schedule_name',
-      key: 'schedule_name',
-      width: 180,
-    },
-    {
-      title: '사용 템플릿',
-      dataIndex: 'template_name',
-      key: 'template_name',
-      width: 150,
-      render: (name: string) => <Text strong>{name}</Text>,
-    },
-    {
-      title: '발송 주기',
-      dataIndex: 'schedule_type',
-      key: 'schedule_type',
-      width: 100,
-      render: (type: string) => {
-        const typeMap: Record<string, { label: string; color: string }> = {
-          daily: { label: '매일', color: 'blue' },
-          weekly: { label: '매주', color: 'green' },
-          hourly: { label: '매시간', color: 'orange' },
-          interval: { label: '간격', color: 'purple' },
-        };
-        const config = typeMap[type] || { label: type, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
-      },
-    },
-    {
-      title: '발송 시간',
-      key: 'schedule',
-      width: 200,
-      render: (_: any, record: TemplateSchedule) => {
-        if (record.schedule_type === 'daily') {
-          return `매일 ${record.hour}시 ${String(record.minute).padStart(2, '0')}분`;
-        } else if (record.schedule_type === 'weekly') {
-          const dayMap: Record<string, string> = {
-            mon: '월', tue: '화', wed: '수', thu: '목',
-            fri: '금', sat: '토', sun: '일'
-          };
-          const days = record.day_of_week?.split(',').map(d => dayMap[d.trim()] || d).join(', ');
-          return `${days}요일 ${record.hour}시 ${String(record.minute).padStart(2, '0')}분`;
-        } else if (record.schedule_type === 'hourly') {
-          return `매시간 ${String(record.minute).padStart(2, '0')}분`;
-        } else if (record.schedule_type === 'interval') {
-          return `${record.interval_minutes}분마다`;
-        }
-        return '-';
-      },
-    },
-    {
-      title: '발송 대상',
-      key: 'target',
-      width: 150,
-      render: (_: any, record: TemplateSchedule) => {
-        const targetLabels: Record<string, { label: string; color: string }> = {
-          all: { label: '전체', color: 'default' },
-          tag: { label: `태그: ${record.target_value}`, color: 'cyan' },
-          room_assigned: { label: '객실배정자', color: 'blue' },
-          party_only: { label: '파티만', color: 'magenta' },
-        };
-        const config = targetLabels[record.target_type] || { label: record.target_type, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
-      },
-    },
-    {
-      title: '다음 실행',
-      dataIndex: 'next_run',
-      key: 'next_run',
-      width: 180,
-      render: (nextRun: string | null) => {
-        if (!nextRun) return <Text type="secondary">-</Text>;
-        const date = new Date(nextRun);
-        const now = new Date();
-        const diff = date.getTime() - now.getTime();
-        const minutes = Math.floor(diff / 60000);
-
-        if (minutes < 60) {
-          return <Text type="warning" strong>{minutes}분 후</Text>;
-        }
-        return <Text>{date.toLocaleString('ko-KR')}</Text>;
-      },
-    },
-    {
-      title: '상태',
-      dataIndex: 'active',
-      key: 'active',
-      width: 80,
-      render: (active: boolean) => (
-        <Badge status={active ? 'processing' : 'default'} text={active ? '활성' : '비활성'} />
-      ),
-    },
-    {
-      title: '작업',
-      key: 'actions',
-      width: 220,
-      render: (_: any, record: TemplateSchedule) => (
-        <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEditSchedule(record)}
-            title="스케줄 수정"
-          >
-            수정
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<PlayCircleOutlined />}
-            onClick={() => handleRunSchedule(record.id)}
-            title="지금 즉시 실행"
-          >
-            실행
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handlePreviewTargets(record.id)}
-            title="발송 대상 미리보기"
-          >
-            미리보기
-          </Button>
-          <Popconfirm
-            title="스케줄을 삭제하시겠습니까?"
-            description="삭제하면 자동 발송이 중단됩니다."
-            onConfirm={() => handleDeleteSchedule(record.id)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} title="스케줄 삭제">
-              삭제
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  // Render schedule fields based on type
-  const renderScheduleFields = () => {
-    const type = selectedScheduleType;
-
-    if (type === 'daily') {
-      return (
-        <>
-          <Form.Item
-            label="시 (Hour)"
-            name="hour"
-            rules={[{ required: true, message: '시를 선택하세요' }]}
-            extra={<Text type="secondary">💡 매일 이 시간에 발송됩니다</Text>}
-          >
-            <Select placeholder="시 선택" size="large" style={{ width: '100%' }}>
-              {Array.from({ length: 24 }, (_, i) => (
-                <Option key={i} value={i}>
-                  {String(i).padStart(2, '0')}시
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item
-            label="분 (Minute)"
-            name="minute"
-            rules={[{ required: true, message: '분을 선택하세요' }]}
-          >
-            <Select placeholder="분 선택" size="large" style={{ width: '100%' }}>
-              {Array.from({ length: 60 }, (_, i) => (
-                <Option key={i} value={i}>
-                  {String(i).padStart(2, '0')}분
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </>
-      );
-    } else if (type === 'weekly') {
-      return (
-        <>
-          <Form.Item
-            label="요일"
-            name="day_of_week"
-            rules={[{ required: true, message: '요일을 선택하세요' }]}
-            extra={<Text type="secondary">💡 선택한 요일마다 발송됩니다 (여러 개 선택 가능)</Text>}
-          >
-            <Select mode="multiple" placeholder="요일 선택 (복수 선택 가능)" size="large">
-              <Option value="mon">월요일</Option>
-              <Option value="tue">화요일</Option>
-              <Option value="wed">수요일</Option>
-              <Option value="thu">목요일</Option>
-              <Option value="fri">금요일</Option>
-              <Option value="sat">토요일</Option>
-              <Option value="sun">일요일</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item
-            label="시 (Hour)"
-            name="hour"
-            rules={[{ required: true, message: '시를 선택하세요' }]}
-          >
-            <Select placeholder="시 선택" size="large">
-              {Array.from({ length: 24 }, (_, i) => (
-                <Option key={i} value={i}>
-                  {String(i).padStart(2, '0')}시
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item
-            label="분 (Minute)"
-            name="minute"
-            rules={[{ required: true, message: '분을 선택하세요' }]}
-          >
-            <Select placeholder="분 선택" size="large">
-              {Array.from({ length: 60 }, (_, i) => (
-                <Option key={i} value={i}>
-                  {String(i).padStart(2, '0')}분
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </>
-      );
-    } else if (type === 'hourly') {
-      return (
-        <Form.Item
-          label="분 (Minute)"
-          name="minute"
-          rules={[{ required: true, message: '분을 선택하세요' }]}
-          extra={<Text type="secondary">💡 매시간 이 분에 발송됩니다 (예: 10분 → 1:10, 2:10, 3:10...)</Text>}
-        >
-          <Select placeholder="분 선택" size="large">
-            {Array.from({ length: 60 }, (_, i) => (
-              <Option key={i} value={i}>
-                매시간 {String(i).padStart(2, '0')}분
-              </Option>
-            ))}
-          </Select>
-        </Form.Item>
-      );
-    } else if (type === 'interval') {
-      return (
-        <Form.Item
-          label="간격 (분)"
-          name="interval_minutes"
-          rules={[{ required: true, message: '간격을 입력하세요' }]}
-          extra={<Text type="secondary">💡 N분마다 반복 발송됩니다 (예: 10분 → 10분마다 발송)</Text>}
-        >
-          <InputNumber
-            min={1}
-            max={1440}
-            placeholder="예: 10"
-            size="large"
-            style={{ width: '100%' }}
-            addonAfter="분마다"
-          />
-        </Form.Item>
-      );
-    }
-  };
-
-  return (
-    <div style={{ padding: 24 }}>
-      <Card title="📝 메시지 템플릿 및 스케줄 관리">
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'templates',
-              label: '📄 템플릿 관리',
-              children: (
-                <>
-                  <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-                    <Text type="secondary">
-                      💡 메시지 템플릿을 만들어두면 스케줄에서 자동으로 발송할 수 있습니다.
-                      변수를 사용하면 고객 이름, 객실 번호 등을 자동으로 채워줍니다.
-                    </Text>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateTemplate} size="large">
-                      새 템플릿 만들기
-                    </Button>
-                  </Space>
-
-                  <Table
-                    columns={templateColumns}
-                    dataSource={templates}
-                    loading={loadingTemplates}
-                    rowKey="id"
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: 1200 }}
-                  />
-                </>
-              ),
-            },
-            {
-              key: 'schedules',
-              label: '⏰ 발송 스케줄',
-              children: (
-                <>
-                  <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-                    <Text type="secondary">
-                      💡 템플릿을 자동으로 발송할 시간을 설정합니다.
-                      매일, 매주, 매시간, 또는 N분마다 발송할 수 있습니다.
-                    </Text>
-                    <Space>
-                      <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateSchedule} size="large">
-                        새 스케줄 만들기
-                      </Button>
-                      <Button icon={<SyncOutlined />} onClick={handleSyncSchedules}>
-                        스케줄러 동기화
-                      </Button>
-                    </Space>
-                  </Space>
-
-                  <Table
-                    columns={scheduleColumns}
-                    dataSource={schedules}
-                    loading={loadingSchedules}
-                    rowKey="id"
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: 1400 }}
-                  />
-                </>
-              ),
-            },
-            {
-              key: 'campaigns',
-              label: '📊 발송 이력',
-              children: (
-                <>
-                  <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-                    <Text type="secondary">
-                      💡 지금까지 발송한 메시지의 이력을 확인할 수 있습니다.
-                      템플릿 스케줄로 발송된 메시지와 수동 발송 모두 기록됩니다.
-                    </Text>
-                    <Button
-                      onClick={fetchCampaigns}
-                      icon={<ReloadOutlined />}
-                      loading={loadingCampaigns}
-                    >
-                      새로고침
-                    </Button>
-                  </Space>
-
-                  <Table
-                    dataSource={campaigns}
-                    columns={campaignColumns}
-                    loading={loadingCampaigns}
-                    rowKey="id"
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: 1000 }}
-                  />
-                </>
-              ),
-            },
-          ]}
-        />
-      </Card>
-
-      {/* Template Modal */}
-      <Modal
-        title={
-          <Space>
-            <span>{editingTemplate ? '📝 템플릿 수정' : '✨ 새 템플릿 만들기'}</span>
-          </Space>
-        }
-        open={templateModalVisible}
-        onOk={handleSaveTemplate}
-        onCancel={() => setTemplateModalVisible(false)}
-        okText="저장"
-        cancelText="취소"
-        width={750}
-      >
-        <Form form={templateForm} layout="vertical">
-          <Form.Item
-            label="템플릿 키 (Template Key)"
-            name="key"
-            rules={[
-              { required: true, message: '템플릿 키를 입력하세요' },
-              { pattern: /^[a-z_]+$/, message: '영문 소문자와 언더스코어(_)만 사용 가능합니다' },
-            ]}
-            extra={
-              <Text type="secondary">
-                💡 시스템에서 사용하는 고유 식별자입니다. 예: welcome_message, room_guide
-              </Text>
-            }
-          >
-            <Input placeholder="예: welcome_message" disabled={!!editingTemplate} />
-          </Form.Item>
-
-          <Form.Item
-            label="템플릿 이름"
-            name="name"
-            rules={[{ required: true, message: '템플릿 이름을 입력하세요' }]}
-            extra={<Text type="secondary">💡 관리자가 보는 이름입니다. 한글로 작성하세요.</Text>}
-          >
-            <Input placeholder="예: 환영 메시지" />
-          </Form.Item>
-
-          <Form.Item label="카테고리" name="category" extra={<Text type="secondary">💡 템플릿 분류용입니다. 선택하지 않아도 됩니다.</Text>}>
-            <Select placeholder="카테고리 선택 (선택사항)" allowClear>
-              <Option value="room_guide">🏠 객실 안내</Option>
-              <Option value="party_guide">🎉 파티 안내</Option>
-              <Option value="confirmation">✅ 예약 확인</Option>
-              <Option value="reminder">⏰ 리마인더</Option>
-              <Option value="other">📌 기타</Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            label="메시지 내용"
-            name="content"
-            rules={[{ required: true, message: '메시지 내용을 입력하세요' }]}
-            extra={
-              <div style={{ marginTop: 8 }}>
-                <Text type="secondary">
-                  💡 <strong>변수 사용법:</strong> {`{{변수명}}`} 형식으로 작성하면 자동으로 값이 채워집니다
-                </Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  예: {`{{customerName}}`}님, 객실은 {`{{roomNumber}}`}호입니다.
-                </Text>
-              </div>
-            }
-          >
-            <TextArea
-              rows={8}
-              placeholder={`예시:\n안녕하세요 {{name}}님!\n금일 객실은 {{building}}동 {{roomNum}}호입니다.\n비밀번호: {{password}}\n파티 시간: {{partyTime}}\n총 인원: {{totalParticipants}}명\n\n즐거운 하루 되세요!`}
-              style={{ fontFamily: 'monospace' }}
-              onChange={(e) => {
-                // 실시간 변수 감지
-                const detected = extractAndValidateVariables(e.target.value, availableVariables);
-                setDetectedVariables(detected);
-
-                // variables 필드 자동 채우기 (쉼표 구분 문자열)
-                const variablesString = detected.valid.join(',');
-                templateForm.setFieldsValue({ variables: variablesString });
-              }}
-            />
-          </Form.Item>
-
-          {/* 사용된 변수 - 읽기 전용 표시 */}
-          <Form.Item
-            label="사용된 변수"
-            extra={
-              <div style={{ marginTop: 8 }}>
-                <Text type="secondary">
-                  💡 메시지 내용에서 자동으로 감지된 변수입니다.
-                  변수를 사용하려면 위 메시지 내용에 <code>{`{{변수명}}`}</code> 형식으로 입력하세요.
-                </Text>
-              </div>
-            }
-          >
-            {/* ✅ 유효한 변수 */}
-            {detectedVariables.valid.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <Text type="secondary" strong style={{ display: 'block', marginBottom: 8 }}>
-                  ✅ 유효한 변수:
-                </Text>
-                <Space size={[0, 8]} wrap>
-                  {detectedVariables.valid.map((varName) => (
-                    <Tag
-                      key={varName}
-                      color="success"
-                      icon={<CheckCircleOutlined />}
-                      style={{ fontSize: 13, padding: '4px 10px' }}
-                    >
-                      <code>{`{{${varName}}}`}</code>
-                      {availableVariables?.variables[varName] && (
-                        <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
-                          - {availableVariables.variables[varName].description}
-                        </Text>
+          <div className="overflow-x-auto">
+            <Table hoverable striped>
+              <TableHead>
+                <TableRow>
+                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">템플릿 키</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap min-w-[120px]">템플릿 이름</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">카테고리</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">사용 변수</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap">상태</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap">스케줄</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap">작업</TableHeadCell>
+                </TableRow>
+              </TableHead>
+              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                {templates.map(t => (
+                  <TableRow key={t.id}>
+                    <TableCell>
+                      <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{t.id}</span>
+                    </TableCell>
+                    <TableCell>
+                      <code className="rounded bg-[#F2F4F6] px-1.5 py-0.5 font-mono text-[12px] text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">
+                        {t.key}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-medium text-[#191F28] dark:text-white">{t.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      {t.category ? (
+                        <Badge color="indigo" size="sm">{CATEGORY_LABELS[t.category] ?? t.category}</Badge>
+                      ) : (
+                        <span className="text-[#B0B8C1] dark:text-gray-500">-</span>
                       )}
-                    </Tag>
-                  ))}
-                </Space>
-              </div>
+                    </TableCell>
+                    <TableCell>
+                      {t.variables ? (
+                        <div className="flex flex-wrap gap-1">
+                          {t.variables.split(',').filter(Boolean).map(v => (
+                            <Badge key={v} color="purple" size="sm">
+                              <code className="font-mono">{v.trim()}</code>
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">없음</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge color={t.active ? 'success' : 'gray'} size="sm">
+                        {t.active ? '활성' : '비활성'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {t.schedule_count > 0 ? (
+                        <Badge color="blue" size="sm">{t.schedule_count}개</Badge>
+                      ) : (
+                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">0</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="xs" color="failure" onClick={() => setDeleteTemplateTarget(t)} title="삭제">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render – Tab 2: Schedules
+  // ---------------------------------------------------------------------------
+
+  const renderSchedulesTab = () => (
+    <div className="space-y-4">
+      {/* Info banner + actions */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-[13px] text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          템플릿을 자동으로 발송할 시간을 설정합니다. 매일, 매주, 매시간, 또는 N분마다 발송할 수 있습니다.
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" color="light" onClick={handleSyncSchedules}>
+            <RefreshCw className="mr-1.5 h-4 w-4" />
+            동기화
+          </Button>
+          <Button size="sm" onClick={openCreateSchedule}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            새 스케줄
+          </Button>
+        </div>
+      </div>
+
+      {/* Table card */}
+      <div className="section-card">
+        {loadingSchedules ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" />
+          </div>
+        ) : schedules.length === 0 ? (
+          <div className="empty-state">
+            <Clock className="h-10 w-10" />
+            <p className="text-[14px] font-medium">스케줄이 없습니다</p>
+            <p className="text-[13px]">새 발송 스케줄을 만들어 보세요</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table hoverable striped>
+              <TableHead>
+                <TableRow>
+                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">스케줄 이름</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">사용 템플릿</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap">주기</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">발송 시간</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">발송 대상</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">다음 실행</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap">상태</TableHeadCell>
+                  <TableHeadCell className="w-28 whitespace-nowrap">작업</TableHeadCell>
+                </TableRow>
+              </TableHead>
+              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                {schedules.map(s => {
+                  const nextRun = formatRelativeTime(s.next_run);
+                  const isNextRunSoon = s.next_run && (() => {
+                    const diff = new Date(s.next_run!).getTime() - Date.now();
+                    return diff > 0 && diff < 3600000;
+                  })();
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{s.id}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-[#191F28] dark:text-white">{s.schedule_name}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[14px] text-[#4E5968] dark:text-gray-300">{s.template_name}</span>
+                          <code className="text-[12px] text-[#8B95A1] dark:text-gray-500">{s.template_key}</code>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge color="indigo" size="sm">{getScheduleTypeLabel(s.schedule_type)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-[14px] text-[#4E5968] dark:text-gray-300">{formatScheduleTime(s)}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge color="gray" size="sm">{getTargetLabel(s)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge color={isNextRunSoon ? 'warning' : 'gray'} size="sm">{nextRun}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge color={s.active ? 'success' : 'gray'} size="sm">
+                          {s.active ? '활성' : '비활성'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button size="xs" color="light" onClick={() => openEditSchedule(s)} title="수정">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="xs" color="light" onClick={() => handleRunSchedule(s.id)} title="즉시 실행">
+                            <Play className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="xs" color="light" onClick={() => handlePreviewTargets(s.id)} title="대상 미리보기">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="xs" color="failure" onClick={() => setDeleteScheduleTarget(s)} title="삭제">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render – Tab 3: Campaign history
+  // ---------------------------------------------------------------------------
+
+  const renderCampaignsTab = () => (
+    <div className="space-y-4">
+      {/* Info banner + action */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-[13px] text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          지금까지 발송한 메시지 이력입니다. 템플릿 스케줄 자동 발송과 수동 발송 모두 기록됩니다.
+        </div>
+        <Button size="sm" color="light" onClick={fetchCampaigns} disabled={loadingCampaigns}>
+          {loadingCampaigns ? (
+            <Spinner size="sm" className="mr-1.5" />
+          ) : (
+            <RefreshCw className="mr-1.5 h-4 w-4" />
+          )}
+          새로고침
+        </Button>
+      </div>
+
+      {/* Table card */}
+      <div className="section-card">
+        {loadingCampaigns ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" />
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="empty-state">
+            <BarChart3 className="h-10 w-10" />
+            <p className="text-[14px] font-medium">발송 이력이 없습니다</p>
+            <p className="text-[13px]">스케줄 또는 수동 발송 후 이력이 기록됩니다</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table hoverable striped>
+              <TableHead>
+                <TableRow>
+                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">발송 타입</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">대상 태그</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap">대상 수</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap">성공</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap">실패</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">발송 일시</TableHeadCell>
+                </TableRow>
+              </TableHead>
+              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                {campaigns.map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{c.id}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge color="indigo" size="sm">{getCampaignTypeLabel(c.campaign_type)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {c.target_tag ? (
+                        <Badge color="purple" size="sm">{c.target_tag}</Badge>
+                      ) : (
+                        <span className="text-[#B0B8C1] dark:text-gray-500">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="tabular-nums font-medium text-[#191F28] dark:text-white">{c.target_count}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge color="success" size="sm">{c.sent_count}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {c.failed_count > 0 ? (
+                        <Badge color="failure" size="sm">{c.failed_count}</Badge>
+                      ) : (
+                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">0</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-[14px] text-[#8B95A1] dark:text-gray-400">
+                        {c.sent_at ? new Date(c.sent_at).toLocaleString('ko-KR') : '-'}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render – Template dialog
+  // ---------------------------------------------------------------------------
+
+  const renderTemplateDialog = () => (
+    <Modal show={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} size="2xl">
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">
+        {editingTemplate ? '템플릿 수정' : '새 템플릿 만들기'}
+      </ModalHeader>
+
+      <ModalBody>
+        <div className="space-y-5">
+          {/* Key */}
+          <div className="space-y-2">
+            <Label htmlFor="t-key">
+              템플릿 키 <span className="text-[#F04452]">*</span>
+            </Label>
+            <TextInput
+              id="t-key"
+              placeholder="예: welcome_message"
+              value={tKey}
+              onChange={e => { setTKey(e.target.value); setTKeyError(''); }}
+              disabled={!!editingTemplate}
+              color={tKeyError ? 'failure' : undefined}
+            />
+            {tKeyError ? (
+              <p className="text-[12px] text-[#F04452]">{tKeyError}</p>
+            ) : (
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">시스템 고유 식별자. 영문 소문자와 _ 만 허용됩니다.</p>
             )}
+          </div>
 
-            {/* ❌ 유효하지 않은 변수 */}
-            {detectedVariables.invalid.length > 0 && (
-              <div>
-                <Text type="danger" strong style={{ display: 'block', marginBottom: 8 }}>
-                  ❌ 유효하지 않은 변수 (사용 불가):
-                </Text>
-                <Space size={[0, 8]} wrap>
-                  {detectedVariables.invalid.map((varName) => (
-                    <Tag
-                      key={varName}
-                      color="error"
-                      icon={<CloseCircleOutlined />}
-                      style={{ fontSize: 13, padding: '4px 10px' }}
-                    >
-                      <code>{`{{${varName}}}`}</code>
-                      <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
-                        - 정의되지 않음
-                      </Text>
-                    </Tag>
-                  ))}
-                </Space>
-              </div>
-            )}
+          {/* Name */}
+          <div className="space-y-2">
+            <Label htmlFor="t-name">
+              템플릿 이름 <span className="text-[#F04452]">*</span>
+            </Label>
+            <TextInput
+              id="t-name"
+              placeholder="예: 환영 메시지"
+              value={tName}
+              onChange={e => setTName(e.target.value)}
+            />
+            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
+          </div>
 
-            {/* 빈 상태 */}
-            {detectedVariables.valid.length === 0 && detectedVariables.invalid.length === 0 && (
-              <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 4 }}>
-                <Text type="secondary">
-                  메시지 내용에 변수가 감지되지 않았습니다.
-                  변수를 사용하려면 <code>{`{{변수명}}`}</code> 형식으로 입력하세요.
-                </Text>
-              </div>
-            )}
-          </Form.Item>
+          {/* Category */}
+          <div className="space-y-2">
+            <Label>카테고리</Label>
+            <Select value={tCategory} onChange={e => setTCategory(e.target.value)}>
+              <option value="">카테고리 선택 (선택사항)</option>
+              <option value="room_guide">객실 안내</option>
+              <option value="party_guide">파티 안내</option>
+              <option value="confirmation">예약 확인</option>
+              <option value="reminder">리마인더</option>
+              <option value="other">기타</option>
+            </Select>
+          </div>
 
-          {/* Form 제출용 숨겨진 필드 */}
-          <Form.Item name="variables" hidden>
-            <Input />
-          </Form.Item>
+          {/* Content */}
+          <div className="space-y-2">
+            <Label htmlFor="t-content">
+              메시지 내용 <span className="text-[#F04452]">*</span>
+            </Label>
+            <Textarea
+              id="t-content"
+              rows={8}
+              placeholder={`예시:\n안녕하세요 {{name}}님!\n금일 객실은 {{building}}동 {{roomNum}}호입니다.\n비밀번호: {{password}}`}
+              value={tContent}
+              onChange={e => handleContentChange(e.target.value)}
+              className="font-mono text-[14px]"
+            />
+            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">
+              <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">{'{{변수명}}'}</code>{' '}
+              형식으로 변수를 삽입하세요
+            </p>
+          </div>
 
-          {/* 사용 가능한 변수 참고 */}
-          <Form.Item
-            label="사용 가능한 변수 참고"
-            extra={
-              <Text type="secondary">
-                💡 아래는 시스템에서 사용 가능한 모든 변수 목록입니다.
-                메시지 내용에 <code>{`{{변수명}}`}</code> 형식으로 입력하면 자동으로 감지됩니다.
-              </Text>
-            }
-          >
-            {availableVariables && (
-              <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 4, maxHeight: 200, overflow: 'auto' }}>
-                {Object.entries(availableVariables.categories || {}).map(([category, vars]: [string, any]) => (
-                  <div key={category} style={{ marginBottom: 12 }}>
-                    <Text strong style={{ fontSize: 12, color: '#1890ff' }}>
-                      {category === 'reservation' && '📋 예약 정보'}
-                      {category === 'room' && '🏨 객실 정보'}
-                      {category === 'party' && '🎉 파티 정보'}
-                      {category === 'datetime' && '📅 날짜/시간'}
-                      {category === 'other' && '🔧 기타'}
-                    </Text>
-                    <div style={{ marginTop: 4, marginLeft: 12 }}>
-                      {vars.map((v: any) => (
-                        <Tag key={v.name} style={{ margin: '2px', fontSize: 11 }}>
-                          <code>{`{{${v.name}}}`}</code> - {v.description}
-                        </Tag>
+          {/* Detected variables */}
+          {(detectedVars.valid.length > 0 || detectedVars.invalid.length > 0) && (
+            <div className="rounded-2xl border border-[#F2F4F6] bg-[#F2F4F6] p-4 dark:border-gray-800 dark:bg-[#1E1E24]">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">감지된 변수</p>
+              <div className="space-y-3">
+                {detectedVars.valid.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="flex items-center gap-1 text-[12px] font-medium text-[#00C9A7] dark:text-green-400">
+                      <CheckCircle className="h-3 w-3" /> 유효한 변수
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detectedVars.valid.map(v => (
+                        <span
+                          key={v}
+                          className="inline-flex items-center gap-1 rounded-xl bg-[#E8FAF5] px-2 py-0.5 text-[12px] text-[#00C9A7] dark:bg-green-900/20 dark:text-green-400"
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                          <code className="font-mono">{`{{${v}}}`}</code>
+                          {availableVariables?.variables?.[v] && (
+                            <span className="text-[#00C9A7]"> — {availableVariables.variables[v].description}</span>
+                          )}
+                        </span>
                       ))}
                     </div>
                   </div>
-                ))}
+                )}
+                {detectedVars.invalid.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="flex items-center gap-1 text-[12px] font-medium text-[#F04452] dark:text-red-400">
+                      <XCircle className="h-3 w-3" /> 유효하지 않은 변수
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detectedVars.invalid.map(v => (
+                        <span
+                          key={v}
+                          className="inline-flex items-center gap-1 rounded-xl bg-[#FFEBEE] px-2 py-0.5 text-[12px] text-[#F04452] dark:bg-red-900/20 dark:text-red-400"
+                        >
+                          <XCircle className="h-3 w-3" />
+                          <code className="font-mono">{`{{${v}}}`}</code>
+                          <span className="text-[#F04452]"> — 정의되지 않음</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </Form.Item>
+            </div>
+          )}
 
-          <Form.Item label="활성 상태" name="active" valuePropName="checked" extra={<Text type="secondary">💡 비활성화하면 이 템플릿을 사용할 수 없습니다</Text>}>
-            <Switch checkedChildren="활성" unCheckedChildren="비활성" />
-          </Form.Item>
-        </Form>
-      </Modal>
+          {/* Available variables reference (collapsible) */}
+          {availableVariables && (
+            <div className="rounded-2xl border border-[#F2F4F6] dark:border-gray-800">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-4 py-3 text-[14px] font-medium text-[#4E5968] hover:bg-[#F2F4F6] dark:text-gray-300 dark:hover:bg-[#2C2C34]"
+                onClick={() => setShowVarRef(v => !v)}
+              >
+                <span>사용 가능한 변수 참고</span>
+                {showVarRef ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {showVarRef && (
+                <div className="border-t border-[#F2F4F6] px-4 py-4 dark:border-gray-800">
+                  <div className="space-y-4">
+                    {Object.entries(availableVariables.categories ?? {}).map(([cat, vars]: [string, any]) => (
+                      <div key={cat}>
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">
+                          {CATEGORY_ICON[cat] ?? cat}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(vars as any[]).map((v: any) => (
+                            <span
+                              key={v.name}
+                              className="inline-flex items-center gap-1 rounded-xl bg-[#F2F4F6] px-2 py-0.5 text-[12px] text-[#4E5968] dark:bg-gray-700 dark:text-gray-300"
+                            >
+                              <code className="font-mono text-[#3182F6] dark:text-blue-400">{`{{${v.name}}}`}</code>
+                              <span className="text-[#8B95A1]"> — {v.description}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* Schedule Modal */}
-      <Modal
-        title={
-          <Space>
-            <span>{editingSchedule ? '⏰ 스케줄 수정' : '🎯 새 발송 스케줄 만들기'}</span>
-          </Space>
-        }
-        open={scheduleModalVisible}
-        onOk={handleSaveSchedule}
-        onCancel={() => setScheduleModalVisible(false)}
-        okText="저장"
-        cancelText="취소"
-        width={750}
-      >
-        <Form form={scheduleForm} layout="vertical">
-          <Form.Item
-            label="스케줄 이름"
-            name="schedule_name"
-            rules={[{ required: true, message: '스케줄 이름을 입력하세요' }]}
-            extra={<Text type="secondary">💡 관리하기 쉽게 알아보기 쉬운 이름을 지어주세요</Text>}
-          >
-            <Input placeholder="예: 파티 안내 자동 발송" />
-          </Form.Item>
+          {/* Active */}
+          <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
+            <div>
+              <p className="text-[14px] font-medium text-[#191F28] dark:text-white">활성 상태</p>
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">비활성화하면 이 템플릿을 사용할 수 없습니다</p>
+            </div>
+            <ToggleSwitch id="t-active" checked={tActive} onChange={setTActive} label="" />
+          </div>
+        </div>
+      </ModalBody>
 
-          <Form.Item
-            label="발송할 템플릿"
-            name="template_id"
-            rules={[{ required: true, message: '템플릿을 선택하세요' }]}
-            extra={<Text type="secondary">💡 위에서 만든 템플릿 중 하나를 선택하세요</Text>}
-          >
-            <Select placeholder="템플릿 선택" size="large">
-              {templates.map((t) => (
-                <Option key={t.id} value={t.id}>
-                  📄 {t.name} <Text type="secondary">({t.key})</Text>
-                </Option>
+      <ModalFooter className="flex justify-end gap-2 border-t border-[#F2F4F6] dark:border-gray-800">
+        <Button color="blue" size="sm" onClick={handleSaveTemplate} disabled={savingTemplate}>
+          {savingTemplate ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
+        </Button>
+        <Button color="light" size="sm" onClick={() => setTemplateDialogOpen(false)}>취소</Button>
+      </ModalFooter>
+    </Modal>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render – Schedule dialog
+  // ---------------------------------------------------------------------------
+
+  const renderScheduleDialog = () => (
+    <Modal show={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} size="2xl">
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">
+        {editingSchedule ? '스케줄 수정' : '새 발송 스케줄 만들기'}
+      </ModalHeader>
+
+      <ModalBody>
+        <div className="space-y-5">
+          {/* Schedule name */}
+          <div className="space-y-2">
+            <Label>스케줄 이름 <span className="text-[#F04452]">*</span></Label>
+            <TextInput
+              placeholder="예: 파티 안내 자동 발송"
+              value={sName}
+              onChange={e => setSName(e.target.value)}
+            />
+            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">관리하기 쉽게 알아보기 쉬운 이름을 지어주세요</p>
+          </div>
+
+          {/* Template */}
+          <div className="space-y-2">
+            <Label>발송할 템플릿 <span className="text-[#F04452]">*</span></Label>
+            <Select value={sTemplateId} onChange={e => setSTemplateId(e.target.value)}>
+              <option value="">템플릿 선택</option>
+              {templates.map(t => (
+                <option key={t.id} value={String(t.id)}>
+                  {t.name} ({t.key})
+                </option>
               ))}
             </Select>
-          </Form.Item>
+          </div>
 
-          <Form.Item
-            label="발송 주기"
-            name="schedule_type"
-            rules={[{ required: true, message: '발송 주기를 선택하세요' }]}
-            extra={<Text type="secondary">💡 메시지를 얼마나 자주 보낼지 선택하세요</Text>}
-          >
-            <Radio.Group onChange={(e) => setSelectedScheduleType(e.target.value)} size="large">
-              <Radio.Button value="daily" style={{ minWidth: 100 }}>📅 매일</Radio.Button>
-              <Radio.Button value="weekly" style={{ minWidth: 100 }}>📆 매주</Radio.Button>
-              <Radio.Button value="hourly" style={{ minWidth: 100 }}>⏰ 매시간</Radio.Button>
-              <Radio.Button value="interval" style={{ minWidth: 100 }}>⏱️ 간격</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
-          {renderScheduleFields()}
-
-          <Form.Item
-            label="발송 대상"
-            name="target_type"
-            rules={[{ required: true, message: '발송 대상을 선택하세요' }]}
-            extra={<Text type="secondary">💡 누구에게 메시지를 보낼지 선택하세요</Text>}
-          >
-            <Select placeholder="대상 선택" size="large">
-              <Option value="all">👥 전체 예약자</Option>
-              <Option value="tag">🏷️ 특정 태그가 있는 사람</Option>
-              <Option value="room_assigned">🏠 객실이 배정된 사람</Option>
-              <Option value="party_only">🎉 파티만 참석하는 사람</Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prevValues, currentValues) =>
-              prevValues.target_type !== currentValues.target_type
-            }
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('target_type') === 'tag' ? (
-                <Form.Item
-                  label="태그 이름"
-                  name="target_value"
-                  rules={[{ required: true, message: '태그 이름을 입력하세요' }]}
-                  extra={<Text type="secondary">💡 예약자에게 붙은 태그를 입력하세요 (예: 파티만, 1초, 2차만)</Text>}
+          {/* Schedule type */}
+          <div className="space-y-3">
+            <Label>발송 주기 <span className="text-[#F04452]">*</span></Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { value: 'daily', label: '매일' },
+                { value: 'weekly', label: '매주' },
+                { value: 'hourly', label: '매시간' },
+                { value: 'interval', label: '간격' },
+              ].map(opt => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[14px] font-medium transition-colors ${
+                    sType === opt.value
+                      ? 'border-[#3182F6] bg-[#E8F3FF] text-[#3182F6] dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-300'
+                      : 'border-[#F2F4F6] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-[#2C2C34]'
+                  }`}
                 >
-                  <Input placeholder="예: 파티만" />
-                </Form.Item>
-              ) : null
-            }
-          </Form.Item>
+                  <Radio
+                    name="scheduleType"
+                    value={opt.value}
+                    checked={sType === opt.value}
+                    onChange={() => setSType(opt.value)}
+                    className="hidden"
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-          <Form.Item
-            label="날짜 필터"
-            name="date_filter"
-            extra={<Text type="secondary">💡 특정 날짜의 예약자에게만 보낼 수 있습니다</Text>}
-          >
-            <Select placeholder="필터 없음 (모든 날짜)" allowClear size="large">
-              <Option value="today">📅 오늘 예약자</Option>
-              <Option value="tomorrow">📆 내일 예약자</Option>
+          {/* Dynamic time fields */}
+          {sType === 'daily' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>시 (Hour)</Label>
+                <Select value={sHour} onChange={e => setSHour(e.target.value)}>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={String(i)}>{String(i).padStart(2, '0')}시</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>분 (Minute)</Label>
+                <Select value={sMinute} onChange={e => setSMinute(e.target.value)}>
+                  {Array.from({ length: 60 }, (_, i) => (
+                    <option key={i} value={String(i)}>{String(i).padStart(2, '0')}분</option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {sType === 'weekly' && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>요일</Label>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(DAY_MAP).map(([k, v]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => toggleDay(k)}
+                      className={`rounded-xl border px-3 py-1.5 text-[14px] font-medium transition-colors ${
+                        sDayOfWeek.includes(k)
+                          ? 'border-[#3182F6] bg-[#3182F6] text-white'
+                          : 'border-[#F2F4F6] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>시</Label>
+                  <Select value={sHour} onChange={e => setSHour(e.target.value)}>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>{String(i).padStart(2, '0')}시</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>분</Label>
+                  <Select value={sMinute} onChange={e => setSMinute(e.target.value)}>
+                    {Array.from({ length: 60 }, (_, i) => (
+                      <option key={i} value={String(i)}>{String(i).padStart(2, '0')}분</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sType === 'hourly' && (
+            <div className="space-y-2">
+              <Label>분 (Minute)</Label>
+              <Select value={sMinute} onChange={e => setSMinute(e.target.value)}>
+                {Array.from({ length: 60 }, (_, i) => (
+                  <option key={i} value={String(i)}>매시간 {String(i).padStart(2, '0')}분</option>
+                ))}
+              </Select>
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">매시간 이 분에 발송됩니다 (예: 10분 → 1:10, 2:10, 3:10...)</p>
+            </div>
+          )}
+
+          {sType === 'interval' && (
+            <div className="space-y-2">
+              <Label>간격 (분)</Label>
+              <div className="flex items-center gap-2">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={1440}
+                  placeholder="예: 10"
+                  value={sIntervalMinutes}
+                  onChange={e => setSIntervalMinutes(e.target.value)}
+                  className="w-32"
+                />
+                <span className="text-[14px] text-[#8B95A1] dark:text-gray-400">분마다</span>
+              </div>
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">N분마다 반복 발송됩니다</p>
+            </div>
+          )}
+
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
+
+          {/* Target type */}
+          <div className="space-y-2">
+            <Label>발송 대상 <span className="text-[#F04452]">*</span></Label>
+            <Select value={sTargetType} onChange={e => setSTargetType(e.target.value)}>
+              <option value="all">전체 예약자</option>
+              <option value="tag">특정 태그가 있는 사람</option>
+              <option value="room_assigned">객실이 배정된 사람</option>
+              <option value="party_only">파티만 참석하는 사람</option>
             </Select>
-          </Form.Item>
+          </div>
 
-          <Form.Item
-            label="SMS 유형"
-            name="sms_type"
-            extra={<Text type="secondary">💡 객실 안내는 room, 파티 안내는 party를 선택하세요</Text>}
-          >
-            <Radio.Group size="large">
-              <Radio.Button value="room">🏠 객실 (Room)</Radio.Button>
-              <Radio.Button value="party">🎉 파티 (Party)</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+          {sTargetType === 'tag' && (
+            <div className="space-y-2">
+              <Label>태그 이름 <span className="text-[#F04452]">*</span></Label>
+              <TextInput
+                placeholder="예: 파티만"
+                value={sTargetValue}
+                onChange={e => setSTargetValue(e.target.value)}
+              />
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">예약자에게 붙은 태그를 입력하세요 (예: 파티만, 1초, 2차만)</p>
+            </div>
+          )}
 
-          <Form.Item
-            label="중복 발송 방지"
-            name="exclude_sent"
-            valuePropName="checked"
-            extra={<Text type="secondary">💡 이미 발송한 사람에게는 다시 보내지 않습니다</Text>}
-          >
-            <Checkbox>이미 발송된 대상은 제외</Checkbox>
-          </Form.Item>
+          {/* Date filter */}
+          <div className="space-y-2">
+            <Label>날짜 필터</Label>
+            <Select value={sDateFilter} onChange={e => setSDateFilter(e.target.value)}>
+              <option value="">필터 없음 (모든 날짜)</option>
+              <option value="today">오늘 예약자</option>
+              <option value="tomorrow">내일 예약자</option>
+            </Select>
+          </div>
 
-          <Form.Item
-            label="활성 상태"
-            name="active"
-            valuePropName="checked"
-            extra={<Text type="secondary">💡 비활성화하면 자동 발송이 중단됩니다</Text>}
-          >
-            <Switch checkedChildren="활성" unCheckedChildren="비활성" />
-          </Form.Item>
-        </Form>
-      </Modal>
+          {/* SMS type */}
+          <div className="space-y-3">
+            <Label>SMS 유형</Label>
+            <div className="flex gap-3">
+              {[
+                { value: 'room', label: '객실 (Room)' },
+                { value: 'party', label: '파티 (Party)' },
+              ].map(opt => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-[14px] font-medium transition-colors ${
+                    sSmsType === opt.value
+                      ? 'border-[#3182F6] bg-[#E8F3FF] text-[#3182F6] dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-300'
+                      : 'border-[#F2F4F6] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  <Radio
+                    name="smsType"
+                    value={opt.value}
+                    checked={sSmsType === opt.value}
+                    onChange={() => setSSmsType(opt.value)}
+                    className="hidden"
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-      {/* Preview Targets Modal */}
-      <Modal
-        title="👥 발송 대상 미리보기"
-        open={previewModalVisible}
-        onCancel={() => setPreviewModalVisible(false)}
-        footer={[
-          <Button key="close" type="primary" onClick={() => setPreviewModalVisible(false)}>
-            확인
-          </Button>,
-        ]}
-        width={900}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Text type="secondary">
-            💡 아래 사람들에게 메시지가 발송됩니다. 중복 발송 방지가 켜져있으면 '발송 완료'된 사람은 제외됩니다.
-          </Text>
+          {/* Exclude sent */}
+          <div className="flex items-start gap-3 rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
+            <Checkbox
+              id="s-exclude"
+              checked={sExcludeSent}
+              onChange={e => setSExcludeSent(e.target.checked)}
+              className="mt-0.5"
+            />
+            <div>
+              <label htmlFor="s-exclude" className="cursor-pointer text-[14px] font-medium text-[#191F28] dark:text-white">
+                이미 발송된 대상은 제외
+              </label>
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">이미 발송한 사람에게는 다시 보내지 않습니다</p>
+            </div>
+          </div>
+
+          {/* Active */}
+          <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
+            <div>
+              <p className="text-[14px] font-medium text-[#191F28] dark:text-white">활성 상태</p>
+              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">비활성화하면 자동 발송이 중단됩니다</p>
+            </div>
+            <ToggleSwitch id="s-active" checked={sActive} onChange={setSActive} label="" />
+          </div>
         </div>
-        <Table
-          dataSource={previewTargets}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-          size="small"
-          columns={[
-            { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-            { title: '이름', dataIndex: 'customer_name', key: 'customer_name', width: 120 },
-            { title: '전화번호', dataIndex: 'phone', key: 'phone', width: 130 },
-            {
-              title: '객실',
-              dataIndex: 'room_number',
-              key: 'room_number',
-              width: 100,
-              render: (room: string) => room || <Text type="secondary">-</Text>
-            },
-            {
-              title: '발송 완료',
-              key: 'sent',
-              width: 120,
-              render: (_: any, record: any) => (
-                <Space>
-                  {record.room_sms_sent && <Tag color="green">객실✓</Tag>}
-                  {record.party_sms_sent && <Tag color="blue">파티✓</Tag>}
-                  {!record.room_sms_sent && !record.party_sms_sent && <Text type="secondary">없음</Text>}
-                </Space>
-              ),
-            },
-          ]}
-        />
-        <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0f5ff', borderRadius: 4 }}>
-          <Text strong>총 {previewTargets.length}명</Text>에게 발송됩니다
+      </ModalBody>
+
+      <ModalFooter className="flex justify-end gap-2 border-t border-[#F2F4F6] dark:border-gray-800">
+        <Button color="blue" size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
+          {savingSchedule ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
+        </Button>
+        <Button color="light" size="sm" onClick={() => setScheduleDialogOpen(false)}>취소</Button>
+      </ModalFooter>
+    </Modal>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render – Preview targets dialog
+  // ---------------------------------------------------------------------------
+
+  const renderPreviewDialog = () => (
+    <Modal show={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} size="4xl">
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">발송 대상 미리보기</ModalHeader>
+      <ModalBody>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-[13px] text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+            아래 사람들에게 메시지가 발송됩니다. 중복 발송 방지가 켜져 있으면 이미 발송된 사람은 제외됩니다.
+          </div>
+          {previewTargets.length === 0 ? (
+            <div className="empty-state py-10">
+              <Eye className="h-8 w-8" />
+              <p className="text-[14px]">대상이 없습니다</p>
+            </div>
+          ) : (
+            <div className="section-card">
+              <div className="overflow-x-auto">
+                <Table hoverable striped>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
+                      <TableHeadCell className="whitespace-nowrap">이름</TableHeadCell>
+                      <TableHeadCell className="whitespace-nowrap">전화번호</TableHeadCell>
+                      <TableHeadCell className="whitespace-nowrap">객실</TableHeadCell>
+                      <TableHeadCell className="whitespace-nowrap">발송 완료</TableHeadCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                    {previewTargets.map((p: any) => (
+                      <TableRow key={p.id}>
+                        <TableCell>
+                          <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{p.id}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium text-[#191F28] dark:text-white">{p.customer_name}</span>
+                        </TableCell>
+                        <TableCell>
+                          <code className="rounded bg-[#F2F4F6] px-1.5 py-0.5 font-mono text-[12px] text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">
+                            {p.phone}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-[14px] text-[#4E5968] dark:text-gray-300">{p.room_number ?? '-'}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {p.room_sms_sent && <Badge color="blue" size="sm">객실</Badge>}
+                            {p.party_sms_sent && <Badge color="purple" size="sm">파티</Badge>}
+                            {!p.room_sms_sent && !p.party_sms_sent && (
+                              <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">없음</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+          <p className="text-[14px] text-[#8B95A1] dark:text-gray-400">
+            총 <strong className="font-semibold text-[#191F28] dark:text-white">{previewTargets.length}명</strong>에게 발송됩니다
+          </p>
         </div>
-      </Modal>
+      </ModalBody>
+      <ModalFooter className="flex justify-end border-t border-[#F2F4F6] dark:border-gray-800">
+        <Button size="sm" onClick={() => setPreviewDialogOpen(false)}>확인</Button>
+      </ModalFooter>
+    </Modal>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Root render
+  // ---------------------------------------------------------------------------
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Page header */}
+      <div>
+        <div className="flex items-center gap-2.5">
+          <div className="stat-icon bg-[#F3EEFF] text-[#7B61FF] dark:bg-violet-900/30 dark:text-violet-400">
+            <FileText size={20} />
+          </div>
+          <div>
+            <h1 className="page-title">메시지 템플릿 및 스케줄 관리</h1>
+            <p className="page-subtitle">템플릿을 만들고 자동 발송 스케줄을 설정하세요</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab card */}
+      <div className="section-card">
+        <Tabs
+          variant="underline"
+          onActiveTabChange={idx => {
+            const tabs = ['templates', 'schedules', 'campaigns'];
+            setActiveTab(tabs[idx] ?? 'templates');
+          }}
+        >
+          <TabItem
+            active={activeTab === 'templates'}
+            title={
+              <span className="flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                템플릿 관리
+              </span>
+            }
+          >
+            <div className="px-6 pb-6">
+              {renderTemplatesTab()}
+            </div>
+          </TabItem>
+          <TabItem
+            active={activeTab === 'schedules'}
+            title={
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                발송 스케줄
+              </span>
+            }
+          >
+            <div className="px-6 pb-6">
+              {renderSchedulesTab()}
+            </div>
+          </TabItem>
+          <TabItem
+            active={activeTab === 'campaigns'}
+            title={
+              <span className="flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                발송 이력
+              </span>
+            }
+          >
+            <div className="px-6 pb-6">
+              {renderCampaignsTab()}
+            </div>
+          </TabItem>
+        </Tabs>
+      </div>
+
+      {renderTemplateDialog()}
+      {renderScheduleDialog()}
+      {renderPreviewDialog()}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTemplateTarget}
+        message={
+          deleteTemplateTarget?.schedule_count
+            ? `이 템플릿에 ${deleteTemplateTarget.schedule_count}개의 스케줄이 연결되어 있습니다. 정말 삭제하시겠습니까?`
+            : '정말로 이 템플릿을 삭제하시겠습니까?'
+        }
+        onConfirm={() => deleteTemplateTarget && handleDeleteTemplate(deleteTemplateTarget)}
+        onCancel={() => setDeleteTemplateTarget(null)}
+      />
+      <ConfirmDeleteDialog
+        open={!!deleteScheduleTarget}
+        message="스케줄을 삭제하면 자동 발송이 중단됩니다. 정말 삭제하시겠습니까?"
+        onConfirm={() => deleteScheduleTarget && handleDeleteSchedule(deleteScheduleTarget)}
+        onCancel={() => setDeleteScheduleTarget(null)}
+      />
     </div>
   );
 };

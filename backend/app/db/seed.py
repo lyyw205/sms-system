@@ -111,89 +111,85 @@ def create_sample_messages(db: Session):
 
 
 def create_sample_reservations(db: Session):
-    """Create 20 sample reservations with full fields for demo"""
-    today = datetime.now()
-
-    names = [
-        "김철수", "이영희", "박민수", "정수진", "최동욱",
-        "강미영", "윤서준", "장지은", "임태준", "오혜진",
-        "한상우", "배수연", "송민호", "류하은", "조윤서",
-        "권태양", "신예린", "황준혁", "문서현", "안지호",
-    ]
-
-    rooms = ["A101", "A102", "A103", "A104", "A105", "B201", "B202", "B203", "B204", "B205"]
+    """Create sample reservations for 3/4~3/6 with realistic distribution"""
+    rooms_list = ["A101", "A102", "A103", "A104", "A105", "B201", "B202", "B203", "B204", "B205"]
     room_infos = ["더블룸", "트윈룸", "패밀리룸", "디럭스룸", "스탠다드룸"]
-    genders = ["남", "여"]
-    age_groups = ["20대", "30대", "20대", "30대", "20대"]
     tag_options = ["객후", "1초", "2차만", "객후,1초", "1초,2차만", "객후,2차만"]
 
-    reservations = []
+    # 날짜별 예약자 데이터 (3/4: 8명, 3/5: 10명, 3/6: 7명)
+    daily_guests = {
+        "2026-03-03": [
+            ("백승호", "남", "010-1030-2030", "A101", "더블룸", "객후", "1062"),
+            ("차예은", "여", "010-1031-2031", "A102", "트윈룸", "1초", "2045"),
+            ("우진혁", "남", "010-1032-2032", "A103", "패밀리룸", "2차만", "3087"),
+            ("민소희", "여", "010-1033-2033", "A104", "디럭스룸", "객후,1초", "4023"),
+            ("탁재윤", "남", "010-1034-2034", "B201", "더블룸", "1초,2차만", "5071"),
+            ("피수아", "여", "010-1035-2035", None, None, "파티만", None),
+        ],
+        "2026-03-04": [
+            ("김철수", "남", "010-1000-2000", "A101", "더블룸", "객후", "1034"),
+            ("이영희", "여", "010-1001-2001", "A102", "트윈룸", "1초", "2058"),
+            ("박민수", "남", "010-1002-2002", "A103", "패밀리룸", "객후,1초", "3072"),
+            ("정수진", "여", "010-1003-2003", "A104", "디럭스룸", "2차만", "4016"),
+            ("최동욱", "남", "010-1004-2004", "B201", "더블룸", "객후", "5090"),
+            ("강미영", "여", "010-1005-2005", "B202", "트윈룸", "1초,2차만", "6044"),
+            ("윤서준", "남", "010-1006-2006", None, None, "파티만", None),
+            ("장지은", "여", "010-1007-2007", None, None, "파티만", None),
+        ],
+        "2026-03-05": [
+            ("임태준", "남", "010-1008-2008", "A101", "더블룸", "객후", "1025"),
+            ("오혜진", "여", "010-1009-2009", "A102", "트윈룸", "1초", "2067"),
+            ("한상우", "남", "010-1010-2010", "A103", "패밀리룸", "객후,1초", "3041"),
+            ("배수연", "여", "010-1011-2011", "A104", "디럭스룸", "2차만", "4083"),
+            ("송민호", "남", "010-1012-2012", "A105", "스탠다드룸", "객후", "5019"),
+            ("류하은", "여", "010-1013-2013", "B201", "더블룸", "1초", "6052"),
+            ("조윤서", "여", "010-1014-2014", "B202", "트윈룸", "객후,2차만", "7036"),
+            ("권태양", "남", "010-1015-2015", "B203", "패밀리룸", "1초,2차만", "8074"),
+            ("신예린", "여", "010-1016-2016", None, None, "파티만", None),
+            ("황준혁", "남", "010-1017-2017", None, None, "파티만", None),
+        ],
+        "2026-03-06": [
+            ("문서현", "여", "010-1018-2018", "A101", "더블룸", "객후", "1048"),
+            ("안지호", "남", "010-1019-2019", "A102", "트윈룸", "1초", "2091"),
+            ("고은비", "여", "010-1020-2020", "A103", "패밀리룸", "2차만", "3065"),
+            ("서태민", "남", "010-1021-2021", "A104", "디럭스룸", "객후,1초", "4027"),
+            ("나윤아", "여", "010-1022-2022", "B201", "더블룸", "객후", "5083"),
+            ("허성빈", "남", "010-1023-2023", None, None, "1초,2차만", None),
+            ("유채원", "여", "010-1024-2024", None, None, "파티만", None),
+        ],
+    }
 
-    for i in range(20):
-        # Spread dates around today: -1 to +2 days
-        day_offset = (i % 4) - 1  # -1, 0, 1, 2
-        date = today + timedelta(days=day_offset)
+    count = 0
+    for date_str, guests in daily_guests.items():
+        for i, (name, gender, phone, room, room_info, tags, pw) in enumerate(guests):
+            has_room = room is not None
+            res = Reservation(
+                external_id=f"naver_{date_str}_{i}",
+                customer_name=name,
+                phone=phone,
+                date=date_str,
+                time=f"{15 + (i % 4)}:00",
+                status=ReservationStatus.CONFIRMED,
+                notes=f"{date_str} 예약",
+                source="naver" if i % 2 == 0 else "manual",
+                naver_booking_id=f"NB{date_str.replace('-','')}{i:02d}" if i % 2 == 0 else None,
+                room_number=room,
+                room_password=pw,
+                room_info=room_info,
+                gender=gender,
+                age_group=random.choice(["20대", "30대"]),
+                visit_count=random.randint(1, 5),
+                party_participants=random.randint(1, 3),
+                tags=tags,
+                room_sms_sent=has_room,
+                party_sms_sent=has_room,
+                room_sms_sent_at=datetime.utcnow() if has_room else None,
+                party_sms_sent_at=datetime.utcnow() if has_room else None,
+            )
+            db.add(res)
+            count += 1
 
-        # Status distribution
-        if i < 12:
-            status = ReservationStatus.CONFIRMED
-        elif i < 16:
-            status = ReservationStatus.PENDING
-        elif i < 18:
-            status = ReservationStatus.COMPLETED
-        else:
-            status = ReservationStatus.CANCELLED
-
-        # Room assignment: first 10 get rooms, rest don't
-        has_room = i < 10
-        room_number = rooms[i] if has_room else None
-        room_info = room_infos[i % 5] if has_room else None
-        room_password = f"{random.randint(1,9)}0{(i+1)*100}" if has_room else None
-
-        # Gender and demographics
-        gender = genders[i % 2]
-        age_group = age_groups[i % 5]
-        visit_count = random.randint(1, 5)
-
-        # Tags
-        tags = tag_options[i % len(tag_options)]
-
-        # Party participants
-        party_participants = random.randint(1, 4)
-
-        # SMS sent tracking
-        room_sms_sent = i < 12  # First 12 have room SMS sent
-        party_sms_sent = i < 10  # First 10 have party SMS sent
-
-        reservations.append({
-            "external_id": f"naver_{i+1000}",
-            "customer_name": names[i],
-            "phone": f"010-{1000+i:04d}-{2000+i:04d}",
-            "date": date.strftime("%Y-%m-%d"),
-            "time": f"{10 + (i % 8)}:00",
-            "status": status,
-            "notes": f"샘플 예약 {i+1}",
-            "source": "naver" if i % 2 == 0 else "manual",
-            "naver_booking_id": f"NB{20260200 + i}" if i % 2 == 0 else None,
-            "room_number": room_number,
-            "room_password": room_password,
-            "room_info": room_info,
-            "gender": gender,
-            "age_group": age_group,
-            "visit_count": visit_count,
-            "party_participants": party_participants,
-            "tags": tags,
-            "room_sms_sent": room_sms_sent,
-            "party_sms_sent": party_sms_sent,
-            "room_sms_sent_at": datetime.utcnow() if room_sms_sent else None,
-            "party_sms_sent_at": datetime.utcnow() if party_sms_sent else None,
-        })
-
-    for res_data in reservations:
-        res = Reservation(**res_data)
-        db.add(res)
-
-    logger.info(f"Created {len(reservations)} sample reservations")
+    logger.info(f"Created {count} sample reservations (3/4~3/6)")
 
 
 def create_sample_rules(db: Session):
