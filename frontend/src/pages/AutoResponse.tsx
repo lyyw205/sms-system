@@ -213,7 +213,7 @@ const AutoResponse = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table hoverable>
+                <Table hoverable striped>
                   <TableHead>
                     <TableRow>
                       <TableHeadCell>ID</TableHeadCell>
@@ -225,22 +225,22 @@ const AutoResponse = () => {
                       <TableHeadCell>작업</TableHeadCell>
                     </TableRow>
                   </TableHead>
-                  <TableBody className="divide-y divide-[#F2F4F6] dark:divide-gray-800">
+                  <TableBody className="divide-y">
                     {rules.map((rule) => (
                       <TableRow key={rule.id}>
                         <TableCell>
-                          <span className="tabular-nums text-[#B0B8C1]">#{rule.id}</span>
+                          <span className="tabular-nums text-gray-400">#{rule.id}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium text-[#191F28] dark:text-white">{rule.name}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{rule.name}</span>
                         </TableCell>
                         <TableCell>
-                          <code className="rounded-lg bg-[#F2F4F6] px-1.5 py-0.5 font-mono text-[12px] text-[#3182F6] dark:bg-[#2C2C34]">
+                          <code className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-[12px] text-blue-600 dark:bg-gray-700">
                             {rule.pattern}
                           </code>
                         </TableCell>
                         <TableCell>
-                          <span className="line-clamp-2 max-w-[240px] text-[14px] text-[#4E5968] dark:text-gray-300">
+                          <span className="line-clamp-2 max-w-[240px] text-[14px] text-gray-600 dark:text-gray-300">
                             {rule.response}
                           </span>
                         </TableCell>
@@ -320,7 +320,7 @@ const AutoResponse = () => {
               </div>
             ) : (
               <div className="overflow-x-auto p-5 pt-4">
-                <Table hoverable>
+                <Table hoverable striped>
                   <TableHead>
                     <TableRow>
                       <TableHeadCell>ID</TableHeadCell>
@@ -330,20 +330,20 @@ const AutoResponse = () => {
                       <TableHeadCell>삭제</TableHeadCell>
                     </TableRow>
                   </TableHead>
-                  <TableBody className="divide-y divide-[#F2F4F6] dark:divide-gray-800">
+                  <TableBody className="divide-y">
                     {documents.map((doc) => (
                       <TableRow key={doc.id}>
                         <TableCell>
-                          <span className="tabular-nums text-[#B0B8C1]">#{doc.id}</span>
+                          <span className="tabular-nums text-gray-400">#{doc.id}</span>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 shrink-0 text-[#B0B8C1]" />
-                            <span className="font-medium text-[#191F28] dark:text-white">{doc.filename}</span>
+                            <FileText className="h-4 w-4 shrink-0 text-gray-400" />
+                            <span className="font-medium text-gray-900 dark:text-white">{doc.filename}</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-[14px] text-[#8B95A1]">
+                          <span className="text-[14px] text-gray-500">
                             {new Date(doc.uploaded_at).toLocaleString('ko-KR')}
                           </span>
                         </TableCell>

@@ -51,7 +51,22 @@ const customTheme = {
     },
   },
   modal: {
+    root: {
+      base: 'fixed inset-x-0 top-0 z-50 h-screen overflow-y-auto overflow-x-hidden md:inset-0 md:h-full',
+      show: {
+        on: 'flex bg-gray-900/50 dark:bg-gray-900/80',
+        off: 'hidden',
+      },
+      sizes: {
+        sm: 'max-w-sm',
+        md: 'max-w-md',
+        lg: 'max-w-lg',
+        xl: 'max-w-xl',
+        '2xl': 'max-w-2xl',
+      },
+    },
     content: {
+      base: 'relative mx-auto h-full w-full p-4 md:h-auto',
       inner:
         'relative flex max-h-[90dvh] flex-col rounded-2xl bg-white shadow-2xl dark:bg-[#1E1E24]',
     },

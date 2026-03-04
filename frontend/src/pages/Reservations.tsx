@@ -403,7 +403,7 @@ export default function Reservations() {
               </Button>
             )}
 
-            <span className="ml-auto self-end text-[12px] tabular-nums text-[#8B95A1]">
+            <span className="ml-auto self-end text-[12px] tabular-nums text-gray-500">
               {filtered.length}건 표시
             </span>
           </div>
@@ -436,7 +436,7 @@ export default function Reservations() {
                   <TableHeadCell className="whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+              <TableBody className="divide-y">
                 {filtered.map((r) => {
                   const isNaver = !!r.external_id;
                   const timeStr = fmtTime(r.time ?? r.date);
@@ -446,24 +446,24 @@ export default function Reservations() {
                       <TableCell>
                         <div className="space-y-1">
                           <SourceBadge source={isNaver ? 'naver' : 'manual'} />
-                          <p className="text-[12px] tabular-nums text-[#B0B8C1]">
+                          <p className="text-[12px] tabular-nums text-gray-400">
                             {isNaver ? r.external_id?.slice(0, 10) : `#${r.id}`}
                           </p>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-[#191F28] dark:text-white">
+                        <span className="font-medium text-gray-900 dark:text-white">
                           {r.customer_name}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="tabular-nums text-[#8B95A1]">
+                        <span className="tabular-nums text-gray-500">
                           {r.phone}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <p className="text-[14px] text-[#191F28] dark:text-white">{fmtDate(r.date)}</p>
-                        {timeStr && <p className="text-[12px] text-[#B0B8C1]">{timeStr}</p>}
+                        <p className="text-[14px] text-gray-900 dark:text-white">{fmtDate(r.date)}</p>
+                        {timeStr && <p className="text-[12px] text-gray-400">{timeStr}</p>}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={r.status} />
@@ -475,17 +475,17 @@ export default function Reservations() {
                         {r.room_number ? (
                           <Badge color="info" size="sm">{r.room_number}</Badge>
                         ) : (
-                          <span className="text-[12px] text-[#B0B8C1]">미배정</span>
+                          <span className="text-[12px] text-gray-400">미배정</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <p className="line-clamp-1 max-w-[120px] text-[14px] text-[#8B95A1]" title={r.notes ?? ''}>
+                        <p className="line-clamp-1 max-w-[120px] text-[14px] text-gray-500" title={r.notes ?? ''}>
                           {r.notes ?? '-'}
                         </p>
                       </TableCell>
                       <TableCell>
                         {isNaver ? (
-                          <span className="text-[12px] text-[#B0B8C1]">네이버 관리</span>
+                          <span className="text-[12px] text-gray-400">네이버 관리</span>
                         ) : (
                           <div className="flex items-center gap-1">
                             <Button color="light" size="xs" onClick={() => openEdit(r)} title="수정">
@@ -510,14 +510,14 @@ export default function Reservations() {
       <Modal
         show={modalOpen}
         onClose={() => { if (!saving) setModalOpen(false); }}
-        size="2xl"
+        size="md"
       >
         <ModalHeader>
           {editingId != null ? '예약 수정' : '예약 등록'}
         </ModalHeader>
 
-        <ModalBody>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <ModalBody className="max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="f-name">
                 예약자 이름 <span className="text-[#F04452]">*</span>
@@ -614,7 +614,7 @@ export default function Reservations() {
               />
             </div>
 
-            <div className="space-y-2 sm:col-span-2">
+            <div className="space-y-2 col-span-2">
               <Label htmlFor="f-tags">태그</Label>
               <TextInput
                 id="f-tags"
@@ -622,7 +622,7 @@ export default function Reservations() {
                 onChange={(e) => setField('tags', e.target.value)}
                 placeholder="쉼표로 구분 (예: 1초,2차만)"
               />
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {TAG_OPTIONS.map((t) => (
                   <Button
                     key={t}
@@ -630,6 +630,7 @@ export default function Reservations() {
                     color={form.tags === t ? 'blue' : 'light'}
                     size="xs"
                     pill
+                    className="!text-[11px] !px-2 !py-0.5"
                     onClick={() => setField('tags', t)}
                   >
                     {t}
@@ -638,13 +639,13 @@ export default function Reservations() {
               </div>
             </div>
 
-            <div className="space-y-2 sm:col-span-2">
+            <div className="space-y-2 col-span-2">
               <Label htmlFor="f-notes">메모</Label>
               <Textarea
                 id="f-notes"
                 value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)}
-                rows={3}
+                rows={2}
                 placeholder="추가 메모를 입력하세요"
               />
             </div>
@@ -682,7 +683,7 @@ export default function Reservations() {
               <Trash2 className="h-6 w-6 text-[#F04452]" />
             </div>
             <h3 className="mb-2 text-[18px] font-semibold text-[#191F28] dark:text-white">예약을 삭제하시겠습니까?</h3>
-            <p className="mb-5 text-[14px] text-[#8B95A1]">이 작업은 되돌릴 수 없습니다. 예약 정보가 영구적으로 삭제됩니다.</p>
+            <p className="mb-5 text-[14px] text-gray-500">이 작업은 되돌릴 수 없습니다. 예약 정보가 영구적으로 삭제됩니다.</p>
             <div className="flex justify-center gap-3">
               <Button color="failure" onClick={handleDelete} disabled={deleting}>
                 {deleting ? (

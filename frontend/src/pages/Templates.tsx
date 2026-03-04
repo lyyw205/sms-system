@@ -588,11 +588,11 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="w-20 whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+              <TableBody className="divide-y">
                 {templates.map(t => (
                   <TableRow key={t.id}>
                     <TableCell>
-                      <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{t.id}</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500">{t.id}</span>
                     </TableCell>
                     <TableCell>
                       <code className="rounded bg-[#F2F4F6] px-1.5 py-0.5 font-mono text-[12px] text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">
@@ -600,7 +600,7 @@ const Templates: React.FC = () => {
                       </code>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium text-[#191F28] dark:text-white">{t.name}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
                     </TableCell>
                     <TableCell>
                       {t.category ? (
@@ -619,7 +619,7 @@ const Templates: React.FC = () => {
                           ))}
                         </div>
                       ) : (
-                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">없음</span>
+                        <span className="text-[12px] text-gray-400 dark:text-gray-500">없음</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -631,7 +631,7 @@ const Templates: React.FC = () => {
                       {t.schedule_count > 0 ? (
                         <Badge color="blue" size="sm">{t.schedule_count}개</Badge>
                       ) : (
-                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">0</span>
+                        <span className="text-[12px] text-gray-400 dark:text-gray-500">0</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -705,7 +705,7 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="w-28 whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+              <TableBody className="divide-y">
                 {schedules.map(s => {
                   const nextRun = formatRelativeTime(s.next_run);
                   const isNextRunSoon = s.next_run && (() => {
@@ -715,10 +715,10 @@ const Templates: React.FC = () => {
                   return (
                     <TableRow key={s.id}>
                       <TableCell>
-                        <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{s.id}</span>
+                        <span className="tabular-nums text-gray-400 dark:text-gray-500">{s.id}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-[#191F28] dark:text-white">{s.schedule_name}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
@@ -817,11 +817,11 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="whitespace-nowrap">발송 일시</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+              <TableBody className="divide-y">
                 {campaigns.map(c => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{c.id}</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500">{c.id}</span>
                     </TableCell>
                     <TableCell>
                       <Badge color="indigo" size="sm">{getCampaignTypeLabel(c.campaign_type)}</Badge>
@@ -834,7 +834,7 @@ const Templates: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className="tabular-nums font-medium text-[#191F28] dark:text-white">{c.target_count}</span>
+                      <span className="tabular-nums font-medium text-gray-900 dark:text-white">{c.target_count}</span>
                     </TableCell>
                     <TableCell>
                       <Badge color="success" size="sm">{c.sent_count}</Badge>
@@ -843,11 +843,11 @@ const Templates: React.FC = () => {
                       {c.failed_count > 0 ? (
                         <Badge color="failure" size="sm">{c.failed_count}</Badge>
                       ) : (
-                        <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">0</span>
+                        <span className="text-[12px] text-gray-400 dark:text-gray-500">0</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className="text-[14px] text-[#8B95A1] dark:text-gray-400">
+                      <span className="text-[14px] text-gray-500 dark:text-gray-400">
                         {c.sent_at ? new Date(c.sent_at).toLocaleString('ko-KR') : '-'}
                       </span>
                     </TableCell>
@@ -889,7 +889,7 @@ const Templates: React.FC = () => {
             {tKeyError ? (
               <p className="text-[12px] text-[#F04452]">{tKeyError}</p>
             ) : (
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">시스템 고유 식별자. 영문 소문자와 _ 만 허용됩니다.</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">시스템 고유 식별자. 영문 소문자와 _ 만 허용됩니다.</p>
             )}
           </div>
 
@@ -904,7 +904,7 @@ const Templates: React.FC = () => {
               value={tName}
               onChange={e => setTName(e.target.value)}
             />
-            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
+            <p className="text-[12px] text-gray-400 dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
           </div>
 
           {/* Category */}
@@ -933,7 +933,7 @@ const Templates: React.FC = () => {
               onChange={e => handleContentChange(e.target.value)}
               className="font-mono text-[14px]"
             />
-            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">
+            <p className="text-[12px] text-gray-400 dark:text-gray-500">
               <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">{'{{변수명}}'}</code>{' '}
               형식으로 변수를 삽입하세요
             </p>
@@ -1029,8 +1029,8 @@ const Templates: React.FC = () => {
           {/* Active */}
           <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
             <div>
-              <p className="text-[14px] font-medium text-[#191F28] dark:text-white">활성 상태</p>
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">비활성화하면 이 템플릿을 사용할 수 없습니다</p>
+              <p className="text-[14px] font-medium text-gray-900 dark:text-white">활성 상태</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">비활성화하면 이 템플릿을 사용할 수 없습니다</p>
             </div>
             <ToggleSwitch id="t-active" checked={tActive} onChange={setTActive} label="" />
           </div>
@@ -1066,7 +1066,7 @@ const Templates: React.FC = () => {
               value={sName}
               onChange={e => setSName(e.target.value)}
             />
-            <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">관리하기 쉽게 알아보기 쉬운 이름을 지어주세요</p>
+            <p className="text-[12px] text-gray-400 dark:text-gray-500">관리하기 쉽게 알아보기 쉬운 이름을 지어주세요</p>
           </div>
 
           {/* Template */}
@@ -1187,7 +1187,7 @@ const Templates: React.FC = () => {
                   <option key={i} value={String(i)}>매시간 {String(i).padStart(2, '0')}분</option>
                 ))}
               </Select>
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">매시간 이 분에 발송됩니다 (예: 10분 → 1:10, 2:10, 3:10...)</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">매시간 이 분에 발송됩니다 (예: 10분 → 1:10, 2:10, 3:10...)</p>
             </div>
           )}
 
@@ -1204,9 +1204,9 @@ const Templates: React.FC = () => {
                   onChange={e => setSIntervalMinutes(e.target.value)}
                   className="w-32"
                 />
-                <span className="text-[14px] text-[#8B95A1] dark:text-gray-400">분마다</span>
+                <span className="text-[14px] text-gray-500 dark:text-gray-400">분마다</span>
               </div>
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">N분마다 반복 발송됩니다</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">N분마다 반복 발송됩니다</p>
             </div>
           )}
 
@@ -1231,7 +1231,7 @@ const Templates: React.FC = () => {
                 value={sTargetValue}
                 onChange={e => setSTargetValue(e.target.value)}
               />
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">예약자에게 붙은 태그를 입력하세요 (예: 파티만, 1초, 2차만)</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">예약자에게 붙은 태그를 입력하세요 (예: 파티만, 1초, 2차만)</p>
             </div>
           )}
 
@@ -1283,18 +1283,18 @@ const Templates: React.FC = () => {
               className="mt-0.5"
             />
             <div>
-              <label htmlFor="s-exclude" className="cursor-pointer text-[14px] font-medium text-[#191F28] dark:text-white">
+              <label htmlFor="s-exclude" className="cursor-pointer text-[14px] font-medium text-gray-900 dark:text-white">
                 이미 발송된 대상은 제외
               </label>
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">이미 발송한 사람에게는 다시 보내지 않습니다</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">이미 발송한 사람에게는 다시 보내지 않습니다</p>
             </div>
           </div>
 
           {/* Active */}
           <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
             <div>
-              <p className="text-[14px] font-medium text-[#191F28] dark:text-white">활성 상태</p>
-              <p className="text-[12px] text-[#B0B8C1] dark:text-gray-500">비활성화하면 자동 발송이 중단됩니다</p>
+              <p className="text-[14px] font-medium text-gray-900 dark:text-white">활성 상태</p>
+              <p className="text-[12px] text-gray-400 dark:text-gray-500">비활성화하면 자동 발송이 중단됩니다</p>
             </div>
             <ToggleSwitch id="s-active" checked={sActive} onChange={setSActive} label="" />
           </div>
@@ -1340,14 +1340,14 @@ const Templates: React.FC = () => {
                       <TableHeadCell className="whitespace-nowrap">발송 완료</TableHeadCell>
                     </TableRow>
                   </TableHead>
-                  <TableBody className="divide-y divide-[#E5E8EB] dark:divide-gray-700">
+                  <TableBody className="divide-y">
                     {previewTargets.map((p: any) => (
                       <TableRow key={p.id}>
                         <TableCell>
-                          <span className="tabular-nums text-[#B0B8C1] dark:text-gray-500">{p.id}</span>
+                          <span className="tabular-nums text-gray-400 dark:text-gray-500">{p.id}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium text-[#191F28] dark:text-white">{p.customer_name}</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{p.customer_name}</span>
                         </TableCell>
                         <TableCell>
                           <code className="rounded bg-[#F2F4F6] px-1.5 py-0.5 font-mono text-[12px] text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">
@@ -1362,7 +1362,7 @@ const Templates: React.FC = () => {
                             {p.room_sms_sent && <Badge color="blue" size="sm">객실</Badge>}
                             {p.party_sms_sent && <Badge color="purple" size="sm">파티</Badge>}
                             {!p.room_sms_sent && !p.party_sms_sent && (
-                              <span className="text-[12px] text-[#B0B8C1] dark:text-gray-500">없음</span>
+                              <span className="text-[12px] text-gray-400 dark:text-gray-500">없음</span>
                             )}
                           </div>
                         </TableCell>
@@ -1373,7 +1373,7 @@ const Templates: React.FC = () => {
               </div>
             </div>
           )}
-          <p className="text-[14px] text-[#8B95A1] dark:text-gray-400">
+          <p className="text-[14px] text-gray-500 dark:text-gray-400">
             총 <strong className="font-semibold text-[#191F28] dark:text-white">{previewTargets.length}명</strong>에게 발송됩니다
           </p>
         </div>

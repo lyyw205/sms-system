@@ -111,12 +111,9 @@ def create_sample_messages(db: Session):
 
 
 def create_sample_reservations(db: Session):
-    """Create sample reservations for 3/4~3/6 with realistic distribution"""
-    rooms_list = ["A101", "A102", "A103", "A104", "A105", "B201", "B202", "B203", "B204", "B205"]
-    room_infos = ["더블룸", "트윈룸", "패밀리룸", "디럭스룸", "스탠다드룸"]
-    tag_options = ["객후", "1초", "2차만", "객후,1초", "1초,2차만", "객후,2차만"]
+    """Create sample reservations for 3/3~3/8 with realistic distribution"""
 
-    # 날짜별 예약자 데이터 (3/4: 8명, 3/5: 10명, 3/6: 7명)
+    # 날짜별 예약자 데이터 (3/3: 6명, 3/4: 8명, 3/5: 10명, 3/6: 7명, 3/7: 9명, 3/8: 8명)
     daily_guests = {
         "2026-03-03": [
             ("백승호", "남", "010-1030-2030", "A101", "더블룸", "객후", "1062"),
@@ -157,6 +154,27 @@ def create_sample_reservations(db: Session):
             ("허성빈", "남", "010-1023-2023", None, None, "1초,2차만", None),
             ("유채원", "여", "010-1024-2024", None, None, "파티만", None),
         ],
+        "2026-03-07": [
+            ("정하린", "여", "010-1036-2036", "A101", "더블룸", "객후", "1053"),
+            ("김도현", "남", "010-1037-2037", "A102", "트윈룸", "1초", "2078"),
+            ("이수빈", "여", "010-1038-2038", "A103", "패밀리룸", "객후,1초", "3014"),
+            ("박준영", "남", "010-1039-2039", "A104", "디럭스룸", "2차만", "4096"),
+            ("최유나", "여", "010-1040-2040", "A105", "스탠다드룸", "객후", "5032"),
+            ("강민재", "남", "010-1041-2041", "B201", "더블룸", "1초,2차만", "6081"),
+            ("윤지아", "여", "010-1042-2042", "B202", "트윈룸", "객후,2차만", "7049"),
+            ("장석호", "남", "010-1043-2043", None, None, "파티만", None),
+            ("한소율", "여", "010-1044-2044", None, None, "파티만", None),
+        ],
+        "2026-03-08": [
+            ("오태경", "남", "010-1045-2045", "A101", "더블룸", "객후", "1087"),
+            ("배지윤", "여", "010-1046-2046", "A102", "트윈룸", "1초", "2034"),
+            ("송하준", "남", "010-1047-2047", "A103", "패밀리룸", "객후,1초", "3056"),
+            ("류민서", "여", "010-1048-2048", "A104", "디럭스룸", "2차만", "4072"),
+            ("조영훈", "남", "010-1049-2049", "B201", "더블룸", "1초", "5018"),
+            ("권세아", "여", "010-1050-2050", "B202", "트윈룸", "객후,2차만", "6063"),
+            ("신동건", "남", "010-1051-2051", None, None, "1초,2차만", None),
+            ("황예지", "여", "010-1052-2052", None, None, "파티만", None),
+        ],
     }
 
     count = 0
@@ -189,7 +207,7 @@ def create_sample_reservations(db: Session):
             db.add(res)
             count += 1
 
-    logger.info(f"Created {count} sample reservations (3/4~3/6)")
+    logger.info(f"Created {count} sample reservations (3/3~3/8)")
 
 
 def create_sample_rules(db: Session):
@@ -472,31 +490,28 @@ def create_sample_campaign_logs(db: Session):
 
 
 def create_sample_gender_stats(db: Session):
-    """Create 8 days of gender statistics"""
-    today = datetime.now()
+    """Create gender statistics for 3/3~3/8 matching reservation data"""
 
+    # 예약 데이터 기반 실제 성비 (날짜, 남, 여)
     stats_data = [
-        {"offset": -7, "male": 15, "female": 8},
-        {"offset": -6, "male": 18, "female": 10},
-        {"offset": -5, "male": 22, "female": 14},
-        {"offset": -4, "male": 20, "female": 12},
-        {"offset": -3, "male": 25, "female": 15},
-        {"offset": -2, "male": 19, "female": 11},
-        {"offset": -1, "male": 23, "female": 13},
-        {"offset": 0, "male": 18, "female": 12},
+        ("2026-03-03", 3, 3),   # 백승호,우진혁,탁재윤 / 차예은,민소희,피수아
+        ("2026-03-04", 4, 4),   # 김철수,박민수,최동욱,윤서준 / 이영희,정수진,강미영,장지은
+        ("2026-03-05", 5, 5),   # 임태준,한상우,송민호,권태양,황준혁 / 오혜진,배수연,류하은,조윤서,신예린
+        ("2026-03-06", 3, 4),   # 안지호,서태민,허성빈 / 문서현,고은비,나윤아,유채원
+        ("2026-03-07", 4, 5),   # 김도현,박준영,강민재,장석호 / 정하린,이수빈,최유나,윤지아,한소율
+        ("2026-03-08", 4, 4),   # 오태경,송하준,조영훈,신동건 / 배지윤,류민서,권세아,황예지
     ]
 
-    for s in stats_data:
-        date = today + timedelta(days=s["offset"])
+    for date_str, male, female in stats_data:
         stat = GenderStat(
-            date=date.strftime("%Y-%m-%d"),
-            male_count=s["male"],
-            female_count=s["female"],
-            total_participants=s["male"] + s["female"],
+            date=date_str,
+            male_count=male,
+            female_count=female,
+            total_participants=male + female,
         )
         db.add(stat)
 
-    logger.info(f"Created {len(stats_data)} gender stat records")
+    logger.info(f"Created {len(stats_data)} gender stat records (3/3~3/8)")
 
 
 def create_sample_rooms(db: Session):

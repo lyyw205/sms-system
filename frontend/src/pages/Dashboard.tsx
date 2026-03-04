@@ -72,7 +72,7 @@ function MetricCard({ title, value, subtitle, icon, iconBg }: MetricCardProps) {
           <p className="stat-label">{title}</p>
           <p className="stat-value mt-1">{value}</p>
           {subtitle && (
-            <p className="mt-0.5 text-[12px] text-[#B0B8C1] dark:text-gray-600">{subtitle}</p>
+            <p className="mt-0.5 text-[12px] text-gray-400 dark:text-gray-600">{subtitle}</p>
           )}
         </div>
         <div className={`stat-icon ${iconBg}`}>
@@ -88,8 +88,8 @@ const CustomPieTooltip = ({ active, payload }: any) => {
     const entry = payload[0]
     return (
       <div className="rounded-xl bg-white px-3 py-2 shadow-lg dark:bg-[#2C2C34]">
-        <span className="text-[13px] font-medium text-[#191F28] dark:text-white">{entry.name}</span>
-        <span className="ml-2 text-[13px] text-[#8B95A1]">{entry.value}건</span>
+        <span className="text-[13px] font-medium text-gray-900 dark:text-white">{entry.name}</span>
+        <span className="ml-2 text-[13px] text-gray-500">{entry.value}건</span>
       </div>
     )
   }
@@ -110,36 +110,36 @@ function GenderBar({ maleCount, femaleCount }: GenderBarProps) {
     <div className="space-y-5">
       <div className="flex items-center justify-around">
         <div className="text-center">
-          <p className="text-[12px] font-medium text-[#8B95A1]">남성</p>
+          <p className="text-[12px] font-medium text-gray-500">남성</p>
           <p className="mt-1 text-[22px] font-bold text-[#3182F6]">{maleCount}</p>
-          <p className="text-[12px] text-[#B0B8C1]">{malePct}%</p>
+          <p className="text-[12px] text-gray-400">{malePct}%</p>
         </div>
         <div className="h-12 w-px bg-[#F2F4F6] dark:bg-gray-800" />
         <div className="text-center">
-          <p className="text-[12px] font-medium text-[#8B95A1]">여성</p>
+          <p className="text-[12px] font-medium text-gray-500">여성</p>
           <p className="mt-1 text-[22px] font-bold text-[#F04452]">{femaleCount}</p>
-          <p className="text-[12px] text-[#B0B8C1]">{femalePct}%</p>
+          <p className="text-[12px] text-gray-400">{femalePct}%</p>
         </div>
       </div>
 
       <div className="space-y-3">
         <div>
           <div className="mb-1 flex items-center justify-between text-[12px]">
-            <span className="font-medium text-[#4E5968] dark:text-gray-300">남성</span>
-            <span className="text-[#B0B8C1]">{maleCount}명</span>
+            <span className="font-medium text-gray-600 dark:text-gray-300">남성</span>
+            <span className="text-gray-400">{maleCount}명</span>
           </div>
           <Progress progress={total === 0 ? 0 : malePct} color="blue" size="sm" />
         </div>
         <div>
           <div className="mb-1 flex items-center justify-between text-[12px]">
-            <span className="font-medium text-[#4E5968] dark:text-gray-300">여성</span>
-            <span className="text-[#B0B8C1]">{femaleCount}명</span>
+            <span className="font-medium text-gray-600 dark:text-gray-300">여성</span>
+            <span className="text-gray-400">{femaleCount}명</span>
           </div>
           <Progress progress={total === 0 ? 0 : femalePct} color="pink" size="sm" />
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4 text-[12px] text-[#B0B8C1]">
+      <div className="flex items-center justify-center gap-4 text-[12px] text-gray-400">
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-[#3182F6]" /> 남성
         </span>
@@ -205,7 +205,7 @@ function StatusBreakdown({ pending, confirmed, cancelled, completed }: StatusBre
             <span className={item.color}>{item.icon}</span>
             <div>
               <p className="text-[18px] font-bold text-[#191F28] dark:text-white">{item.count}</p>
-              <p className="text-[11px] font-medium text-[#8B95A1]">{item.label}</p>
+              <p className="text-[11px] font-medium text-gray-500">{item.label}</p>
             </div>
           </div>
         ))}
@@ -217,8 +217,8 @@ function StatusBreakdown({ pending, confirmed, cancelled, completed }: StatusBre
           return (
             <div key={item.key}>
               <div className="mb-1 flex items-center justify-between text-[12px]">
-                <span className="font-medium text-[#4E5968] dark:text-gray-300">{item.label}</span>
-                <span className="text-[#B0B8C1]">{pct}%</span>
+                <span className="font-medium text-gray-600 dark:text-gray-300">{item.label}</span>
+                <span className="text-gray-400">{pct}%</span>
               </div>
               <Progress progress={pct} color="blue" size="sm" />
             </div>
@@ -226,8 +226,8 @@ function StatusBreakdown({ pending, confirmed, cancelled, completed }: StatusBre
         })}
       </div>
 
-      <div className="pt-2 text-center text-[12px] text-[#B0B8C1]">
-        전체 <span className="font-semibold text-[#4E5968] dark:text-gray-300">{total}</span> 건
+      <div className="pt-2 text-center text-[12px] text-gray-400">
+        전체 <span className="font-semibold text-gray-600 dark:text-gray-300">{total}</span> 건
       </div>
     </div>
   )
@@ -319,7 +319,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Card>
           <div className="flex items-center gap-2">
-            <Activity size={18} className="text-[#B0B8C1]" />
+            <Activity size={18} className="text-gray-400" />
             <h3 className="text-[14px] font-semibold text-[#191F28] dark:text-white">응답 유형 분포</h3>
           </div>
           {responseTypeData.length === 0 ? (
@@ -349,7 +349,7 @@ const Dashboard = () => {
               <div className="space-y-2 pt-2">
                 {responseTypeData.map((entry) => (
                   <div key={entry.name} className="flex items-center justify-between text-[14px]">
-                    <span className="flex items-center gap-2 text-[#4E5968] dark:text-gray-300">
+                    <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
                       {entry.name}
                     </span>
@@ -363,7 +363,7 @@ const Dashboard = () => {
 
         <Card>
           <div className="flex items-center gap-2">
-            <Users size={18} className="text-[#B0B8C1]" />
+            <Users size={18} className="text-gray-400" />
             <h3 className="text-[14px] font-semibold text-[#191F28] dark:text-white">성별 현황</h3>
           </div>
           <GenderBar maleCount={maleCount} femaleCount={femaleCount} />
@@ -371,7 +371,7 @@ const Dashboard = () => {
 
         <Card>
           <div className="flex items-center gap-2">
-            <CalendarRange size={18} className="text-[#B0B8C1]" />
+            <CalendarRange size={18} className="text-gray-400" />
             <h3 className="text-[14px] font-semibold text-[#191F28] dark:text-white">예약 상태</h3>
           </div>
           <StatusBreakdown
@@ -388,12 +388,12 @@ const Dashboard = () => {
         <div className="section-card">
           <div className="section-header">
             <div className="flex items-center gap-2">
-              <CalendarRange size={18} className="text-[#B0B8C1]" />
+              <CalendarRange size={18} className="text-gray-400" />
               <h3 className="text-[14px] font-semibold text-[#191F28] dark:text-white">최근 예약</h3>
             </div>
           </div>
           <div className="overflow-x-auto">
-            <Table hoverable>
+            <Table hoverable striped>
               <TableHead>
                 <TableRow>
                   <TableHeadCell>고객명</TableHeadCell>
@@ -402,11 +402,11 @@ const Dashboard = () => {
                   <TableHeadCell>상태</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#F2F4F6] dark:divide-gray-800">
+              <TableBody className="divide-y">
                 {(stats.recent_reservations ?? []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4}>
-                      <div className="py-4 text-center text-[13px] text-[#B0B8C1]">
+                      <div className="py-4 text-center text-[13px] text-gray-400">
                         예약 내역이 없습니다
                       </div>
                     </TableCell>
@@ -415,13 +415,13 @@ const Dashboard = () => {
                   (stats.recent_reservations ?? []).slice(0, 5).map((r: any, idx: number) => (
                     <TableRow key={r.id ?? idx}>
                       <TableCell>
-                        <span className="font-medium text-[#191F28] dark:text-white">{r.customer_name ?? '—'}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{r.customer_name ?? '—'}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="tabular-nums text-[#8B95A1]">{r.phone ?? '—'}</span>
+                        <span className="tabular-nums text-gray-500">{r.phone ?? '—'}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-[#8B95A1]">{r.date ?? ''} {r.time ?? ''}</span>
+                        <span className="text-gray-500">{r.date ?? ''} {r.time ?? ''}</span>
                       </TableCell>
                       <TableCell>
                         <Badge color={statusBadgeColor(r.status)} size="sm">
@@ -439,12 +439,12 @@ const Dashboard = () => {
         <div className="section-card">
           <div className="section-header">
             <div className="flex items-center gap-2">
-              <MessageSquareText size={18} className="text-[#B0B8C1]" />
+              <MessageSquareText size={18} className="text-gray-400" />
               <h3 className="text-[14px] font-semibold text-[#191F28] dark:text-white">최근 SMS</h3>
             </div>
           </div>
           <div className="overflow-x-auto">
-            <Table hoverable>
+            <Table hoverable striped>
               <TableHead>
                 <TableRow>
                   <TableHeadCell>방향</TableHeadCell>
@@ -453,11 +453,11 @@ const Dashboard = () => {
                   <TableHeadCell>시간</TableHeadCell>
                 </TableRow>
               </TableHead>
-              <TableBody className="divide-y divide-[#F2F4F6] dark:divide-gray-800">
+              <TableBody className="divide-y">
                 {(stats.recent_messages ?? []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4}>
-                      <div className="py-4 text-center text-[13px] text-[#B0B8C1]">
+                      <div className="py-4 text-center text-[13px] text-gray-400">
                         메시지 내역이 없습니다
                       </div>
                     </TableCell>
@@ -471,15 +471,15 @@ const Dashboard = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="tabular-nums text-[#8B95A1]">{m.from_ ?? '—'}</span>
+                        <span className="tabular-nums text-gray-500">{m.from_ ?? '—'}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="line-clamp-1 max-w-[200px] text-[#4E5968] dark:text-gray-300">
+                        <span className="line-clamp-1 max-w-[200px] text-gray-600 dark:text-gray-300">
                           {m.message ?? '—'}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="whitespace-nowrap text-[12px] text-[#B0B8C1]">
+                        <span className="whitespace-nowrap text-[12px] text-gray-400">
                           {m.created_at
                             ? new Date(m.created_at).toLocaleString('ko-KR', {
                                 month: '2-digit',
