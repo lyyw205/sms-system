@@ -729,7 +729,7 @@ const RoomAssignment = () => {
     return (
       <div
         key={room}
-        className={`group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 transition-colors h-10
+        className={`group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 transition-colors h-[48px] min-h-[48px] max-h-[48px]
           ${isDragOver
             ? 'bg-[#E8F3FF] dark:bg-blue-900/20 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-blue-700'
             : res
@@ -801,7 +801,7 @@ const RoomAssignment = () => {
     return (
       <div
         key={res.id}
-        className="group select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] transition-colors h-10"
+        className="group select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-[#FAFBFC] dark:bg-[#1A1A20] transition-colors h-[48px] min-h-[48px] max-h-[48px]"
       >
         <div className={`flex items-center -ml-7 rounded-lg transition-shadow duration-200 group-hover:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.12),-6px_0_10px_-4px_rgba(0,0,0,0.08)] ${guestAreaCursor()}`}>
           <div
@@ -845,7 +845,7 @@ const RoomAssignment = () => {
     return (
       <div
         key={res.id}
-        className="group select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] transition-colors h-10"
+        className="group select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] transition-colors h-[48px] min-h-[48px] max-h-[48px]"
       >
         <div className={`flex items-center -ml-7 rounded-lg transition-shadow duration-200 group-hover:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.12),-6px_0_10px_-4px_rgba(0,0,0,0.08)] ${guestAreaCursor()}`}>
           <div
@@ -920,7 +920,7 @@ const RoomAssignment = () => {
         }}
       >
         {/* Header — matches main table header */}
-        <div className="flex justify-between items-center px-1 h-10 border-b border-[#F2F4F6] dark:border-gray-800">
+        <div className="flex justify-between items-center px-1 h-12 border-b border-[#F2F4F6] dark:border-gray-800">
           <span className="text-caption font-semibold text-[#8B95A1] dark:text-gray-400">이름</span>
           <span className="text-caption font-semibold text-[#8B95A1] dark:text-gray-400">성별</span>
         </div>
@@ -930,7 +930,7 @@ const RoomAssignment = () => {
           return (
             <div
               key={room}
-              className="flex overflow-hidden select-none border-b border-[#F2F4F6] dark:border-gray-800 px-1 h-10 items-center hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
+              className="flex overflow-hidden select-none border-b border-[#F2F4F6] dark:border-gray-800 px-1 h-12 items-center hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
             >
               <div className="flex justify-between items-center overflow-hidden w-full">
                 {guest ? (
@@ -1148,7 +1148,7 @@ const RoomAssignment = () => {
                 {/* Unified Table */}
                 <div className="rounded-xl border border-[#F2F4F6] dark:border-gray-800">
                   {/* Header */}
-                  <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-gray-800">
+                  <div className="flex items-center h-12 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-gray-800">
                     <div className="flex-shrink-0 pl-3 pr-2 w-36 border-r border-[#F2F4F6] dark:border-gray-800">
                       <span className="text-caption font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">객실</span>
                     </div>

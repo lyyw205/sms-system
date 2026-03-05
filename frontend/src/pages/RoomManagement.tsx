@@ -264,11 +264,9 @@ const RoomManagement = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
-                      {room.is_active ? (
-                        <Badge color="success">활성</Badge>
-                      ) : (
-                        <Badge color="failure">비활성</Badge>
-                      )}
+                      <span className={`text-body font-medium ${room.is_active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
+                        {room.is_active ? '활성' : '비활성'}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell />
@@ -346,16 +344,16 @@ const RoomManagement = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>객실 상태</Label>
-              <div className="flex items-center gap-3">
-                <ToggleSwitch
-                  checked={form.is_active}
-                  onChange={(v) => setForm((f) => ({ ...f, is_active: v }))}
-                />
-                <Badge color={form.is_active ? 'success' : 'failure'}>
+              <div className="flex items-center gap-2">
+                <Label className="mb-0">객실 상태</Label>
+                <span className={`text-body font-medium ${form.is_active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                   {form.is_active ? '활성' : '비활성'}
-                </Badge>
+                </span>
               </div>
+              <ToggleSwitch
+                checked={form.is_active}
+                onChange={(v) => setForm((f) => ({ ...f, is_active: v }))}
+              />
             </div>
           </div>
         </ModalBody>

@@ -143,13 +143,14 @@ function formatRelativeTime(iso: string | null): string {
   return date.toLocaleString('ko-KR');
 }
 
-function getCampaignTypeLabel(type: string): string {
-  if (type === 'room_guide') return '객실안내';
-  if (type === 'party_guide') return '파티안내';
-  if (type === 'tag_based') return '태그발송';
-  if (type.startsWith('template_schedule_') && type.includes('파티')) return '자동발송(파티)';
-  if (type.startsWith('template_schedule_') && type.includes('객실')) return '자동발송(객실)';
-  if (type.startsWith('template_schedule_')) return '자동발송';
+function getCampaignTemplateName(type: string): string {
+  if (type === 'room_guide') return '객실 안내 문자';
+  if (type === 'party_guide') return '파티 안내 문자';
+  if (type === 'tag_based') return '태그 발송';
+  if (type.startsWith('template_schedule_')) {
+    const name = type.replace('template_schedule_', '');
+    return name || '자동발송';
+  }
   return type;
 }
 
@@ -539,13 +540,13 @@ const Templates: React.FC = () => {
   const renderTemplatesTab = () => (
     <div className="space-y-4">
       {/* Info banner + action */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-label text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+      <div className="flex items-center justify-between rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+        <span className="text-label text-[#3182F6] dark:text-blue-300">
           메시지 템플릿을 만들어두면 스케줄에서 자동으로 발송할 수 있습니다.{' '}
           <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-blue-800/40">{'{{변수명}}'}</code>{' '}
           형식으로 변수를 사용하세요.
-        </div>
-        <Button color="blue" size="sm" onClick={openCreateTemplate}>
+        </span>
+        <Button color="blue" size="sm" onClick={openCreateTemplate} className="ml-4 shrink-0">
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           새 템플릿
         </Button>
@@ -569,12 +570,12 @@ const Templates: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">템플릿 키</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap min-w-[120px]">템플릿 이름</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap">템플릿 키</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap">템플릿 이름</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">사용 변수</TableHeadCell>
-                  <TableHeadCell className="w-16 whitespace-nowrap">상태</TableHeadCell>
-                  <TableHeadCell className="w-16 whitespace-nowrap">스케줄</TableHeadCell>
-                  <TableHeadCell className="w-20 whitespace-nowrap">작업</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap text-center">상태</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap text-center">스케줄</TableHeadCell>
+                  <TableHeadCell className="w-20 whitespace-nowrap text-center">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
@@ -592,24 +593,35 @@ const Templates: React.FC = () => {
                       <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
                     </TableCell>
                     <TableCell>
-                      {t.variables ? (
-                        <div className="flex flex-wrap gap-1">
-                          {t.variables.split(',').filter(Boolean).map(v => (
-                            <Badge key={v} color="purple" size="sm">
-                              <code className="font-mono">{v.trim()}</code>
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
+                      {t.variables ? (() => {
+                        let vars: string[] = [];
+                        try {
+                          const parsed = JSON.parse(t.variables);
+                          vars = Array.isArray(parsed) ? parsed : [];
+                        } catch {
+                          vars = t.variables.replace(/[\[\]"]/g, '').split(',').map(s => s.trim()).filter(Boolean);
+                        }
+                        return vars.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {vars.map(v => (
+                              <span key={v} className="inline-flex items-center rounded-md bg-[#F2F4F6] px-1.5 py-0.5 text-tiny font-medium text-[#4E5968] ring-1 ring-inset ring-[#E5E8EB] dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
+                                {v}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-caption text-gray-400 dark:text-gray-500">없음</span>
+                        );
+                      })() : (
                         <span className="text-caption text-gray-400 dark:text-gray-500">없음</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Badge color={t.active ? 'success' : 'gray'} size="sm">
+                    <TableCell className="text-center">
+                      <span className={`text-body font-medium ${t.active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                         {t.active ? '활성' : '비활성'}
-                      </Badge>
+                      </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       {t.schedule_count > 0 ? (
                         <Badge color="blue" size="sm">{t.schedule_count}개</Badge>
                       ) : (
@@ -617,7 +629,7 @@ const Templates: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center gap-1">
                         <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -683,7 +695,7 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="whitespace-nowrap">발송 시간</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">발송 대상</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">다음 실행</TableHeadCell>
-                  <TableHeadCell className="w-16 whitespace-nowrap">상태</TableHeadCell>
+                  <TableHeadCell className="w-16 whitespace-nowrap text-center">상태</TableHeadCell>
                   <TableHeadCell className="w-28 whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
@@ -720,10 +732,10 @@ const Templates: React.FC = () => {
                       <TableCell>
                         <Badge color={isNextRunSoon ? 'warning' : 'gray'} size="sm">{nextRun}</Badge>
                       </TableCell>
-                      <TableCell>
-                        <Badge color={s.active ? 'success' : 'gray'} size="sm">
+                      <TableCell className="text-center">
+                        <span className={`text-body font-medium ${s.active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                           {s.active ? '활성' : '비활성'}
-                        </Badge>
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -759,11 +771,11 @@ const Templates: React.FC = () => {
   const renderCampaignsTab = () => (
     <div className="space-y-4">
       {/* Info banner + action */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 text-label text-[#3182F6] dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+      <div className="flex items-center justify-between rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+        <span className="text-label text-[#3182F6] dark:text-blue-300">
           지금까지 발송한 메시지 이력입니다. 템플릿 스케줄 자동 발송과 수동 발송 모두 기록됩니다.
-        </div>
-        <Button size="sm" color="light" onClick={fetchCampaigns} disabled={loadingCampaigns}>
+        </span>
+        <Button size="sm" color="blue" onClick={fetchCampaigns} disabled={loadingCampaigns} className="ml-4 shrink-0">
           {loadingCampaigns ? (
             <Spinner size="sm" className="mr-1.5" />
           ) : (
@@ -791,12 +803,12 @@ const Templates: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">발송 타입</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap">발송 템플릿명</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">대상 태그</TableHeadCell>
-                  <TableHeadCell className="w-20 whitespace-nowrap">대상 수</TableHeadCell>
-                  <TableHeadCell className="w-20 whitespace-nowrap">성공</TableHeadCell>
-                  <TableHeadCell className="w-20 whitespace-nowrap">실패</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">발송 일시</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap text-center">대상 수</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap text-center">성공</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap text-center">실패</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap">발송 일시</TableHeadCell>
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
@@ -806,30 +818,30 @@ const Templates: React.FC = () => {
                       <span className="tabular-nums text-gray-400 dark:text-gray-500">{c.id}</span>
                     </TableCell>
                     <TableCell>
-                      <Badge color="indigo" size="sm">{getCampaignTypeLabel(c.campaign_type)}</Badge>
+                      <span className="font-medium text-gray-900 dark:text-white">{getCampaignTemplateName(c.campaign_type)}</span>
                     </TableCell>
                     <TableCell>
                       {c.target_tag ? (
-                        <Badge color="purple" size="sm">{c.target_tag}</Badge>
+                        <span className="font-medium text-gray-900 dark:text-white">{c.target_tag}</span>
                       ) : (
                         <span className="text-[#B0B8C1] dark:text-gray-500">-</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <span className="tabular-nums font-medium text-gray-900 dark:text-white">{c.target_count}</span>
                     </TableCell>
-                    <TableCell>
-                      <Badge color="success" size="sm">{c.sent_count}</Badge>
+                    <TableCell className="text-center">
+                      <span className="tabular-nums font-medium text-[#00C9A7]">{c.sent_count}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       {c.failed_count > 0 ? (
-                        <Badge color="failure" size="sm">{c.failed_count}</Badge>
+                        <span className="tabular-nums font-medium text-[#F04452]">{c.failed_count}</span>
                       ) : (
                         <span className="text-caption text-gray-400 dark:text-gray-500">0</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className="text-body text-gray-500 dark:text-gray-400">
+                      <span className="whitespace-nowrap text-body text-gray-500 dark:text-gray-400">
                         {c.sent_at ? new Date(c.sent_at).toLocaleString('ko-KR') : '-'}
                       </span>
                     </TableCell>

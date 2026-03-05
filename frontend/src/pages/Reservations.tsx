@@ -94,25 +94,25 @@ function fmtTime(val: string | null | undefined): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; color: 'success' | 'warning' | 'failure' | 'gray' }> = {
-    confirmed: { label: '확정', color: 'success' },
-    pending:   { label: '대기', color: 'warning' },
-    cancelled: { label: '취소', color: 'failure' },
-    completed: { label: '완료', color: 'gray' },
+  const map: Record<string, { label: string; className: string }> = {
+    confirmed: { label: '확정', className: 'text-[#00C9A7]' },
+    pending:   { label: '대기', className: 'text-[#FF9F00]' },
+    cancelled: { label: '취소', className: 'text-[#F04452]' },
+    completed: { label: '완료', className: 'text-[#8B95A1] dark:text-gray-500' },
   };
-  const m = map[status] ?? { label: status, color: 'gray' as const };
-  return <Badge color={m.color} size="sm">{m.label}</Badge>;
+  const m = map[status] ?? { label: status, className: 'text-[#8B95A1]' };
+  return <span className={`text-body font-medium ${m.className}`}>{m.label}</span>;
 }
 
 function SourceBadge({ source }: { source?: string | null }) {
   const key = source ?? 'manual';
-  const map: Record<string, { label: string; color: 'success' | 'gray' }> = {
-    naver:  { label: '네이버', color: 'success' },
-    manual: { label: '수동',   color: 'gray' },
-    phone:  { label: '전화',   color: 'gray' },
+  const map: Record<string, { label: string; className: string }> = {
+    naver:  { label: '네이버', className: 'text-[#00C9A7]' },
+    manual: { label: '수동',   className: 'text-[#8B95A1] dark:text-gray-500' },
+    phone:  { label: '전화',   className: 'text-[#8B95A1] dark:text-gray-500' },
   };
-  const m = map[key] ?? { label: key, color: 'gray' as const };
-  return <Badge color={m.color} size="xs">{m.label}</Badge>;
+  const m = map[key] ?? { label: key, className: 'text-[#8B95A1]' };
+  return <span className={`text-body font-medium ${m.className}`}>{m.label}</span>;
 }
 
 export default function Reservations() {
@@ -144,10 +144,13 @@ export default function Reservations() {
   const [deleteId,  setDeleteId]  = useState<number | null>(null);
   const [deleting,  setDeleting]  = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 100;
+
   async function fetchReservations() {
     setLoading(true);
     try {
-      const params: { limit?: number; date?: string } = { limit: 200 };
+      const params: { limit?: number; date?: string } = { limit: 1000 };
       if (filterDate) params.date = filterDate;
       const res = await reservationsAPI.getAll(params);
       setReservations(res.data ?? []);
@@ -177,6 +180,17 @@ export default function Reservations() {
       return true;
     });
   }, [reservations, filterStatus, filterSource, searchQuery]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterDate, filterStatus, filterSource, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, currentPage]);
 
   const stats = useMemo(() => {
     const today = dayjs().format('YYYY-MM-DD');
@@ -530,15 +544,15 @@ export default function Reservations() {
                   <TableHeadCell className="whitespace-nowrap">이름</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">전화번호</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">예약일시</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">상태</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">출처</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">객실</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-center">상태</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-center">출처</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-center">객실</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">메모</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
-                {filtered.map((r) => {
+                {paginated.map((r) => {
                   const isNaver = !!r.external_id;
                   const timeStr = fmtTime(r.time ?? r.date);
 
@@ -566,15 +580,15 @@ export default function Reservations() {
                         <p className="text-body text-gray-900 dark:text-white">{fmtDate(r.date)}</p>
                         {timeStr && <p className="text-caption text-gray-400">{timeStr}</p>}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <StatusBadge status={r.status} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <SourceBadge source={r.source} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         {r.room_number ? (
-                          <Badge color="info" size="sm">{r.room_number}</Badge>
+                          <span className="text-body font-medium text-[#3182F6]">{r.room_number}</span>
                         ) : (
                           <span className="text-caption text-gray-400">미배정</span>
                         )}
@@ -605,6 +619,48 @@ export default function Reservations() {
             </Table>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-[#F2F4F6] dark:border-gray-800 px-5 py-3">
+            <span className="text-caption text-[#8B95A1] dark:text-gray-500">
+              총 <span className="tabular-nums font-medium">{filtered.length}</span>건 중{' '}
+              <span className="tabular-nums font-medium">{(currentPage - 1) * PAGE_SIZE + 1}</span>–
+              <span className="tabular-nums font-medium">{Math.min(currentPage * PAGE_SIZE, filtered.length)}</span>건
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                color="light"
+                size="xs"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+              >
+                이전
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-2.5 py-1 rounded-lg text-caption font-medium transition-colors cursor-pointer ${
+                    page === currentPage
+                      ? 'bg-[#3182F6] text-white'
+                      : 'text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <Button
+                color="light"
+                size="xs"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
+                다음
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Create / Edit Modal */}
