@@ -9,6 +9,8 @@ import {
   XCircle,
   ShoppingBag,
   CalendarDays,
+  Search,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
@@ -35,7 +37,6 @@ import {
   Spinner,
 } from 'flowbite-react';
 
-const TAG_OPTIONS = ['1초', '2차만', '객후', '객후,1초', '1초,2차만'];
 
 interface Reservation {
   id: number;
@@ -52,30 +53,31 @@ interface Reservation {
   room_number?: string | null;
   tags?: string | null;
   notes?: string | null;
+  created_at?: string | null;
 }
 
 interface FormState {
+  guest_type: string;
   customer_name: string;
   phone: string;
   reservation_date: string;
   reservation_time: string;
   status: string;
-  party_size: string;
-  gender: string;
-  room_type: string;
+  male_count: number | null;
+  female_count: number | null;
   tags: string;
   notes: string;
 }
 
 const EMPTY_FORM: FormState = {
+  guest_type: 'manual',
   customer_name: '',
   phone: '',
   reservation_date: '',
   reservation_time: '',
-  status: 'pending',
-  party_size: '',
-  gender: '',
-  room_type: '',
+  status: 'confirmed',
+  male_count: null,
+  female_count: null,
   tags: '',
   notes: '',
 };
@@ -119,8 +121,20 @@ export default function Reservations() {
   const [syncing, setSyncing]           = useState(false);
 
   const [filterDate,   setFilterDate]   = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterSource, setFilterSource] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
+  const [filterSource, setFilterSource] = useState<string[]>([]);
+  const [searchQuery,  setSearchQuery]  = useState('');
+
+  function toggleFilter(current: string[], value: string, setter: (v: string[]) => void) {
+    if (value === 'all') {
+      setter([]);
+    } else {
+      const next = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      setter(next);
+    }
+  }
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -151,20 +165,30 @@ export default function Reservations() {
 
   const filtered = useMemo(() => {
     return reservations.filter((r) => {
-      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (filterStatus.length > 0 && !filterStatus.includes(r.status)) return false;
       const src = r.source ?? 'manual';
-      if (filterSource !== 'all' && src !== filterSource) return false;
+      if (filterSource.length > 0 && !filterSource.includes(src)) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const nameMatch = r.customer_name?.toLowerCase().includes(q);
+        const phoneMatch = r.phone?.replace(/-/g, '').includes(q.replace(/-/g, ''));
+        if (!nameMatch && !phoneMatch) return false;
+      }
       return true;
     });
-  }, [reservations, filterStatus, filterSource]);
+  }, [reservations, filterStatus, filterSource, searchQuery]);
 
-  const stats = useMemo(() => ({
-    total:     reservations.length,
-    confirmed: reservations.filter((r) => r.status === 'confirmed').length,
-    pending:   reservations.filter((r) => r.status === 'pending').length,
-    cancelled: reservations.filter((r) => r.status === 'cancelled').length,
-    naver:     reservations.filter((r) => !!r.external_id).length,
-  }), [reservations]);
+  const stats = useMemo(() => {
+    const today = dayjs().format('YYYY-MM-DD');
+    const todayList = reservations.filter((r) => r.created_at && dayjs(r.created_at).format('YYYY-MM-DD') === today);
+    return {
+      total:     todayList.length,
+      confirmed: todayList.filter((r) => r.status === 'confirmed').length,
+      pending:   todayList.filter((r) => r.status === 'pending').length,
+      cancelled: todayList.filter((r) => r.status === 'cancelled').length,
+      naver:     todayList.filter((r) => !!r.external_id).length,
+    };
+  }, [reservations]);
 
   async function handleSync() {
     setSyncing(true);
@@ -188,15 +212,29 @@ export default function Reservations() {
 
   function openEdit(r: Reservation) {
     setEditingId(r.id);
+    // Parse gender string like "남2여1" into male/female counts
+    let maleCount: number | null = null;
+    let femaleCount: number | null = null;
+    if (r.gender) {
+      const maleMatch = r.gender.match(/남(\d+)/);
+      const femaleMatch = r.gender.match(/여(\d+)/);
+      if (maleMatch) maleCount = Number(maleMatch[1]);
+      if (femaleMatch) femaleCount = Number(femaleMatch[1]);
+      // Simple gender like "남" or "여"
+      if (!maleMatch && !femaleMatch) {
+        if (r.gender === '남') maleCount = r.party_participants ?? 1;
+        if (r.gender === '여') femaleCount = r.party_participants ?? 1;
+      }
+    }
     setForm({
+      guest_type: 'manual',
       customer_name:    r.customer_name ?? '',
       phone:            r.phone ?? '',
       reservation_date: r.date ? dayjs(r.date).format('YYYY-MM-DD') : '',
       reservation_time: fmtTime(r.time ?? r.date),
-      status:           r.status ?? 'pending',
-      party_size:       r.party_participants != null ? String(r.party_participants) : '',
-      gender:           r.gender ?? '',
-      room_type:        r.room_info ?? '',
+      status:           r.status ?? 'confirmed',
+      male_count:       maleCount,
+      female_count:     femaleCount,
       tags:             r.tags ?? '',
       notes:            r.notes ?? '',
     });
@@ -204,7 +242,11 @@ export default function Reservations() {
   }
 
   function setField(key: keyof FormState, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === 'male_count' || key === 'female_count') {
+      setForm((prev) => ({ ...prev, [key]: value ? Number(value) : null }));
+    } else {
+      setForm((prev) => ({ ...prev, [key]: value }));
+    }
   }
 
   async function handleSave() {
@@ -214,17 +256,38 @@ export default function Reservations() {
 
     setSaving(true);
     try {
+      // Map male_count/female_count to gender + party_participants
+      const maleCount = form.male_count ? Number(form.male_count) : 0;
+      const femaleCount = form.female_count ? Number(form.female_count) : 0;
+      const genderParts: string[] = [];
+      if (maleCount > 0) genderParts.push(`남${maleCount}`);
+      if (femaleCount > 0) genderParts.push(`여${femaleCount}`);
+
+      let tags = form.tags.trim() || null;
+
+      // Handle guest type for new entries
+      if (editingId == null && form.guest_type === 'party_only') {
+        if (!tags?.includes('파티만')) {
+          tags = tags ? `${tags},파티만` : '파티만';
+        }
+      }
+
+      // If no room and no 파티만 tag, default to 파티만
+      if (editingId == null && !tags?.includes('파티만')) {
+        tags = tags ? `${tags},파티만` : '파티만';
+      }
+
       const payload: Record<string, unknown> = {
         customer_name:      form.customer_name.trim(),
         phone:              form.phone.trim(),
         date:               form.reservation_date,
-        time:               form.reservation_time || null,
+        time:               form.reservation_time || '00:00',
         status:             form.status,
-        party_participants: form.party_size ? Number(form.party_size) : null,
-        gender:             form.gender || null,
-        room_info:          form.room_type.trim() || null,
-        tags:               form.tags.trim() || null,
+        party_participants: (maleCount + femaleCount) || null,
+        gender:             genderParts.join('') || null,
+        tags:               tags,
         notes:              form.notes.trim() || null,
+        source:             'manual',
       };
 
       if (editingId != null) {
@@ -260,11 +323,12 @@ export default function Reservations() {
 
   function clearFilters() {
     setFilterDate('');
-    setFilterStatus('all');
-    setFilterSource('all');
+    setFilterStatus([]);
+    setFilterSource([]);
+    setSearchQuery('');
   }
 
-  const hasFilter = filterDate || filterStatus !== 'all' || filterSource !== 'all';
+  const hasFilter = filterDate || filterStatus.length > 0 || filterSource.length > 0 || searchQuery;
 
   return (
     <div className="space-y-6">
@@ -355,55 +419,92 @@ export default function Reservations() {
 
         <div className="p-4">
           <div className="filter-bar">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-date" className="text-caption">날짜</Label>
-              <TextInput
-                id="filter-date"
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                sizing="sm"
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="이름 또는 전화번호"
+                className="block w-full rounded-lg border border-[#E5E8EB] bg-white py-2 pl-3 pr-9 text-body text-[#191F28] placeholder:text-[#B0B8C1] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100 dark:placeholder:text-gray-500"
               />
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                <Search className="h-4 w-4 text-[#B0B8C1]" />
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-status" className="text-caption">상태</Label>
-              <Select
-                id="filter-status"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                sizing="sm"
-              >
-                <option value="all">전체</option>
-                <option value="confirmed">확정</option>
-                <option value="pending">대기</option>
-                <option value="cancelled">취소</option>
-                <option value="completed">완료</option>
-              </Select>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="block rounded-lg border border-[#E5E8EB] bg-white py-2 px-3 text-body text-[#191F28] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100"
+            />
+
+            <div className="flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+              {[
+                { value: 'all', label: '전체' },
+                { value: 'confirmed', label: '확정' },
+                { value: 'pending', label: '대기' },
+                { value: 'cancelled', label: '취소' },
+                { value: 'completed', label: '완료' },
+              ].map((opt) => {
+                const isActive = opt.value === 'all'
+                  ? filterStatus.length === 0
+                  : filterStatus.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => toggleFilter(filterStatus, opt.value, setFilterStatus)}
+                    className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                      ${isActive
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-source" className="text-caption">출처</Label>
-              <Select
-                id="filter-source"
-                value={filterSource}
-                onChange={(e) => setFilterSource(e.target.value)}
-                sizing="sm"
-              >
-                <option value="all">전체</option>
-                <option value="naver">네이버</option>
-                <option value="manual">수동</option>
-                <option value="phone">전화</option>
-              </Select>
+            <div className="flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+              {[
+                { value: 'all', label: '전체' },
+                { value: 'naver', label: '네이버' },
+                { value: 'manual', label: '직접입력' },
+              ].map((opt) => {
+                const isActive = opt.value === 'all'
+                  ? filterSource.length === 0
+                  : filterSource.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => toggleFilter(filterSource, opt.value, setFilterSource)}
+                    className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                      ${isActive
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
 
             {hasFilter && (
-              <Button color="light" size="sm" onClick={clearFilters}>
-                필터 초기화
-              </Button>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="p-2 rounded-lg text-[#8B95A1] hover:text-[#F04452] hover:bg-[#FFEBEE] dark:hover:bg-[#F04452]/10 transition-colors cursor-pointer"
+                title="필터 초기화"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
 
-            <span className="ml-auto self-end text-caption tabular-nums text-gray-500">
+            <span className="ml-auto text-caption tabular-nums text-gray-500">
               {filtered.length}건 표시
             </span>
           </div>
@@ -517,136 +618,107 @@ export default function Reservations() {
         </ModalHeader>
 
         <ModalBody className="max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="f-name">
-                예약자 이름 <span className="text-[#F04452] dark:text-red-400">*</span>
-              </Label>
-              <TextInput
-                id="f-name"
-                value={form.customer_name}
-                onChange={(e) => setField('customer_name', e.target.value)}
-                placeholder="홍길동"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-phone">
-                전화번호 <span className="text-[#F04452] dark:text-red-400">*</span>
-              </Label>
-              <TextInput
-                id="f-phone"
-                value={form.phone}
-                onChange={(e) => setField('phone', e.target.value)}
-                placeholder="010-0000-0000"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-date">
-                예약 날짜 <span className="text-[#F04452] dark:text-red-400">*</span>
-              </Label>
-              <TextInput
-                id="f-date"
-                type="date"
-                value={form.reservation_date}
-                onChange={(e) => setField('reservation_date', e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-time">예약 시간</Label>
-              <TextInput
-                id="f-time"
-                type="time"
-                value={form.reservation_time}
-                onChange={(e) => setField('reservation_time', e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-status">예약 상태</Label>
-              <Select
-                id="f-status"
-                value={form.status}
-                onChange={(e) => setField('status', e.target.value)}
-              >
-                <option value="pending">대기</option>
-                <option value="confirmed">확정</option>
-                <option value="cancelled">취소</option>
-                <option value="completed">완료</option>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-party">인원 수</Label>
-              <TextInput
-                id="f-party"
-                type="number"
-                min={1}
-                value={form.party_size}
-                onChange={(e) => setField('party_size', e.target.value)}
-                placeholder="2"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-gender">성별</Label>
-              <Select
-                id="f-gender"
-                value={form.gender || '__none__'}
-                onChange={(e) => setField('gender', e.target.value === '__none__' ? '' : e.target.value)}
-              >
-                <option value="__none__">선택 안 함</option>
-                <option value="male">남성</option>
-                <option value="female">여성</option>
-                <option value="mixed">혼성</option>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="f-room-type">객실 타입</Label>
-              <TextInput
-                id="f-room-type"
-                value={form.room_type}
-                onChange={(e) => setField('room_type', e.target.value)}
-                placeholder="스탠다드"
-              />
-            </div>
-
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="f-tags">태그</Label>
-              <TextInput
-                id="f-tags"
-                value={form.tags}
-                onChange={(e) => setField('tags', e.target.value)}
-                placeholder="쉼표로 구분 (예: 1초,2차만)"
-              />
-              <div className="flex flex-wrap gap-1">
-                {TAG_OPTIONS.map((t) => (
-                  <Button
-                    key={t}
+          <div className="flex flex-col gap-4">
+            {editingId == null && (
+              <div className="flex gap-2">
+                {[
+                  { value: 'manual', label: '미배정' },
+                  { value: 'party_only', label: '파티만' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
                     type="button"
-                    color={form.tags === t ? 'blue' : 'light'}
-                    size="xs"
-                    pill
-                    className="!text-overline !px-2 !py-0.5"
-                    onClick={() => setField('tags', t)}
+                    onClick={() => {
+                      if (opt.value === 'party_only') {
+                        setField('guest_type', opt.value);
+                        setField('tags', '파티만');
+                      } else {
+                        setField('guest_type', opt.value);
+                      }
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
+                      ${form.guest_type === opt.value
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-300 dark:hover:bg-[#3A3A44]'
+                      }`}
                   >
-                    {t}
-                  </Button>
+                    {opt.label}
+                  </button>
                 ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="f-name">이름 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+                <TextInput
+                  id="f-name"
+                  value={form.customer_name}
+                  onChange={(e) => setField('customer_name', e.target.value)}
+                  placeholder="이름"
+                  sizing="sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="f-phone">전화번호 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+                <TextInput
+                  id="f-phone"
+                  value={form.phone}
+                  onChange={(e) => setField('phone', e.target.value)}
+                  placeholder="010-1234-5678"
+                  sizing="sm"
+                />
               </div>
             </div>
 
-            <div className="space-y-2 col-span-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="f-date">날짜 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+                <TextInput
+                  id="f-date"
+                  type="date"
+                  value={form.reservation_date}
+                  onChange={(e) => setField('reservation_date', e.target.value)}
+                  sizing="sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>성별 / 인원</Label>
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-0 flex-1">
+                    <span className="flex-shrink-0 px-3 py-2 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-gray-600 text-sm font-medium text-[#4E5968] dark:text-gray-300">남</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.male_count ?? ''}
+                      onChange={(e) => setField('male_count', e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-2 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-0 flex-1">
+                    <span className="flex-shrink-0 px-3 py-2 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-gray-600 text-sm font-medium text-[#4E5968] dark:text-gray-300">여</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.female_count ?? ''}
+                      onChange={(e) => setField('female_count', e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-2 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="f-notes">메모</Label>
               <Textarea
                 id="f-notes"
                 value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)}
-                rows={2}
-                placeholder="추가 메모를 입력하세요"
+                placeholder="메모"
+                rows={3}
               />
             </div>
           </div>

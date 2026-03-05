@@ -93,6 +93,12 @@ const customTheme = {
       light:
         'bg-[#F2F4F6] text-[#191F28] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:hover:bg-[#35353E]',
     },
+    size: {
+      xs: 'px-2 py-1 text-caption',
+      sm: 'px-3 py-1.5 text-body',
+      md: 'px-4 py-2 text-body',
+      lg: 'px-5 py-2.5 text-body',
+    },
   },
   tabs: {
     tablist: {
@@ -107,6 +113,27 @@ const customTheme = {
             },
           },
         },
+      },
+    },
+  },
+  textInput: {
+    field: {
+      input: {
+        sizes: {
+          sm: 'p-2 text-body',
+          md: 'p-2.5 text-body',
+        },
+        withIcon: {
+          on: 'pl-10',
+          off: '',
+        },
+        withRightIcon: {
+          on: 'pr-10',
+          off: '',
+        },
+      },
+      rightIcon: {
+        base: 'pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3',
       },
     },
   },

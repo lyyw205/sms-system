@@ -170,14 +170,6 @@ function getTargetLabel(record: TemplateSchedule): string {
   return map[record.target_type] ?? record.target_type;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  room_guide: '객실안내',
-  party_guide: '파티안내',
-  confirmation: '예약확인',
-  reminder: '리마인더',
-  other: '기타',
-};
-
 const CATEGORY_ICON: Record<string, string> = {
   reservation: '예약 정보',
   room: '객실 정보',
@@ -199,21 +191,21 @@ interface ConfirmDeleteProps {
 
 function ConfirmDeleteDialog({ open, message, onConfirm, onCancel }: ConfirmDeleteProps) {
   return (
-    <Modal show={open} onClose={onCancel} size="sm">
-      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">삭제 확인</ModalHeader>
+    <Modal show={open} onClose={onCancel} size="md" popup>
+      <ModalHeader />
       <ModalBody>
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#FFEBEE] dark:bg-red-900/20">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFEBEE] dark:bg-[#F04452]/10">
             <Trash2 className="h-6 w-6 text-[#F04452] dark:text-red-400" />
           </div>
-          <h3 className="mb-2 text-body font-semibold text-[#191F28] dark:text-white">정말 삭제하시겠습니까?</h3>
-          <p className="mb-5 text-label text-[#8B95A1] dark:text-gray-400">{message}</p>
+          <h3 className="mb-2 text-heading font-semibold text-[#191F28] dark:text-white">정말 삭제하시겠습니까?</h3>
+          <p className="mb-5 text-body text-gray-500">{message}</p>
+          <div className="flex justify-center gap-3">
+            <Button color="failure" onClick={onConfirm}>삭제</Button>
+            <Button color="light" onClick={onCancel}>취소</Button>
+          </div>
         </div>
       </ModalBody>
-      <ModalFooter className="flex justify-center gap-3 border-t border-[#F2F4F6] dark:border-gray-800">
-        <Button color="failure" size="sm" onClick={onConfirm}>삭제</Button>
-        <Button color="light" size="sm" onClick={onCancel}>취소</Button>
-      </ModalFooter>
     </Modal>
   );
 }
@@ -238,7 +230,6 @@ const Templates: React.FC = () => {
   // template form
   const [tKey, setTKey] = useState('');
   const [tName, setTName] = useState('');
-  const [tCategory, setTCategory] = useState('');
   const [tContent, setTContent] = useState('');
   const [tVariables, setTVariables] = useState('');
   const [tActive, setTActive] = useState(true);
@@ -345,7 +336,7 @@ const Templates: React.FC = () => {
 
   const openCreateTemplate = () => {
     setEditingTemplate(null);
-    setTKey(''); setTName(''); setTCategory(''); setTContent('');
+    setTKey(''); setTName(''); setTContent('');
     setTVariables(''); setTActive(true); setTKeyError('');
     setDetectedVars({ valid: [], invalid: [] });
     setShowVarRef(false);
@@ -354,7 +345,7 @@ const Templates: React.FC = () => {
 
   const openEditTemplate = (t: Template) => {
     setEditingTemplate(t);
-    setTKey(t.key); setTName(t.name); setTCategory(t.category ?? '');
+    setTKey(t.key); setTName(t.name);
     setTContent(t.content); setTVariables(t.variables ?? '');
     setTActive(t.active); setTKeyError('');
     setDetectedVars(extractAndValidateVariables(t.content, availableVariables));
@@ -380,7 +371,6 @@ const Templates: React.FC = () => {
       const data = {
         key: tKey, name: tName, content: tContent,
         variables: tVariables || undefined,
-        category: tCategory || undefined,
         active: tActive,
       };
       if (editingTemplate) {
@@ -555,8 +545,8 @@ const Templates: React.FC = () => {
           <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-blue-800/40">{'{{변수명}}'}</code>{' '}
           형식으로 변수를 사용하세요.
         </div>
-        <Button size="sm" onClick={openCreateTemplate}>
-          <Plus className="mr-1.5 h-4 w-4" />
+        <Button color="blue" size="sm" onClick={openCreateTemplate}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
           새 템플릿
         </Button>
       </div>
@@ -581,7 +571,6 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">템플릿 키</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap min-w-[120px]">템플릿 이름</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">카테고리</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">사용 변수</TableHeadCell>
                   <TableHeadCell className="w-16 whitespace-nowrap">상태</TableHeadCell>
                   <TableHeadCell className="w-16 whitespace-nowrap">스케줄</TableHeadCell>
@@ -601,13 +590,6 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      {t.category ? (
-                        <Badge color="indigo" size="sm">{CATEGORY_LABELS[t.category] ?? t.category}</Badge>
-                      ) : (
-                        <span className="text-[#B0B8C1] dark:text-gray-500">-</span>
-                      )}
                     </TableCell>
                     <TableCell>
                       {t.variables ? (
@@ -667,11 +649,11 @@ const Templates: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" color="light" onClick={handleSyncSchedules}>
-            <RefreshCw className="mr-1.5 h-4 w-4" />
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
             동기화
           </Button>
-          <Button size="sm" onClick={openCreateSchedule}>
-            <Plus className="mr-1.5 h-4 w-4" />
+          <Button color="blue" size="sm" onClick={openCreateSchedule}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
             새 스케줄
           </Button>
         </div>
@@ -785,7 +767,7 @@ const Templates: React.FC = () => {
           {loadingCampaigns ? (
             <Spinner size="sm" className="mr-1.5" />
           ) : (
-            <RefreshCw className="mr-1.5 h-4 w-4" />
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
           )}
           새로고침
         </Button>
@@ -905,19 +887,6 @@ const Templates: React.FC = () => {
               onChange={e => setTName(e.target.value)}
             />
             <p className="text-caption text-gray-400 dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
-          </div>
-
-          {/* Category */}
-          <div className="space-y-2">
-            <Label>카테고리</Label>
-            <Select value={tCategory} onChange={e => setTCategory(e.target.value)}>
-              <option value="">카테고리 선택 (선택사항)</option>
-              <option value="room_guide">객실 안내</option>
-              <option value="party_guide">파티 안내</option>
-              <option value="confirmation">예약 확인</option>
-              <option value="reminder">리마인더</option>
-              <option value="other">기타</option>
-            </Select>
           </div>
 
           {/* Content */}
@@ -1315,7 +1284,7 @@ const Templates: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const renderPreviewDialog = () => (
-    <Modal show={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} size="4xl">
+    <Modal show={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} size="2xl">
       <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">발송 대상 미리보기</ModalHeader>
       <ModalBody>
         <div className="space-y-4">
@@ -1389,18 +1358,11 @@ const Templates: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Page header */}
+    <div className="space-y-6">
+      {/* Header */}
       <div>
-        <div className="flex items-center gap-2.5">
-          <div className="stat-icon bg-[#F3EEFF] text-[#7B61FF] dark:bg-violet-900/30 dark:text-violet-400">
-            <FileText size={20} />
-          </div>
-          <div>
-            <h1 className="page-title">메시지 템플릿 및 스케줄 관리</h1>
-            <p className="page-subtitle">템플릿을 만들고 자동 발송 스케줄을 설정하세요</p>
-          </div>
-        </div>
+        <h1 className="page-title">템플릿 관리</h1>
+        <p className="page-subtitle">메시지 템플릿을 만들고 자동 발송 스케줄을 설정합니다.</p>
       </div>
 
       {/* Tab card */}

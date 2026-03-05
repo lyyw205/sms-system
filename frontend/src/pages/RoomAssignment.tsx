@@ -976,7 +976,7 @@ const RoomAssignment = () => {
               <button
                 type="button"
                 onClick={() => setCampaignDropdownOpen(!campaignDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-[#191F28] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors cursor-pointer"
+                className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-[#191F28] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors cursor-pointer min-w-[160px]"
               >
                 {selectedCampaign
                   ? campaigns.find((c: any) => c.id === selectedCampaign)?.name || '캠페인 선택'
@@ -1054,6 +1054,14 @@ const RoomAssignment = () => {
                 <Send className="h-3.5 w-3.5 mr-1.5" />
                 파티 안내
               </Button>
+              <Button
+                color="light"
+                size="sm"
+                onClick={handleAddPartyGuest}
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                예약자 추가
+              </Button>
             </div>
           </div>
 
@@ -1113,14 +1121,6 @@ const RoomAssignment = () => {
               onClick={() => navigateDate('next')}
             >
               <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button
-              color="light"
-              size="sm"
-              onClick={handleAddPartyGuest}
-            >
-              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-              예약자 추가
             </Button>
           </div>
           <button

@@ -101,6 +101,46 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-gray-300 dark:bg-gray-600;
   }
+
+  /* Hide number input spin buttons */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Unified placeholder styles */
+  input::placeholder,
+  textarea::placeholder {
+    color: #B0B8C1 !important;
+    font-size: 0.875rem !important;
+  }
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #6B7280 !important;
+  }
+
+  /* Date input text styling */
+  input[type="date"] {
+    font-size: 0.875rem !important;
+  }
+  input[type="date"]::-webkit-datetime-edit {
+    font-size: 0.875rem !important;
+    color: #B0B8C1;
+  }
+  input[type="date"]:valid:not([value=""])::-webkit-datetime-edit {
+    color: #191F28;
+  }
+  .dark input[type="date"]::-webkit-datetime-edit {
+    color: #6B7280;
+  }
+  .dark input[type="date"]:valid:not([value=""])::-webkit-datetime-edit {
+    color: #F3F4F6;
+  }
+
 }
 
 /* ─── Component Classes (Toss style) ──────────────────────────────────── */
@@ -116,7 +156,7 @@
 
   /* Stat card — borderless, white, subtle hover */
   .stat-card {
-    @apply rounded-2xl bg-[#F2F4F6] p-5 transition-colors
+    @apply rounded-2xl bg-[#F8F9FA] p-5 transition-colors
       dark:bg-[#1E1E24];
   }
   .stat-value {
@@ -142,7 +182,7 @@
 
   /* Filter bar */
   .filter-bar {
-    @apply flex flex-wrap items-end gap-3 rounded-xl bg-[#F2F4F6] p-4 dark:bg-[#1E1E24];
+    @apply flex flex-wrap items-center gap-3 rounded-xl p-4;
   }
 
   /* Empty state */
