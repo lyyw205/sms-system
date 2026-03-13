@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 import logging
 
-from app.db.models import Reservation, ReservationStatus, Room
+from app.db.models import Reservation, ReservationStatus
+from app.services import room_assignment
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None) 
         existing = existing_map.get(external_id) if external_id else None
 
         if existing:
-            _update_reservation(existing, res_data)
+            _update_reservation(db, existing, res_data)
             updated_count += 1
         else:
             new_res = _create_reservation(res_data)
@@ -64,19 +65,27 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None) 
 
     db.commit()
 
-    # Auto-assign rooms based on naver_biz_item_id matching
-    assigned_count = _auto_assign_rooms(db)
-
-    logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated, {assigned_count} auto-assigned")
+    logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
 
     return {
         "status": "success",
         "synced": len(reservations),
         "added": added_count,
         "updated": updated_count,
-        "assigned": assigned_count,
-        "message": f"{len(reservations)}건 조회, {added_count}건 추가, {updated_count}건 갱신, {assigned_count}건 자동배정",
+        "message": f"{len(reservations)}건 조회, {added_count}건 추가, {updated_count}건 갱신",
     }
+
+
+def _init_gender_counts(res_data: Dict[str, Any]) -> tuple:
+    """Derive initial male_count/female_count from Naver gender + people_count."""
+    gender = res_data.get("gender", "")
+    people = res_data.get("people_count", 1) or 1
+    if gender == "남":
+        return (people, 0)
+    elif gender == "여":
+        return (0, people)
+    else:
+        return (None, None)
 
 
 def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
@@ -85,6 +94,8 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         status_enum = ReservationStatus(res_data.get("status", "pending"))
     except ValueError:
         status_enum = ReservationStatus.CONFIRMED
+
+    male_count, female_count = _init_gender_counts(res_data)
 
     return Reservation(
         external_id=res_data.get("external_id"),
@@ -100,6 +111,8 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         source="naver",
         room_info=res_data.get("room_type", ""),
         party_participants=res_data.get("people_count", 1),
+        male_count=male_count,
+        female_count=female_count,
         end_date=res_data.get("end_date"),
         biz_item_name=res_data.get("biz_item_name"),
         booking_count=res_data.get("booking_count", 1),
@@ -112,7 +125,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
     )
 
 
-def _update_reservation(existing: Reservation, res_data: Dict[str, Any]):
+def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, Any]):
     """Update an existing Reservation with fresh Naver API data."""
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
@@ -122,6 +135,8 @@ def _update_reservation(existing: Reservation, res_data: Dict[str, Any]):
     existing.naver_biz_item_id = res_data.get("naver_biz_item_id", existing.naver_biz_item_id)
     existing.room_info = res_data.get("room_type", existing.room_info)
     existing.party_participants = res_data.get("people_count", existing.party_participants)
+    old_date = existing.date
+    old_end_date = existing.end_date
     existing.date = res_data.get("date", existing.date)
     existing.time = res_data.get("time", existing.time)
     existing.end_date = res_data.get("end_date", existing.end_date)
@@ -134,6 +149,11 @@ def _update_reservation(existing: Reservation, res_data: Dict[str, Any]):
     existing.cancelled_datetime = res_data.get("cancelled_datetime", existing.cancelled_datetime)
     if res_data.get("gender"):
         existing.gender = res_data["gender"]
+    # Only set male_count/female_count if not already manually edited
+    if existing.male_count is None and existing.female_count is None:
+        male_count, female_count = _init_gender_counts(res_data)
+        existing.male_count = male_count
+        existing.female_count = female_count
 
     # Update status based on Naver status
     naver_status = res_data.get("status", "confirmed")
@@ -141,66 +161,13 @@ def _update_reservation(existing: Reservation, res_data: Dict[str, Any]):
         existing.status = ReservationStatus.CONFIRMED
     elif naver_status == "cancelled":
         existing.status = ReservationStatus.CANCELLED
+        # Auto-unassign room on cancellation
+        room_assignment.clear_all_for_reservation(db, existing.id)
+
+    # Reconcile room assignments if dates changed
+    if existing.date != old_date or existing.end_date != old_end_date:
+        room_assignment.reconcile_dates(db, existing)
 
     existing.updated_at = datetime.utcnow()
 
 
-def _auto_assign_rooms(db: Session) -> int:
-    """
-    Auto-assign rooms to unassigned reservations based on naver_biz_item_id.
-    Matches reservation's naver_biz_item_id to room's naver_biz_item_id.
-    Skips rooms already taken for the same date.
-    """
-    # Get rooms that have a naver_biz_item_id linked
-    rooms_with_biz = (
-        db.query(Room)
-        .filter(Room.naver_biz_item_id.isnot(None), Room.is_active == True)
-        .order_by(Room.sort_order)
-        .all()
-    )
-    if not rooms_with_biz:
-        return 0
-
-    # Build mapping: naver_biz_item_id -> list of room_numbers
-    biz_to_rooms: dict = {}
-    for room in rooms_with_biz:
-        biz_to_rooms.setdefault(room.naver_biz_item_id, []).append(room.room_number)
-
-    # Get unassigned confirmed reservations with a naver_biz_item_id
-    unassigned = (
-        db.query(Reservation)
-        .filter(
-            Reservation.room_number.is_(None),
-            Reservation.naver_biz_item_id.isnot(None),
-            Reservation.status == ReservationStatus.CONFIRMED,
-        )
-        .all()
-    )
-
-    # Pre-fetch all occupied (date, room_number) pairs in one query
-    dates = {res.date for res in unassigned}
-    existing_assignments = (
-        db.query(Reservation.date, Reservation.room_number)
-        .filter(Reservation.date.in_(dates), Reservation.room_number.isnot(None))
-        .all()
-    )
-    occupied = {(d, r) for d, r in existing_assignments}
-
-    assigned_count = 0
-    for res in unassigned:
-        candidate_rooms = biz_to_rooms.get(res.naver_biz_item_id, [])
-        if not candidate_rooms:
-            continue
-
-        for room_number in candidate_rooms:
-            if (res.date, room_number) not in occupied:
-                res.room_number = room_number
-                occupied.add((res.date, room_number))
-                assigned_count += 1
-                break
-
-    if assigned_count:
-        db.commit()
-        logger.info(f"Auto-assigned {assigned_count} reservations to rooms")
-
-    return assigned_count

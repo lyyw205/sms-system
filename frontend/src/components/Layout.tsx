@@ -158,7 +158,7 @@ function DesktopSidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-30 flex flex-col bg-white transition-all duration-300 dark:bg-[#17171C] ${
+      className={`fixed inset-y-0 left-0 z-30 flex flex-col bg-white shadow-[2px_0_6px_rgba(0,0,0,0.02)] transition-all duration-300 dark:bg-[#17171C] dark:shadow-[2px_0_8px_rgba(0,0,0,0.2)] ${
         collapsed ? 'w-[68px]' : 'w-60'
       }`}
     >
@@ -325,7 +325,7 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-white dark:bg-[#17171C]">
+    <div className="flex min-h-screen bg-[#FAFBFC] dark:bg-[#17171C]">
       {/* Desktop Sidebar */}
       {!isMobile && (
         <DesktopSidebar
@@ -341,7 +341,7 @@ export default function Layout({ children }: LayoutProps) {
         }`}
       >
         {/* Header */}
-        <Navbar fluid className="sticky top-0 z-20 h-14 bg-white/90 backdrop-blur-md dark:bg-[#17171C]/90">
+        <Navbar fluid className="sticky top-0 z-20 h-14 bg-[#FAFBFC]/90 backdrop-blur-md dark:bg-[#17171C]/90">
           <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-3">
               {isMobile && <MobileSidebar />}

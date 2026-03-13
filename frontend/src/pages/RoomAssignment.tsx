@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, DragEvent, useMemo, useRef } from 'react';
-import { reservationsAPI, campaignsAPI, roomsAPI } from '../services/api';
+import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
@@ -25,7 +25,17 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Plus,
 } from 'lucide-react';
+
+interface SmsAssignment {
+  id: number;
+  reservation_id: number;
+  template_key: string;
+  assigned_at: string;
+  sent_at: string | null;
+  assigned_by: string;
+}
 
 interface Reservation {
   id: number;
@@ -38,65 +48,63 @@ interface Reservation {
   room_password: string | null;
   room_info: string | null;
   gender: string | null;
+  male_count: number | null;
+  female_count: number | null;
   party_participants: number | null;
+  party_type: string | null;  // '1'=1차만, '2'=1+2차, '2차만'
   tags: string | null;
   notes: string | null;
   room_sms_sent: boolean;
   party_sms_sent: boolean;
   sent_sms_types: string | null; // "객후,파티안내,객실안내"
+  end_date: string | null;
   source?: string;
+  sms_assignments: SmsAssignment[];
+}
+
+function isMultiNight(res: Reservation): boolean {
+  if (!res.end_date || !res.date) return false;
+  const start = dayjs(res.date);
+  const end = dayjs(res.end_date);
+  return end.diff(start, 'day') > 1;
 }
 
 
 
 
-function getSmsStatus(res: Reservation): { pending: string[]; sent: string[] } {
-  const pending: string[] = [];
-  const sent: string[] = [];
 
-  const sentTypes = res.sent_sms_types
-    ? res.sent_sms_types.split(',').map((s) => s.trim())
-    : [];
-
-  if (res.notes?.includes('객후')) {
-    if (sentTypes.includes('객후')) {
-      sent.push('객후');
-    } else {
-      pending.push('객후');
-    }
-  }
-
-  if (res.room_number) {
-    if (sentTypes.includes('객실안내') || res.room_sms_sent) {
-      sent.push('객실안내');
-    } else {
-      pending.push('객실안내');
-    }
-  }
-
-  const isPartyGuest = !res.room_number && res.tags?.includes('파티만');
-  if (isPartyGuest || res.party_participants) {
-    if (sentTypes.includes('파티안내') || res.party_sms_sent) {
-      sent.push('파티안내');
-    } else {
-      pending.push('파티안내');
-    }
-  }
-
-  return { pending, sent };
+function formatGenderPeople(res: Reservation): string {
+  const m = res.male_count || 0;
+  const f = res.female_count || 0;
+  if (m > 0 && f > 0) return `남${m}여${f}`;
+  if (m > 0) return `남${m}`;
+  if (f > 0) return `여${f}`;
+  // Fallback to legacy gender + party_participants
+  if (res.gender && res.party_participants) return `${res.gender}${res.party_participants}`;
+  return '';
 }
 
 interface SmsCellProps {
-  smsStatus: { pending: string[]; sent: string[] };
-  isEditing: boolean;
-  onToggle?: (smsType: string) => void;
+  reservation: Reservation;
+  templateLabels: {key: string; name: string; short_label: string | null}[];
+  onToggle: (resId: number, templateKey: string) => void;
+  onAssign: (resId: number, templateKey: string) => void;
+  onRemove: (resId: number, templateKey: string) => void;
 }
 
-const SmsCell: React.FC<SmsCellProps> = ({ smsStatus, isEditing, onToggle }) => {
+const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, onToggle, onAssign, onRemove }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showArrows, setShowArrows] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const assignments = [...(reservation.sms_assignments || [])].sort((a, b) => {
+    const ai = templateLabels.findIndex(t => t.key === a.template_key);
+    const bi = templateLabels.findIndex(t => t.key === b.template_key);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 
   const checkScroll = useCallback(() => {
     if (scrollRef.current) {
@@ -112,79 +120,126 @@ const SmsCell: React.FC<SmsCellProps> = ({ smsStatus, isEditing, onToggle }) => 
     const handleResize = () => checkScroll();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [checkScroll, smsStatus]);
+  }, [checkScroll, assignments]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handler);
+      return () => document.removeEventListener('mousedown', handler);
+    }
+  }, [dropdownOpen]);
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
-      scrollRef.current.scrollBy({
-        left: direction === 'left' ? -100 : 100,
-        behavior: 'smooth',
-      });
+      scrollRef.current.scrollBy({ left: direction === 'left' ? -100 : 100, behavior: 'smooth' });
       setTimeout(checkScroll, 300);
     }
   };
 
+  const getLabel = (key: string) => {
+    const tpl = templateLabels.find(t => t.key === key);
+    return tpl?.short_label || tpl?.name || key;
+  };
+
+  const getFullName = (key: string) => {
+    const tpl = templateLabels.find(t => t.key === key);
+    return tpl?.name || key;
+  };
+
+  const isAssigned = (key: string) => assignments.some(a => a.template_key === key);
+
+  const isSentTemplate = (key: string) => !!assignments.find(a => a.template_key === key)?.sent_at;
+
+  const handleDropdownToggle = (key: string) => {
+    if (isSentTemplate(key)) return; // 발송완료된 항목은 해제 불가
+    if (isAssigned(key)) {
+      onRemove(reservation.id, key);
+    } else {
+      onAssign(reservation.id, key);
+    }
+  };
+
   return (
-    <div className="relative flex items-center overflow-hidden h-8">
-      {showArrows && canScrollLeft && (
-        <button
-          onClick={() => scroll('left')}
-          className="absolute left-0 z-10 flex items-center justify-center cursor-pointer bg-white/80 dark:bg-[#1E1E24]/80 rounded-full"
-        >
-          <ChevronLeft size={12} className="text-[#8B95A1] dark:text-gray-400" />
-        </button>
-      )}
+    <div className="relative flex items-center h-8">
       <div
         ref={scrollRef}
         onScroll={checkScroll}
-        className="flex-1 overflow-x-auto overflow-y-hidden flex items-center"
+        className="overflow-x-auto overflow-y-hidden flex items-center min-w-0 scrollbar-none"
       >
         <div className="flex items-center gap-1 flex-nowrap">
-          {smsStatus.pending.map((type) => (
-            <span
-              key={type}
-              onClick={(e) => {
-                if (isEditing && onToggle) {
-                  e.stopPropagation();
-                  onToggle(type);
-                }
-              }}
-              className={`inline-flex items-center px-1.5 py-0 rounded text-[11px] leading-[18px] font-medium whitespace-nowrap
-                bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400
-                ${isEditing ? 'cursor-pointer opacity-60 hover:opacity-100 transition-opacity' : ''}`}
-            >
-              {type}
-            </span>
-          ))}
-          {smsStatus.sent.map((type) => (
-            <span
-              key={type}
-              onClick={(e) => {
-                if (isEditing && onToggle) {
-                  e.stopPropagation();
-                  onToggle(type);
-                }
-              }}
-              className={`inline-flex items-center px-1.5 py-0 rounded text-[11px] leading-[18px] font-medium whitespace-nowrap
-                bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400
-                ${isEditing ? 'cursor-pointer' : ''}`}
-            >
-              {type}
-            </span>
-          ))}
-          {smsStatus.pending.length === 0 && smsStatus.sent.length === 0 && (
+          {assignments.map((a) => {
+            const isSent = !!a.sent_at;
+            return (
+              <span
+                key={a.template_key}
+                title={getFullName(a.template_key)}
+                className={`inline-flex items-center px-1.5 py-1 rounded text-[11px] leading-tight font-medium whitespace-nowrap cursor-pointer transition-all
+                  ${isSent
+                    ? 'bg-[#00C9A7]/10 text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]'
+                    : 'bg-[#F2F4F6] text-[#8B95A1] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-[#8B95A1] dark:border-[#2C2C34]'
+                  }`}
+                onClick={(e) => { e.stopPropagation(); onToggle(reservation.id, a.template_key); }}
+              >
+                {isSent && <span className="mr-0.5">✓</span>}
+                {getLabel(a.template_key)}
+              </span>
+            );
+          })}
+          {assignments.length === 0 && (
             <span className="text-[#B0B8C1] dark:text-[#8B95A1] text-caption">-</span>
           )}
         </div>
       </div>
-      {showArrows && canScrollRight && (
+      {/* + button with checklist dropdown */}
+      <div className="relative flex-shrink-0 ml-1" ref={dropdownRef}>
         <button
-          onClick={() => scroll('right')}
-          className="absolute right-0 z-10 flex items-center justify-center cursor-pointer bg-white/80 dark:bg-[#1E1E24]/80 rounded-full"
+          onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
+          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded border border-dashed border-[#E5E8EB] dark:border-[#2C2C34] text-[#B0B8C1] dark:text-[#8B95A1] hover:border-[#3182F6] hover:text-[#3182F6] dark:hover:border-[#3182F6] dark:hover:text-[#3182F6] transition-colors cursor-pointer"
+          title="문자 템플릿 관리"
         >
-          <ChevronRight size={12} className="text-[#8B95A1] dark:text-gray-400" />
+          <Plus size={10} />
         </button>
-      )}
+        {dropdownOpen && templateLabels.length > 0 && (
+          <div className="absolute top-full right-0 mt-1 z-50 min-w-[160px] rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg py-1">
+            {templateLabels.map(t => {
+              const assigned = isAssigned(t.key);
+              const sent = assignments.find(a => a.template_key === t.key)?.sent_at;
+              return (
+                <button
+                  key={t.key}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-caption transition-colors ${
+                    sent ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] cursor-pointer'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDropdownToggle(t.key);
+                  }}
+                >
+                  <span className={`flex items-center justify-center w-3.5 h-3.5 rounded border transition-colors ${
+                    assigned
+                      ? sent ? 'bg-[#00C9A7] border-[#00C9A7] text-white' : 'bg-[#3182F6] border-[#3182F6] text-white'
+                      : 'border-[#E5E8EB] dark:border-[#4E5968]'
+                  }`}>
+                    {assigned && <span className="text-[9px] font-bold">✓</span>}
+                  </span>
+                  <span className={`${assigned ? 'text-[#191F28] dark:text-white' : 'text-[#8B95A1] dark:text-[#4E5968]'}`}>
+                    {t.short_label ? (
+                      <><span className="font-medium">{t.short_label}</span> <span className="text-[#8B95A1] dark:text-[#4E5968]">({t.name})</span></>
+                    ) : (
+                      <span className="font-medium">{t.name}</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -263,19 +318,40 @@ const RoomAssignment = () => {
     setConfirmState({ open: true, title, content, onOk });
   };
 
+  const [multiNightConfirm, setMultiNightConfirm] = useState<{
+    open: boolean;
+    resId: number;
+    resName: string;
+    room: string;
+    onConfirm: (applySubsequent: boolean) => void;
+  } | null>(null);
+
   const [partyValues, setPartyValues] = useState<Record<number, string>>({});
+  const [templateLabels, setTemplateLabels] = useState<{key: string; name: string; short_label: string | null}[]>([]);
 
   const handleFieldSave = async (resId: number, field: string, value: string) => {
-    if (field === 'party') {
-      setPartyValues((prev) => ({ ...prev, [resId]: value }));
+    if (field === 'party_type') {
+      try {
+        await reservationsAPI.update(resId, { party_type: value || null });
+        fetchReservations(selectedDate);
+      } catch {
+        toast.error('저장 실패');
+      }
       return;
     }
     try {
       if (field === 'genderPeople') {
-        const match = (value || '').match(/^([가-힣]*)(\d*)$/);
-        const gender = match?.[1] || null;
-        const party_participants = match?.[2] ? Number(match[2]) : null;
-        await reservationsAPI.update(resId, { gender, party_participants });
+        // Parse mixed gender format: "남1여1", "남2", "여3", "남1", etc.
+        const maleMatch = (value || '').match(/남(\d+)/);
+        const femaleMatch = (value || '').match(/여(\d+)/);
+        const male_count = maleMatch ? Number(maleMatch[1]) : 0;
+        const female_count = femaleMatch ? Number(femaleMatch[1]) : 0;
+        // Also update party_participants as total
+        const total = male_count + female_count;
+        const gender = male_count > 0 && female_count > 0 ? '혼성' : male_count > 0 ? '남' : female_count > 0 ? '여' : null;
+        await reservationsAPI.update(resId, { male_count, female_count, gender, party_participants: total || null });
+      } else if (field === 'party_type') {
+        await reservationsAPI.update(resId, { party_type: value || null });
       } else {
         await reservationsAPI.update(resId, { [field]: value });
       }
@@ -292,8 +368,8 @@ const RoomAssignment = () => {
   const [resizeStartWidth, setResizeStartWidth] = useState(200);
 
   const GUEST_COLS = useMemo(() => {
-    return `56px 120px 40px 40px 72px minmax(40px, 1fr) ${smsColumnWidth}px`;
-  }, [smsColumnWidth]);
+    return `56px 120px 40px 40px 72px 1fr`;
+  }, []);
 
   const roomInfoMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -303,19 +379,48 @@ const RoomAssignment = () => {
     return map;
   }, [rooms]);
 
-  const activeRoomNumbers = useMemo(() => {
-    return rooms.filter((room) => room.is_active).map((room) => room.room_number);
+  const activeRoomEntries = useMemo(() => {
+    return rooms.filter((room) => room.is_active).map((room) => ({
+      room_number: room.room_number,
+      isDormitory: room.is_dormitory || false,
+      dormitory_beds: room.dormitory_beds || 1,
+    }));
   }, [rooms]);
 
+  const prevDayRoomMap = useMemo(() => {
+    const map = new Map<string, Reservation[]>();
+    prevDayReservations.forEach((r) => {
+      if (r.room_number) {
+        const existing = map.get(r.room_number) || [];
+        existing.push(r);
+        map.set(r.room_number, existing);
+      }
+    });
+    return map;
+  }, [prevDayReservations]);
 
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [selectedCampaign, setSelectedCampaign] = useState<string>('');
+  const nextDayRoomMap = useMemo(() => {
+    const map = new Map<string, Reservation[]>();
+    nextDayReservations.forEach((r) => {
+      if (r.room_number) {
+        const existing = map.get(r.room_number) || [];
+        existing.push(r);
+        map.set(r.room_number, existing);
+      }
+    });
+    return map;
+  }, [nextDayReservations]);
+
+
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null);
   const [campaignDropdownOpen, setCampaignDropdownOpen] = useState(false);
   const campaignDropdownRef = useRef<HTMLDivElement>(null);
-  const [targets, setTargets] = useState<any[]>([]);
-  const [targetsLoading, setTargetsLoading] = useState(false);
+  const [targets, setTargets] = useState<Reservation[]>([]);
   const [sending, setSending] = useState(false);
-  const [guideSending, setGuideSending] = useState(false);
+  const [guideSending, setGuideSending] = useState<number | null>(null);
+  const [sendConfirm, setSendConfirm] = useState<{ type: 'campaign' | 'schedule' | 'toggle'; scheduleId?: number; scheduleName?: string; resId?: number; templateKey?: string; customerName?: string } | null>(null);
+  const [activeSchedules, setActiveSchedules] = useState<{id: number; schedule_name: string; template_name: string; template_key: string}[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -326,35 +431,51 @@ const RoomAssignment = () => {
     }
   }, []);
 
+  const fetchPreviews = useCallback(async (date: Dayjs) => {
+    const fetchOne = async (d: Dayjs, setter: (data: Reservation[]) => void) => {
+      try {
+        const res = await reservationsAPI.getAll({ date: d.format('YYYY-MM-DD'), limit: 200 });
+        setter(res.data.filter((r: Reservation) => r.status !== 'cancelled'));
+      } catch {
+        setter([]);
+      }
+    };
+    fetchOne(date.subtract(1, 'day'), setPrevDayReservations);
+    fetchOne(date.add(1, 'day'), setNextDayReservations);
+  }, []);
+
   const fetchReservations = useCallback(async (date: Dayjs) => {
     setLoading(true);
     try {
-      const res = await reservationsAPI.getAll({ date: date.format('YYYY-MM-DD'), limit: 200 });
-      setReservations(res.data);
+      const dateStr = date.format('YYYY-MM-DD');
+      // Auto-assign SMS chips for active schedules before fetching reservations
+      await templateSchedulesAPI.autoAssign(dateStr).catch(() => {});
+      const res = await reservationsAPI.getAll({ date: dateStr, limit: 200 });
+      setReservations(res.data.filter((r: Reservation) => r.status !== 'cancelled'));
     } catch {
       toast.error('예약 목록을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
-  }, []);
+    // Also refresh prev/next day previews (연박자 room changes affect adjacent days)
+    fetchPreviews(date);
+  }, [fetchPreviews]);
 
   useEffect(() => {
     fetchRooms();
   }, [fetchRooms]);
 
   useEffect(() => {
+    templatesAPI.getLabels().then(res => setTemplateLabels(res.data)).catch(() => {});
+    templateSchedulesAPI.getAll({ active: true }).then(res => {
+      setActiveSchedules(res.data);
+      if (res.data.length > 0) setSelectedScheduleId(res.data[0].id);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetchReservations(selectedDate);
     setTargets([]);
-    const fetchPreview = async (date: Dayjs, setter: (data: Reservation[]) => void) => {
-      try {
-        const res = await reservationsAPI.getAll({ date: date.format('YYYY-MM-DD'), limit: 200 });
-        setter(res.data);
-      } catch {
-        setter([]);
-      }
-    };
-    fetchPreview(selectedDate.subtract(1, 'day'), setPrevDayReservations);
-    fetchPreview(selectedDate.add(1, 'day'), setNextDayReservations);
   }, [selectedDate, fetchReservations]);
 
   useEffect(() => {
@@ -395,51 +516,47 @@ const RoomAssignment = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    campaignsAPI
-      .getList()
-      .then((res) => {
-        setCampaigns(res.data);
-        if (res.data.length > 0) setSelectedCampaign(res.data[0].id);
-      })
-      .catch(() => {
-        toast.error('캠페인 목록 로드 실패');
-      });
-  }, []);
 
-  const loadTargets = async () => {
-    if (!selectedCampaign) {
-      toast.warning('캠페인을 선택하세요');
+  const loadTargets = () => {
+    if (!selectedTemplateKey) {
+      toast.warning('템플릿을 선택하세요');
       return;
     }
-    setTargetsLoading(true);
-    try {
-      const response = await campaignsAPI.preview(
-        selectedCampaign,
-        selectedDate.format('YYYY-MM-DD'),
-      );
-      setTargets(response.data.targets || []);
-    } catch {
-      toast.error('대상자 조회 실패');
-    } finally {
-      setTargetsLoading(false);
+    const unsent = reservations.filter(r =>
+      r.sms_assignments?.some(a => a.template_key === selectedTemplateKey && !a.sent_at)
+    );
+    setTargets(unsent);
+    if (unsent.length === 0) {
+      toast.info('미발송 대상이 없습니다');
     }
   };
 
-  const handleSendCampaign = async () => {
-    if (!selectedCampaign) {
-      toast.warning('캠페인을 선택하세요');
+  const requestSendCampaign = () => {
+    if (!selectedTemplateKey || targets.length === 0) {
+      toast.warning('발송 대상이 없습니다');
       return;
     }
+    setSendConfirm({ type: 'campaign' });
+  };
+
+  const handleSendCampaign = async () => {
+    if (!selectedTemplateKey || targets.length === 0) return;
+    const tpl = templateLabels.find(t => t.key === selectedTemplateKey);
+    setSendConfirm(null);
     setSending(true);
     try {
-      const response = await campaignsAPI.send({
-        campaign_type: selectedCampaign,
+      const response = await api.post('/api/reservations/sms-send-by-tag', {
+        template_key: selectedTemplateKey,
         date: selectedDate.format('YYYY-MM-DD'),
       });
-      toast.success(`발송 완료: ${response.data.sent_count}건 성공`);
-      await loadTargets();
-      await fetchReservations(selectedDate);
+      const data = response.data;
+      if (data.success) {
+        toast.success(`${tpl?.name || selectedTemplateKey} 발송 완료: ${data.sent_count}건`);
+        setTargets([]);
+        fetchReservations(selectedDate);
+      } else {
+        toast.error(`발송 실패: ${data.error || '알 수 없는 오류'}`);
+      }
     } catch {
       toast.error('발송 실패');
     } finally {
@@ -447,31 +564,26 @@ const RoomAssignment = () => {
     }
   };
 
-  const handleSendRoomGuide = async () => {
-    setGuideSending(true);
-    try {
-      const response = await campaignsAPI.sendRoomGuide({
-        date: selectedDate.format('YYYY-MM-DD'),
-      });
-      toast.success(`객실 안내 발송 완료: ${response.data.sent_count}건`);
-    } catch {
-      toast.error('객실 안내 발송 실패');
-    } finally {
-      setGuideSending(false);
-    }
+  const requestRunSchedule = (scheduleId: number, scheduleName: string) => {
+    setSendConfirm({ type: 'schedule', scheduleId, scheduleName });
   };
 
-  const handleSendPartyGuide = async () => {
-    setGuideSending(true);
+  const handleRunSchedule = async (scheduleId: number, scheduleName: string) => {
+    setSendConfirm(null);
+    setGuideSending(scheduleId);
     try {
-      const response = await campaignsAPI.sendPartyGuide({
-        date: selectedDate.format('YYYY-MM-DD'),
-      });
-      toast.success(`파티 안내 발송 완료: ${response.data.sent_count}건`);
+      const response = await templateSchedulesAPI.run(scheduleId);
+      const data = response.data;
+      if (data.success) {
+        toast.success(`${scheduleName} 발송 완료: ${data.sent_count}건 (대상 ${data.target_count}명)`);
+        fetchReservations(selectedDate);
+      } else {
+        toast.error(`${scheduleName} 발송 실패: ${data.error || '알 수 없는 오류'}`);
+      }
     } catch {
-      toast.error('파티 안내 발송 실패');
+      toast.error(`${scheduleName} 발송 실패`);
     } finally {
-      setGuideSending(false);
+      setGuideSending(null);
     }
   };
 
@@ -508,14 +620,57 @@ const RoomAssignment = () => {
   const onDragStart = (e: DragEvent, resId: number) => {
     e.dataTransfer.setData('text/plain', String(resId));
     e.dataTransfer.effectAllowed = 'move';
+
+    // Custom small drag ghost — show guest name in a compact pill
+    const res = reservations.find((r) => r.id === resId);
+    const ghost = document.createElement('div');
+    ghost.textContent = res?.customer_name || '이동';
+    ghost.style.cssText = 'position:fixed;top:-100px;left:-100px;padding:4px 12px;border-radius:8px;background:#3182F6;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:9999;';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
   };
 
   const onRoomDragOver = (e: DragEvent, room: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverRoom(room);
+    if (dragOverRoom !== room) setDragOverRoom(room);
   };
-  const onRoomDragLeave = () => setDragOverRoom(null);
+  const onRoomDragLeave = (e: DragEvent) => {
+    // Only clear if actually leaving the room container (not entering a child)
+    const related = e.relatedTarget as Node | null;
+    if (!related || !e.currentTarget.contains(related)) {
+      setDragOverRoom(null);
+    }
+  };
+
+  const doAssignRoom = async (resId: number, room: string, applySubsequent: boolean) => {
+    // Optimistic update: move guest to new room + auto-assign room_info SMS tag
+    setReservations((prev) =>
+      prev.map((r) => {
+        if (r.id !== resId) return r;
+        const hasRoomInfo = r.sms_assignments?.some((a) => a.template_key === 'room_info');
+        const updatedAssignments = hasRoomInfo
+          ? r.sms_assignments
+          : [...(r.sms_assignments || []), { id: 0, reservation_id: r.id, template_key: 'room_info', assigned_at: new Date().toISOString(), sent_at: null, assigned_by: 'auto' } as SmsAssignment];
+        return { ...r, room_number: room, sms_assignments: updatedAssignments };
+      })
+    );
+    setSectionOverrides((prev) => { const next = { ...prev }; delete next[resId]; return next; });
+
+    try {
+      await reservationsAPI.assignRoom(resId, {
+        room_number: room,
+        date: selectedDate.format('YYYY-MM-DD'),
+        apply_subsequent: applySubsequent,
+      });
+      toast.success(`${room} 배정 완료`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || '객실 배정에 실패했습니다.');
+      // Revert on failure
+      await fetchReservations(selectedDate);
+    }
+  };
 
   const onRoomDrop = async (e: DragEvent, room: string) => {
     e.preventDefault();
@@ -525,25 +680,39 @@ const RoomAssignment = () => {
     const currentList = assignedRooms.get(room) || [];
     if (currentList.some((r) => r.id === resId)) return;
 
-    setProcessing(true);
-    try {
-      await reservationsAPI.assignRoom(resId, { room_number: room });
-      setSectionOverrides((prev) => { const next = { ...prev }; delete next[resId]; return next; });
-      toast.success(`${room} 배정 완료`);
-      await fetchReservations(selectedDate);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '객실 배정에 실패했습니다.');
-    } finally {
-      setProcessing(false);
+    const res = reservations.find((r) => r.id === resId);
+    if (!res) return;
+
+    // Multi-night guest: ask whether to apply to subsequent dates
+    if (isMultiNight(res)) {
+      setMultiNightConfirm({
+        open: true,
+        resId,
+        resName: res.customer_name,
+        room,
+        onConfirm: (applySubsequent) => {
+          setMultiNightConfirm(null);
+          doAssignRoom(resId, room, applySubsequent);
+        },
+      });
+      return;
     }
+
+    // Single-night: assign directly (apply_subsequent doesn't matter)
+    await doAssignRoom(resId, room, true);
   };
 
   const onPoolDragOver = (e: DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverPool(true);
+    if (!dragOverPool) setDragOverPool(true);
   };
-  const onPoolDragLeave = () => setDragOverPool(false);
+  const onPoolDragLeave = (e: DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (!related || !e.currentTarget.contains(related)) {
+      setDragOverPool(false);
+    }
+  };
 
   const onPoolDrop = async (e: DragEvent) => {
     e.preventDefault();
@@ -558,17 +727,22 @@ const RoomAssignment = () => {
     if (!res.room_number && !sectionOverrides[resId] && !res.room_info?.includes('파티만')) return;
 
     if (res.room_number) {
-      // Unassign room via API
-      setProcessing(true);
+      // Optimistic update: clear room + remove unsent room_info tag
+      setReservations((prev) =>
+        prev.map((r) => {
+          if (r.id !== resId) return r;
+          const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
+          return { ...r, room_number: null, sms_assignments: filtered };
+        })
+      );
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
+
       try {
-        await reservationsAPI.assignRoom(resId, { room_number: null });
-        setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
+        await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
         toast.success('미배정으로 이동');
-        await fetchReservations(selectedDate);
       } catch {
         toast.error('배정 해제에 실패했습니다.');
-      } finally {
-        setProcessing(false);
+        await fetchReservations(selectedDate);
       }
     } else {
       // Local section move (party → unassigned)
@@ -580,10 +754,15 @@ const RoomAssignment = () => {
   const onPartyZoneDragOver = (e: DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverPartyZone(true);
+    if (!dragOverPartyZone) setDragOverPartyZone(true);
   };
 
-  const onPartyZoneDragLeave = () => setDragOverPartyZone(false);
+  const onPartyZoneDragLeave = (e: DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (!related || !e.currentTarget.contains(related)) {
+      setDragOverPartyZone(false);
+    }
+  };
 
   const onPartyZoneDrop = async (e: DragEvent) => {
     e.preventDefault();
@@ -599,17 +778,22 @@ const RoomAssignment = () => {
     if (!guest.room_number && !sectionOverrides[resId] && guest.room_info?.includes('파티만')) return;
 
     if (guest.room_number) {
-      // Unassign room via API, then move to party section
-      setProcessing(true);
+      // Optimistic update: clear room + remove unsent room_info tag
+      setReservations((prev) =>
+        prev.map((r) => {
+          if (r.id !== resId) return r;
+          const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
+          return { ...r, room_number: null, sms_assignments: filtered };
+        })
+      );
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
+
       try {
-        await reservationsAPI.assignRoom(resId, { room_number: null });
-        setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
+        await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
         toast.success('파티만으로 이동');
-        await fetchReservations(selectedDate);
       } catch {
         toast.error('이동 실패');
-      } finally {
-        setProcessing(false);
+        await fetchReservations(selectedDate);
       }
     } else {
       // Local section move (unassigned → party)
@@ -711,25 +895,84 @@ const RoomAssignment = () => {
   };
 
 
-  const handleSmsToggle = async (res: Reservation, smsType: string) => {
+  const updateReservationSms = (resId: number, updater: (assignments: Reservation['sms_assignments']) => Reservation['sms_assignments']) => {
+    setReservations(prev => prev.map(r =>
+      r.id === resId ? { ...r, sms_assignments: updater(r.sms_assignments || []) } : r
+    ));
+  };
+
+  const handleSmsToggle = async (resId: number, templateKey: string) => {
+    const res = reservations.find(r => r.id === resId);
+    const assignment = res?.sms_assignments?.find(a => a.template_key === templateKey);
+    const wasSent = !!assignment?.sent_at;
+
+    const tpl = templateLabels.find(t => t.key === templateKey);
+    setSendConfirm({
+      type: 'toggle',
+      resId,
+      templateKey,
+      customerName: res?.customer_name || '',
+      scheduleName: tpl?.name || templateKey,
+    });
+  };
+
+  const doSmsToggle = async (resId: number, templateKey: string) => {
+    const res = reservations.find(r => r.id === resId);
+    const assignment = res?.sms_assignments?.find(a => a.template_key === templateKey);
+    const wasSent = !!assignment?.sent_at;
+    // Optimistic update
+    updateReservationSms(resId, assignments =>
+      assignments.map(a => a.template_key === templateKey
+        ? { ...a, sent_at: wasSent ? null : new Date().toISOString() }
+        : a
+      )
+    );
     try {
-      const currentTypes = res.sent_sms_types
-        ? res.sent_sms_types.split(',').map((s) => s.trim())
-        : [];
-
-      let newTypes: string;
-      if (currentTypes.includes(smsType)) {
-        newTypes = currentTypes.filter((t) => t !== smsType).join(',');
-        toast.success(`${smsType} 발송 미완료로 변경됨`);
-      } else {
-        newTypes = [...currentTypes, smsType].join(',');
-        toast.success(`${smsType} 발송 완료 처리됨`);
-      }
-
-      await reservationsAPI.update(res.id, { sent_sms_types: newTypes });
-      fetchReservations(selectedDate);
+      await smsAssignmentsAPI.toggle(resId, templateKey);
     } catch {
+      // Revert on failure
+      updateReservationSms(resId, assignments =>
+        assignments.map(a => a.template_key === templateKey
+          ? { ...a, sent_at: wasSent ? assignment!.sent_at : null }
+          : a
+        )
+      );
       toast.error('발송 상태 변경 실패');
+    }
+  };
+
+  const handleSmsAssign = async (resId: number, templateKey: string) => {
+    // Optimistic update
+    updateReservationSms(resId, assignments => [
+      ...assignments,
+      { id: 0, reservation_id: resId, template_key: templateKey, assigned_at: new Date().toISOString(), sent_at: null, assigned_by: 'manual' },
+    ]);
+    try {
+      await smsAssignmentsAPI.assign(resId, { template_key: templateKey });
+    } catch {
+      // Revert on failure
+      updateReservationSms(resId, assignments =>
+        assignments.filter(a => a.template_key !== templateKey)
+      );
+      toast.error('할당 실패');
+    }
+  };
+
+  const handleSmsRemove = async (resId: number, templateKey: string) => {
+    const res = reservations.find(r => r.id === resId);
+    const removed = res?.sms_assignments?.find(a => a.template_key === templateKey);
+    // Optimistic update
+    updateReservationSms(resId, assignments =>
+      assignments.filter(a => a.template_key !== templateKey)
+    );
+    try {
+      await smsAssignmentsAPI.remove(resId, templateKey);
+    } catch {
+      // Revert on failure
+      if (removed) {
+        updateReservationSms(resId, assignments => [...assignments, removed]);
+      }
+      toast.error('제거 실패');
     }
   };
 
@@ -739,15 +982,16 @@ const RoomAssignment = () => {
   };
 
   const renderGuestRow = (res: Reservation, showGrip: boolean) => {
-    const genderPeople = [res.gender, res.party_participants].filter(Boolean).join('');
-    const smsStatus = getSmsStatus(res);
+    const genderPeople = formatGenderPeople(res);
+    const multiNight = isMultiNight(res);
+
     return (
-      <div key={res.id} className={`flex items-center ${showGrip ? '' : 'pl-7'} rounded-lg transition-shadow duration-200 group-hover:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.12),-6px_0_10px_-4px_rgba(0,0,0,0.08)] ${guestAreaCursor()}`}>
+      <div key={res.id} className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${multiNight ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/50 hover:bg-[#FF9500]/50 dark:hover:bg-[#FF9500]/50' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'} ${guestAreaCursor()}`}>
         {showGrip && (
           <div
             draggable
             onDragStart={(e) => onDragStart(e, res.id)}
-            className="flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#D5DAE0] group-hover:text-[#8B95A1] dark:text-gray-700 dark:group-hover:text-gray-400 transition-all duration-200"
+            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${multiNight ? 'group-hover/guest:text-[#FF9500] dark:group-hover/guest:text-[#FF9500]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
           >
             <GripVertical size={14} />
           </div>
@@ -758,161 +1002,142 @@ const RoomAssignment = () => {
         >
           <div className="overflow-hidden">
             <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" />
+
           </div>
           <div className="overflow-hidden">
-            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400 tabular-nums" placeholder="연락처" />
+            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-[#8B95A1] tabular-nums" placeholder="연락처" />
           </div>
           <div className="overflow-hidden text-center">
-            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
+            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-white font-medium text-center" placeholder="-" />
           </div>
           <div className="overflow-hidden text-center">
-            <InlineInput value={partyValues[res.id] || ''} field="party" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
+            <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-white font-medium text-center" placeholder="-" />
           </div>
-          <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-gray-400">{res.room_info || <span className="text-[#B0B8C1]">-</span>}</div>
-          <div className="overflow-hidden">
-            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400" placeholder="" />
+          <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-[#8B95A1]">{res.room_info || <span className="text-[#B0B8C1] dark:text-[#4E5968]">-</span>}</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="min-w-[60px] flex-1 overflow-hidden">
+              <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-[#8B95A1]" placeholder="" />
+            </div>
+            <div className="min-w-[120px] flex-1 overflow-visible">
+              <SmsCell reservation={res} templateLabels={templateLabels} onToggle={handleSmsToggle} onAssign={handleSmsAssign} onRemove={handleSmsRemove} />
+            </div>
           </div>
-          <SmsCell smsStatus={smsStatus} isEditing={false} />
         </div>
       </div>
     );
   };
 
-  const renderRoomRow = (room: string) => {
-    const guests = assignedRooms.get(room) || [];
-    const isDragOver = dragOverRoom === room;
+  const renderRoomRow = (entry: { room_number: string; isDormitory: boolean; dormitory_beds: number }, rowIndex: number) => {
+    const { room_number, isDormitory, dormitory_beds } = entry;
+    const guests = assignedRooms.get(room_number) || [];
+    const isDragOver = dragOverRoom === room_number;
+    const prevGuests = prevDayRoomMap.get(room_number) || [];
+    const nextGuests = nextDayRoomMap.get(room_number) || [];
+    const maxOccupancy = Math.max(guests.length, prevGuests.length, nextGuests.length, 1);
+    const visibleRows = isDormitory
+      ? Math.min(dormitory_beds, maxOccupancy)
+      : Math.max(1, guests.length);
+    const totalRows = visibleRows;
+    const stripeBg = rowIndex % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
 
     return (
       <div
-        key={room}
-        className={`group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 transition-colors ${guests.length > 1 ? '' : 'h-[48px] min-h-[48px] max-h-[48px]'}
+        key={room_number}
+        className={`group flex select-none transition-colors
           ${isDragOver
-            ? 'bg-[#E8F3FF] dark:bg-blue-900/20 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-blue-700'
-            : guests.length > 0
-              ? 'bg-white dark:bg-[#1E1E24]'
-              : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
+            ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-[#3182F6]/30'
+            : stripeBg
           }`}
-        onDragOver={(e) => onRoomDragOver(e, room)}
+        style={{ minHeight: `${totalRows * 40}px` }}
+        onDragOver={(e) => onRoomDragOver(e, room_number)}
         onDragLeave={onRoomDragLeave}
-        onDrop={(e) => onRoomDrop(e, room)}
+        onDrop={(e) => onRoomDrop(e, room_number)}
       >
-        {/* Room label */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-[#F2F4F6] dark:border-gray-800">
-          <span className="font-semibold text-[#191F28] dark:text-white text-body">{room}</span>
-          {roomInfoMap[room] && (
-            <span className="text-caption text-[#B0B8C1] dark:text-[#8B95A1] truncate">{roomInfoMap[room]}</span>
+        {/* Prev day column */}
+        <div className={`flex-shrink-0 w-24 border-r-8 border-white dark:border-[#2C2C34] shadow-[inset_-1px_0_0_#E5E8EB,1px_0_0_#E5E8EB] z-[2] border-b border-b-[#E5E8EB] dark:border-b-gray-700 ${stripeBg}`}>
+          <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
+            {Array.from({ length: totalRows }).map((_, i) => {
+              const prevGuests = prevDayRoomMap.get(room_number) || [];
+              const prevGuest = prevGuests[i];
+              const gp = prevGuest ? formatGenderPeople(prevGuest) : '';
+              return (
+                <div key={`prev-${i}`} className={`flex items-center justify-center h-10 px-1 ${prevGuest && isMultiNight(prevGuest) ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/50' : ''}`}>
+                  {prevGuest ? (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{prevGuest.customer_name}</span>
+                      {gp && <span className="flex-shrink-0 text-caption text-[#8B95A1] dark:text-[#4E5968]">{gp}</span>}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Room label - vertically centered, spans all rows */}
+        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
+          <span className="font-semibold text-[#191F28] dark:text-white text-body">{room_number}</span>
+          {roomInfoMap[room_number] && (
+            <span className="text-caption text-[#B0B8C1] dark:text-[#8B95A1] truncate">{roomInfoMap[room_number]}</span>
           )}
         </div>
 
         {/* Guest rows */}
-        <div className="flex-1 -ml-7">
-          {guests.length > 0 ? (
+        <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
+          {isDormitory ? (
+            // Dormitory: show beds as rows, filled or empty
+            Array.from({ length: totalRows }).map((_, i) => {
+              const guest = guests[i];
+              if (guest) {
+                return renderGuestRow(guest, true);
+              }
+              return (
+                <div key={`empty-${i}`} className={`flex items-center h-10 ${guestAreaCursor()}`}>
+                  <div
+                    className="flex-1 grid items-center gap-2 px-3 py-1.5"
+                    style={{ gridTemplateColumns: GUEST_COLS }}
+                  >
+                    <div className="overflow-hidden truncate col-span-full text-body text-[#B0B8C1] dark:text-[#4E5968] italic">
+                      {isDragOver ? '여기에 놓으세요' : ''}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : guests.length > 0 ? (
             guests.map((res) => renderGuestRow(res, true))
           ) : (
-            <div className={`flex items-center h-12 rounded-lg ${guestAreaCursor()}`}>
+            <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
               <div
-                className="flex-1 grid items-center gap-2 px-3 py-1.5 pl-10"
+                className="flex-1 grid items-center gap-2 px-3 py-1.5"
                 style={{ gridTemplateColumns: GUEST_COLS }}
               >
-                <div className="overflow-hidden truncate col-span-full text-body text-[#3182F6] dark:text-blue-400 italic">
+                <div className="overflow-hidden truncate col-span-full text-body text-[#3182F6] dark:text-[#3182F6] italic">
                   {isDragOver ? '여기에 놓으세요' : ''}
                 </div>
               </div>
             </div>
           )}
         </div>
-      </div>
-    );
-  };
 
-  const renderUnassignedRow = (res: Reservation, index: number) => {
-    const genderPeople = [res.gender, res.party_participants].filter(Boolean).join('');
-    const smsStatus = getSmsStatus(res);
-
-    return (
-      <div
-        key={res.id}
-        className="group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] transition-colors h-[48px] min-h-[48px] max-h-[48px]"
-      >
-        <div className="flex items-center gap-1.5 flex-shrink-0 pl-3 pr-2 py-2 w-36 border-r border-[#F2F4F6] dark:border-gray-800">
-          {index === 0 && <span className="font-semibold text-[#191F28] dark:text-white text-body">미배정</span>}
-        </div>
-        <div className={`flex-1 flex items-center -ml-7 rounded-lg transition-shadow duration-200 group-hover:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.12),-6px_0_10px_-4px_rgba(0,0,0,0.08)] ${guestAreaCursor()}`}>
-          <div
-            draggable
-            onDragStart={(e) => onDragStart(e, res.id)}
-            className="flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#D5DAE0] group-hover:text-[#8B95A1] dark:text-gray-700 dark:group-hover:text-gray-400 transition-all duration-200"
-          >
-            <GripVertical size={14} />
-          </div>
-          <div
-            className="flex-1 grid items-center gap-2 px-3 py-1.5 overflow-hidden"
-            style={{ gridTemplateColumns: GUEST_COLS }}
-          >
-            <div className="overflow-hidden">
-              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" />
-            </div>
-            <div className="overflow-hidden">
-              <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400 tabular-nums" placeholder="연락처" />
-            </div>
-            <div className="overflow-hidden text-center">
-              <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
-            </div>
-            <div className="overflow-hidden text-center">
-              <InlineInput value={partyValues[res.id] || ''} field="party" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
-            </div>
-            <div className="overflow-hidden truncate text-body text-[#FF9F00] dark:text-[#FF9F00]">미배정</div>
-            <div className="overflow-hidden">
-              <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400" placeholder="" />
-            </div>
-            <SmsCell smsStatus={smsStatus} isEditing={false} />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPartyOnlyRow = (res: Reservation, index: number) => {
-    const genderPeople = [res.gender, res.party_participants].filter(Boolean).join('');
-    const smsStatus = getSmsStatus(res);
-
-    return (
-      <div
-        key={res.id}
-        className="group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] transition-colors h-[48px] min-h-[48px] max-h-[48px]"
-      >
-        <div className="flex items-center gap-1.5 flex-shrink-0 pl-3 pr-2 py-2 w-36 border-r border-[#F2F4F6] dark:border-gray-800">
-          {index === 0 && <span className="font-semibold text-[#191F28] dark:text-white text-body">파티만</span>}
-        </div>
-        <div className={`flex-1 flex items-center -ml-7 rounded-lg transition-shadow duration-200 group-hover:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.12),-6px_0_10px_-4px_rgba(0,0,0,0.08)] ${guestAreaCursor()}`}>
-          <div
-            draggable
-            onDragStart={(e) => onDragStart(e, res.id)}
-            className="flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#D5DAE0] group-hover:text-[#8B95A1] dark:text-gray-700 dark:group-hover:text-gray-400 transition-all duration-200"
-          >
-            <GripVertical size={14} />
-          </div>
-          <div
-            className="flex-1 grid items-center gap-2 px-3 py-1.5 overflow-hidden"
-            style={{ gridTemplateColumns: GUEST_COLS }}
-          >
-            <div className="overflow-hidden">
-              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" />
-            </div>
-            <div className="overflow-hidden">
-              <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400 tabular-nums" placeholder="연락처" />
-            </div>
-            <div className="overflow-hidden text-center">
-              <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
-            </div>
-            <div className="overflow-hidden text-center">
-              <InlineInput value={partyValues[res.id] || ''} field="party" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-gray-300 font-medium text-center" placeholder="-" />
-            </div>
-            <div className="overflow-hidden truncate text-body text-[#7B61FF] dark:text-[#7B61FF]">파티만</div>
-            <div className="overflow-hidden">
-              <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-gray-400" placeholder="" />
-            </div>
-            <SmsCell smsStatus={smsStatus} isEditing={false} />
+        {/* Next day column */}
+        <div className={`flex-shrink-0 w-24 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b border-b-[#E5E8EB] dark:border-b-gray-700 ${stripeBg}`}>
+          <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
+            {Array.from({ length: totalRows }).map((_, i) => {
+              const nextGuests = nextDayRoomMap.get(room_number) || [];
+              const nextGuest = nextGuests[i];
+              const gp = nextGuest ? formatGenderPeople(nextGuest) : '';
+              return (
+                <div key={`next-${i}`} className={`flex items-center justify-center h-10 px-1 ${nextGuest && isMultiNight(nextGuest) ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/50' : ''}`}>
+                  {nextGuest ? (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{nextGuest.customer_name}</span>
+                      {gp && <span className="flex-shrink-0 text-caption text-[#8B95A1] dark:text-[#4E5968]">{gp}</span>}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -934,65 +1159,63 @@ const RoomAssignment = () => {
     [animDirection],
   );
 
-  const renderDayPreview = (
-    previewReservations: Reservation[],
-    date: Dayjs,
-    direction: 'prev' | 'next',
-  ) => {
-    const roomMap = new Map<string, Reservation>();
-    previewReservations.forEach((r) => {
-      if (r.room_number) roomMap.set(r.room_number, r);
-    });
-
-    const isActive = animDirection === (direction === 'prev' ? 'left' : 'right');
-
-    return (
-      <div
-        onClick={() => navigateDate(direction)}
-        className="cursor-pointer rounded-xl border border-[#F2F4F6] dark:border-gray-800 bg-white dark:bg-[#1E1E24] px-2 flex-shrink-0 transition-all"
-        style={{
-          opacity: isActive ? 0.95 : 0.55,
-          transform: isActive ? 'scale(1.03)' : 'scale(1)',
-          width: '6rem',
-        }}
-      >
-        {/* Header — show date */}
-        <div className="flex items-center justify-center h-12 border-b border-[#E5E8EB] dark:border-gray-700 bg-[#E5E8EB] dark:bg-[#2C2C34] rounded-t-xl -mx-2 px-2">
-          <span className="text-label font-semibold text-[#4E5968] dark:text-gray-300">{date.format('M/D (ddd)')}</span>
-        </div>
-        {activeRoomNumbers.map((room) => {
-          const guest = roomMap.get(room);
-          const gp = guest ? [guest.gender, guest.party_participants].filter(Boolean).join('') : '';
-          return (
-            <div
-              key={room}
-              className="flex overflow-hidden select-none border-b border-[#F2F4F6] dark:border-gray-800 px-1 h-12 items-center hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
-            >
-              <div className="flex items-center gap-1 overflow-hidden w-full">
-                {guest ? (
-                  <>
-                    <span className="overflow-hidden truncate flex-1 text-caption text-[#191F28] dark:text-gray-200">
-                      {guest.customer_name}
-                    </span>
-                    <span className="flex-shrink-0 text-caption text-[#8B95A1] dark:text-gray-400">
-                      {gp || '-'}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-caption text-[#B0B8C1] dark:text-gray-600">-</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
   // suppress unused navigate warning — keep for future routing
   void navigate;
   // suppress unused handleEditGuest warning — used via modal open
   void handleEditGuest;
+
+  // Summary stats
+  const summary = useMemo(() => {
+    // Room guest totals
+    let roomTotal = 0, roomMale = 0, roomFemale = 0;
+    for (const r of reservations) {
+      const m = r.male_count || 0;
+      const f = r.female_count || 0;
+      roomMale += m;
+      roomFemale += f;
+      roomTotal += m + f;
+    }
+
+    // Party guest totals (only those with party_type)
+    const partyGuests = reservations.filter((r) => r.party_type);
+    let partyMale = 0, partyFemale = 0;
+    let firstMale = 0, firstFemale = 0;
+    let secondOnlyMale = 0, secondOnlyFemale = 0;
+
+    for (const r of partyGuests) {
+      const m = r.male_count || 0;
+      const f = r.female_count || 0;
+      partyMale += m;
+      partyFemale += f;
+
+      if (r.party_type === '1' || r.party_type === '2') {
+        // 1차 참여 = 1차만 + 1,2차
+        firstMale += m;
+        firstFemale += f;
+      }
+      if (r.party_type === '2차만') {
+        secondOnlyMale += m;
+        secondOnlyFemale += f;
+      }
+    }
+
+    const partyTotal = partyMale + partyFemale;
+    const firstTotal = firstMale + firstFemale;
+    const secondOnlyTotal = secondOnlyMale + secondOnlyFemale;
+    // 2차 전환율 = 1차 중 2차도 참여한 인원 / 1차 전체
+    const bothGuests = partyGuests.filter((r) => r.party_type === '2');
+    const bothTotal = bothGuests.reduce((sum, r) => sum + (r.male_count || 0) + (r.female_count || 0), 0);
+    const conversionRate = firstTotal > 0 ? Math.round((bothTotal / firstTotal) * 100) : 0;
+    const genderRatio = partyFemale > 0 ? `${(partyMale / partyFemale).toFixed(1)}:1` : partyMale > 0 ? `${partyMale}:0` : '-';
+
+    return {
+      roomTotal, roomMale, roomFemale,
+      partyTotal, partyMale, partyFemale,
+      firstTotal, firstMale, firstFemale,
+      secondOnlyTotal, secondOnlyMale, secondOnlyFemale,
+      conversionRate, genderRatio,
+    };
+  }, [reservations]);
 
   return (
     <div className={`space-y-4 ${processing ? 'opacity-60 pointer-events-none' : ''}`}>
@@ -1001,6 +1224,61 @@ const RoomAssignment = () => {
       <div>
         <h1 className="page-title">객실 배정</h1>
         <p className="page-subtitle">날짜별 객실을 배정하고 SMS를 발송하세요</p>
+      </div>
+
+      {/* Summary stats */}
+      <div className="flex flex-wrap gap-3 items-stretch">
+        {/* 그룹 카드 */}
+        <div className="stat-card flex overflow-hidden !p-0">
+          <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
+            <span className="stat-label whitespace-nowrap">총 예약자</span>
+            <div className="flex items-center justify-center gap-2.5 mt-1">
+              <span className="stat-value tabular-nums text-[#7EB4F8]">{summary.roomMale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+              <span className="h-3 w-px bg-[#E5E8EB] dark:bg-[#2C2C34]" />
+              <span className="stat-value tabular-nums text-[#F8838C]">{summary.roomFemale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+            </div>
+          </div>
+          <div className="w-px bg-[#E5E8EB] dark:bg-[#2C2C34] my-3" />
+          <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
+            <span className="stat-label whitespace-nowrap">현재 신청인원</span>
+            <div className="stat-value tabular-nums mt-1">{summary.partyTotal}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></div>
+          </div>
+          <div className="w-px bg-[#E5E8EB] dark:bg-[#2C2C34] my-3" />
+          <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
+            <span className="stat-label whitespace-nowrap">1차</span>
+            <div className="flex items-center justify-center gap-2.5 mt-1">
+              <span className="stat-value tabular-nums text-[#7EB4F8]">{summary.firstMale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+              <span className="h-3 w-px bg-[#E5E8EB] dark:bg-[#2C2C34]" />
+              <span className="stat-value tabular-nums text-[#F8838C]">{summary.firstFemale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+            </div>
+          </div>
+          <div className="w-px bg-[#E5E8EB] dark:bg-[#2C2C34] my-3" />
+          <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
+            <span className="stat-label whitespace-nowrap">2차만</span>
+            <div className="flex items-center justify-center gap-2.5 mt-1">
+              <span className="stat-value tabular-nums text-[#7EB4F8]">{summary.secondOnlyMale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+              <span className="h-3 w-px bg-[#E5E8EB] dark:bg-[#2C2C34]" />
+              <span className="stat-value tabular-nums text-[#F8838C]">{summary.secondOnlyFemale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+            </div>
+          </div>
+          <div className="w-px bg-[#E5E8EB] dark:bg-[#2C2C34] my-3" />
+          <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
+            <span className="stat-label whitespace-nowrap">전체</span>
+            <div className="flex items-center justify-center gap-2.5 mt-1">
+              <span className="stat-value tabular-nums text-[#7EB4F8]">{summary.partyMale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+              <span className="h-3 w-px bg-[#E5E8EB] dark:bg-[#2C2C34]" />
+              <span className="stat-value tabular-nums text-[#F8838C]">{summary.partyFemale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
+            </div>
+          </div>
+        </div>
+        <div className="stat-card w-[120px] flex flex-col items-center justify-center">
+          <span className="stat-label">2차 전환율</span>
+          <div className="stat-value tabular-nums mt-1">{summary.conversionRate}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">%</span></div>
+        </div>
+        <div className="stat-card w-[120px] flex flex-col items-center justify-center">
+          <span className="stat-label">파티 성비</span>
+          <div className="stat-value tabular-nums mt-1">{summary.genderRatio}</div>
+        </div>
       </div>
 
       {/* Campaign controls */}
@@ -1012,32 +1290,24 @@ const RoomAssignment = () => {
               <button
                 type="button"
                 onClick={() => setCampaignDropdownOpen(!campaignDropdownOpen)}
-                className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-[#191F28] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors cursor-pointer min-w-[160px]"
+                className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-[#191F28] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors cursor-pointer min-w-[160px]"
               >
-                {selectedCampaign
-                  ? campaigns.find((c: any) => c.id === selectedCampaign)?.name || '캠페인 선택'
-                  : '캠페인 선택'}
+                {selectedTemplateKey
+                  ? templateLabels.find(t => t.key === selectedTemplateKey)?.name || '템플릿 선택'
+                  : '템플릿 선택'}
                 <ChevronDown size={14} className={`text-[#8B95A1] transition-transform ${campaignDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               {campaignDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 z-30 min-w-[160px] rounded-xl border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] shadow-lg shadow-black/8 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedCampaign(''); setCampaignDropdownOpen(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer
-                      ${!selectedCampaign ? 'bg-[#F2F4F6] dark:bg-[#2C2C34] text-[#3182F6] font-medium' : 'text-[#4E5968] dark:text-gray-300 hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]'}`}
-                  >
-                    전체
-                  </button>
-                  {campaigns.map((campaign: any) => (
+                <div className="absolute top-full left-0 mt-1 z-30 min-w-[160px] rounded-xl border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg shadow-black/8 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {templateLabels.map(t => (
                     <button
-                      key={campaign.id}
+                      key={t.key}
                       type="button"
-                      onClick={() => { setSelectedCampaign(campaign.id); setCampaignDropdownOpen(false); }}
+                      onClick={() => { setSelectedTemplateKey(t.key); setCampaignDropdownOpen(false); setTargets([]); }}
                       className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer
-                        ${selectedCampaign === campaign.id ? 'bg-[#F2F4F6] dark:bg-[#2C2C34] text-[#3182F6] font-medium' : 'text-[#4E5968] dark:text-gray-300 hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]'}`}
+                        ${selectedTemplateKey === t.key ? 'bg-[#F2F4F6] dark:bg-[#2C2C34] text-[#3182F6] font-medium' : 'text-[#4E5968] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]'}`}
                     >
-                      {campaign.name}
+                      {t.name}
                     </button>
                   ))}
                 </div>
@@ -1048,20 +1318,16 @@ const RoomAssignment = () => {
               color="light"
               size="sm"
               onClick={loadTargets}
-              disabled={targetsLoading}
+              disabled={!selectedTemplateKey}
             >
-              {targetsLoading ? (
-                <Spinner size="xs" className="mr-1.5" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              )}
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
               대상조회
             </Button>
             <Button
               color="blue"
               size="sm"
-              onClick={handleSendCampaign}
-              disabled={sending || targets.length === 0}
+              onClick={requestSendCampaign}
+              disabled={sending || targets.length === 0 || !selectedTemplateKey}
             >
               {sending ? (
                 <Spinner size="xs" className="mr-1.5" />
@@ -1072,24 +1338,6 @@ const RoomAssignment = () => {
             </Button>
 
             <div className="flex items-center gap-2 ml-auto">
-              <Button
-                color="blue"
-                size="sm"
-                onClick={handleSendRoomGuide}
-                disabled={guideSending}
-              >
-                <Send className="h-3.5 w-3.5 mr-1.5" />
-                객실 안내
-              </Button>
-              <Button
-                color="blue"
-                size="sm"
-                onClick={handleSendPartyGuide}
-                disabled={guideSending}
-              >
-                <Send className="h-3.5 w-3.5 mr-1.5" />
-                파티 안내
-              </Button>
               <Button
                 color="light"
                 size="sm"
@@ -1102,7 +1350,7 @@ const RoomAssignment = () => {
           </div>
 
           {targets.length > 0 && (
-            <div className="mt-3 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <div className="mt-3 rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-[#F8F9FA] dark:bg-[#17171C] p-3">
               <div className="flex justify-between items-center mb-2">
                 <Badge color="blue" size="sm">발송 대상 {targets.length}건</Badge>
                 <Button
@@ -1114,9 +1362,9 @@ const RoomAssignment = () => {
                 </Button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {targets.map((t: any) => (
+                {targets.map((t) => (
                   <Badge key={t.id} color="gray" size="sm">
-                    {t.name} {t.phone} {t.room_number || ''}
+                    {t.customer_name} {t.phone} {t.room_number || ''}
                   </Badge>
                 ))}
               </div>
@@ -1132,7 +1380,7 @@ const RoomAssignment = () => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => navigateDate('prev')}
-              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-gray-500 dark:hover:text-white transition-colors bg-transparent border-none"
+              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -1146,7 +1394,7 @@ const RoomAssignment = () => {
             />
             <button
               onClick={() => navigateDate('next')}
-              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-gray-500 dark:hover:text-white transition-colors bg-transparent border-none"
+              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -1154,122 +1402,134 @@ const RoomAssignment = () => {
         </div>
 
         <div className="section-body !pt-2">
-          <div className="flex gap-3">
-            {renderDayPreview(prevDayReservations, selectedDate.subtract(1, 'day'), 'prev')}
-
-            <div className="flex-1 min-w-0">
-              <div
-                className={
-                  animDirection === 'left'
-                    ? 'cylinder-rotate-left'
-                    : animDirection === 'right'
-                      ? 'cylinder-rotate-right'
-                      : ''
-                }
-              >
-                {/* Unified Table */}
-                <div className="rounded-xl border border-[#F2F4F6] dark:border-gray-800">
-                  {/* Header */}
-                  <div className="flex items-center h-12 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-gray-800">
-                    <div className="flex-shrink-0 pl-3 pr-2 w-42 border-r border-[#F2F4F6] dark:border-gray-800">
-                      <span className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">객실</span>
-                    </div>
-                    <div
-                      className="flex-1 grid gap-2 pl-3"
-                      style={{ gridTemplateColumns: GUEST_COLS }}
-                    >
-                      <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">이름</div>
-                      <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">전화번호</div>
-                      <div className="text-center text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">성별</div>
-                      <div className="text-center text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">파티</div>
-                      <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">예약객실</div>
-                      <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">메모</div>
-                      <div className="relative flex items-center justify-end text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-400">
-                        문자
-                        <div
-                          id="sms-column-resizer"
-                          className="absolute cursor-col-resize z-10 w-2 -right-1 -top-1.5 -bottom-1.5 hover:bg-[#3182F6]/30"
-                          onMouseDown={(e) => {
-                            setIsResizing(true);
-                            setResizeStartX(e.clientX);
-                            setResizeStartWidth(smsColumnWidth);
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Loading */}
-                  {loading && (
-                    <div className="flex items-center justify-center gap-2 py-12 text-[#B0B8C1] dark:text-[#8B95A1]">
-                      <Spinner size="sm" />
-                      <span className="text-sm">로딩 중...</span>
-                    </div>
-                  )}
-
-                  {/* Room Rows */}
-                  {!loading && activeRoomNumbers.map(renderRoomRow)}
-
-                  {/* Unassigned Pool */}
-                  <div
-                    className={`mt-0 border-t-2 transition-colors ${
-                      dragOverPool
-                        ? 'border-[#FF9F00] bg-[#FFF5E6] dark:bg-amber-900/20'
-                        : 'border-[#F2F4F6] dark:border-gray-800'
-                    }`}
-                    onDragOver={onPoolDragOver}
-                    onDragLeave={onPoolDragLeave}
-                    onDrop={onPoolDrop}
-                  >
-                    {unassigned.length === 0 && !loading ? (
-                      <div className="group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-[#F2F4F6]/50 dark:bg-[#17171C]/30 transition-colors h-[48px] min-h-[48px] max-h-[48px]">
-                        <div className="flex items-center gap-1.5 flex-shrink-0 pl-3 pr-2 py-2 w-42 border-r border-[#F2F4F6] dark:border-gray-800">
-                          <span className="font-semibold text-[#191F28] dark:text-white text-body">미배정</span>
-                        </div>
-                        <div className="flex-1" />
-                      </div>
-                    ) : (
-                      unassigned.map((res, idx) => renderUnassignedRow(res, idx))
-                    )}
-                    {dragOverPool && (
-                      <div className="text-center py-2 text-body text-[#FF9F00] dark:text-[#FF9F00] font-medium">
-                        여기에 놓으면 배정 해제
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Party-Only */}
-                  <div
-                    className={`border-t-2 transition-colors ${
-                      dragOverPartyZone
-                        ? 'border-[#7B61FF] bg-[#F3EEFF] dark:bg-purple-900/20'
-                        : 'border-[#F2F4F6] dark:border-gray-800'
-                    }`}
-                    onDragOver={onPartyZoneDragOver}
-                    onDragLeave={onPartyZoneDragLeave}
-                    onDrop={onPartyZoneDrop}
-                  >
-                    {partyOnly.length === 0 ? (
-                      <div className="group flex select-none border-b border-[#F2F4F6] dark:border-gray-800 bg-[#F2F4F6]/50 dark:bg-[#17171C]/30 transition-colors h-[48px] min-h-[48px] max-h-[48px]">
-                        <div className="flex items-center gap-1.5 flex-shrink-0 pl-3 pr-2 py-2 w-42 border-r border-[#F2F4F6] dark:border-gray-800">
-                          <span className="font-semibold text-[#191F28] dark:text-white text-body">파티만</span>
-                        </div>
-                        <div className="flex-1" />
-                      </div>
-                    ) : (
-                      partyOnly.map((res, idx) => renderPartyOnlyRow(res, idx))
-                    )}
-                    {dragOverPartyZone && partyOnly.length > 0 && (
-                      <div className="text-center py-2 text-body text-[#7B61FF] dark:text-[#7B61FF] font-medium">
-                        여기에 놓으면 파티만 게스트로 전환됩니다
-                      </div>
-                    )}
+          <div
+            className={
+              animDirection === 'left'
+                ? 'cylinder-rotate-left'
+                : animDirection === 'right'
+                  ? 'cylinder-rotate-right'
+                  : ''
+            }
+          >
+            {/* Unified Table */}
+            <div className="rounded-xl border border-[#F2F4F6] dark:border-[#2C2C34]">
+              {/* Header */}
+              <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-[#2C2C34]">
+                <div className="flex-shrink-0 w-24 px-2 text-center border-r-8 border-white dark:border-[#2C2C34] shadow-[inset_-1px_0_0_#E5E8EB,1px_0_0_#E5E8EB] z-[2] flex items-center justify-center self-stretch">
+                  <span className="text-caption font-semibold text-[#8B95A1] dark:text-[#8B95A1]">{selectedDate.subtract(1, 'day').format('M/D')}</span>
+                </div>
+                <div className="flex-shrink-0 pl-3 pr-2 w-42 border-r border-[#F2F4F6] dark:border-[#2C2C34]">
+                  <span className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">객실</span>
+                </div>
+                <div className="w-7 flex-shrink-0" />
+                <div
+                  className="flex-1 grid items-center gap-2 px-3"
+                  style={{ gridTemplateColumns: GUEST_COLS }}
+                >
+                  <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">이름</div>
+                  <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">전화번호</div>
+                  <div className="text-center text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">성별</div>
+                  <div className="text-center text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">파티</div>
+                  <div className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">예약객실</div>
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-[60px] flex-1 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">메모</div>
+                    <div className="min-w-[60px] flex-1 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">문자</div>
                   </div>
                 </div>
+                <div className="flex-shrink-0 w-24 px-2 text-center border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] flex items-center justify-center self-stretch">
+                  <span className="text-caption font-semibold text-[#8B95A1] dark:text-[#8B95A1]">{selectedDate.add(1, 'day').format('M/D')}</span>
+                </div>
+              </div>
+
+              {/* Loading */}
+              {loading && (
+                <div className="flex items-center justify-center gap-2 py-12 text-[#B0B8C1] dark:text-[#8B95A1]">
+                  <Spinner size="sm" />
+                  <span className="text-sm">로딩 중...</span>
+                </div>
+              )}
+
+              {/* Room Rows */}
+              {!loading && activeRoomEntries.map((entry, idx) => renderRoomRow(entry, idx))}
+
+              {/* Unassigned Pool */}
+              <div
+                className={`group flex select-none transition-colors ${
+                  dragOverPool
+                    ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/8'
+                    : unassigned.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
+                }`}
+                style={{ minHeight: `${Math.max(1, unassigned.length) * 40}px` }}
+                onDragOver={onPoolDragOver}
+                onDragLeave={onPoolDragLeave}
+                onDrop={onPoolDrop}
+              >
+                {/* Prev day column - empty */}
+                <div className="flex-shrink-0 w-24 border-r-8 border-white dark:border-[#2C2C34] shadow-[inset_-1px_0_0_#E5E8EB,1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" />
+
+                {/* Room label */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
+                  <span className="font-semibold text-[#FF9500] dark:text-[#FF9500] text-body">미배정</span>
+                </div>
+
+                {/* Guest area */}
+                <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
+                  {unassigned.length > 0 ? (
+                    unassigned.map((res) => renderGuestRow(res, true))
+                  ) : (
+                    <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
+                      <div className="flex-1 grid items-center gap-2 px-3 py-1.5" style={{ gridTemplateColumns: GUEST_COLS }}>
+                        <div className="overflow-hidden truncate col-span-full text-body text-[#FF9500] dark:text-[#FF9500] italic">
+                          {dragOverPool ? '여기에 놓으면 배정 해제' : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Next day column - empty */}
+                <div className="flex-shrink-0 w-24 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" />
+              </div>
+
+              {/* Party-Only */}
+              <div
+                className={`group flex select-none transition-colors ${
+                  dragOverPartyZone
+                    ? 'bg-[#7B61FF]/5 dark:bg-[#7B61FF]/8'
+                    : partyOnly.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
+                }`}
+                style={{ minHeight: `${Math.max(1, partyOnly.length) * 40}px` }}
+                onDragOver={onPartyZoneDragOver}
+                onDragLeave={onPartyZoneDragLeave}
+                onDrop={onPartyZoneDrop}
+              >
+                {/* Prev day column - empty */}
+                <div className="flex-shrink-0 w-24 border-r-8 border-white dark:border-[#2C2C34] shadow-[inset_-1px_0_0_#E5E8EB,1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" />
+
+                {/* Room label */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
+                  <span className="font-semibold text-[#7B61FF] dark:text-[#7B61FF] text-body">파티만</span>
+                </div>
+
+                {/* Guest area */}
+                <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
+                  {partyOnly.length > 0 ? (
+                    partyOnly.map((res) => renderGuestRow(res, true))
+                  ) : (
+                    <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
+                      <div className="flex-1 grid items-center gap-2 px-3 py-1.5" style={{ gridTemplateColumns: GUEST_COLS }}>
+                        <div className="overflow-hidden truncate col-span-full text-body text-[#7B61FF] dark:text-[#7B61FF] italic">
+                          {dragOverPartyZone ? '여기에 놓으면 파티만 게스트로 전환' : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Next day column - empty */}
+                <div className="flex-shrink-0 w-24 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" />
               </div>
             </div>
-
-            {renderDayPreview(nextDayReservations, selectedDate.add(1, 'day'), 'next')}
           </div>
         </div>
       </div>
@@ -1298,7 +1558,7 @@ const RoomAssignment = () => {
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
                       ${(formValues.guest_type || 'manual') === opt.value
                         ? 'bg-[#3182F6] text-white'
-                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-300 dark:hover:bg-[#3A3A44]'
+                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-white dark:hover:bg-[#2C2C34]'
                       }`}
                   >
                     {opt.label}
@@ -1309,7 +1569,7 @@ const RoomAssignment = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="customer-name">이름 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+                <Label htmlFor="customer-name">이름 <span className="text-[#F04452] dark:text-[#F04452]">*</span></Label>
                 <TextInput
                   id="customer-name"
                   value={formValues.customer_name || ''}
@@ -1319,7 +1579,7 @@ const RoomAssignment = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">전화번호 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+                <Label htmlFor="phone">전화번호 <span className="text-[#F04452] dark:text-[#F04452]">*</span></Label>
                 <TextInput
                   id="phone"
                   value={formValues.phone || ''}
@@ -1331,7 +1591,7 @@ const RoomAssignment = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="date">날짜 <span className="text-[#F04452] dark:text-red-400">*</span></Label>
+              <Label htmlFor="date">날짜 <span className="text-[#F04452] dark:text-[#F04452]">*</span></Label>
               <TextInput
                 id="date"
                 type="date"
@@ -1345,25 +1605,25 @@ const RoomAssignment = () => {
               <Label>성별 / 인원</Label>
               <div className="flex gap-3">
                 <div className="flex items-center gap-0 flex-1">
-                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-gray-600 text-sm font-medium text-[#4E5968] dark:text-gray-300">남</span>
+                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">남</span>
                   <input
                     type="number"
                     min={0}
                     value={formValues.male_count ?? ''}
                     onChange={(e) => setFormValues({ ...formValues, male_count: e.target.value ? Number(e.target.value) : null })}
                     placeholder="0"
-                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
                   />
                 </div>
                 <div className="flex items-center gap-0 flex-1">
-                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-gray-600 text-sm font-medium text-[#4E5968] dark:text-gray-300">여</span>
+                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">여</span>
                   <input
                     type="number"
                     min={0}
                     value={formValues.female_count ?? ''}
                     onChange={(e) => setFormValues({ ...formValues, female_count: e.target.value ? Number(e.target.value) : null })}
                     placeholder="0"
-                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
                   />
                 </div>
               </div>
@@ -1395,11 +1655,11 @@ const RoomAssignment = () => {
       >
         <ModalBody>
           <div className="text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-900/20">
-              <Trash2 className="h-6 w-6 text-amber-500" />
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F04452]/10 dark:bg-[#F04452]/10">
+              <Trash2 className="h-6 w-6 text-[#F04452]" />
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-white">{confirmState.title}</h3>
-            <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">{confirmState.content}</p>
+            <h3 className="mb-2 text-lg font-semibold text-[#191F28] dark:text-white">{confirmState.title}</h3>
+            <p className="mb-5 text-sm text-[#8B95A1] dark:text-[#8B95A1]">{confirmState.content}</p>
             <div className="flex justify-center gap-3">
               <Button
                 color="blue"
@@ -1414,6 +1674,90 @@ const RoomAssignment = () => {
                 color="light"
                 onClick={() => setConfirmState((s) => ({ ...s, open: false }))}
               >
+                취소
+              </Button>
+            </div>
+          </div>
+        </ModalBody>
+      </Modal>
+
+      {/* Multi-night room move confirmation */}
+      <Modal
+        show={!!multiNightConfirm?.open}
+        onClose={() => setMultiNightConfirm(null)}
+        size="sm"
+      >
+        <ModalBody>
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8F3FF] dark:bg-[#3182F6]/10">
+              <UserPlus className="h-6 w-6 text-[#3182F6]" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-[#191F28] dark:text-white">연박 객실 이동</h3>
+            <p className="mb-5 text-sm text-[#8B95A1] dark:text-[#8B95A1]">
+              <span className="font-semibold text-[#191F28] dark:text-white">{multiNightConfirm?.resName}</span> 님을{' '}
+              <span className="font-semibold text-[#3182F6]">{multiNightConfirm?.room}</span>(으)로 이동합니다.
+              <br />이후 날짜도 같은 객실로 배정하시겠습니까?
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button
+                color="blue"
+                onClick={() => multiNightConfirm?.onConfirm(true)}
+              >
+                전체 날짜 적용
+              </Button>
+              <Button
+                color="light"
+                onClick={() => multiNightConfirm?.onConfirm(false)}
+              >
+                오늘만 적용
+              </Button>
+              <Button
+                color="light"
+                onClick={() => setMultiNightConfirm(null)}
+              >
+                취소
+              </Button>
+            </div>
+          </div>
+        </ModalBody>
+      </Modal>
+
+      {/* 발송 확인 모달 */}
+      <Modal show={!!sendConfirm} onClose={() => setSendConfirm(null)} size="md" popup>
+        <ModalHeader />
+        <ModalBody>
+          <div className="text-center">
+            <Send className="mx-auto mb-4 h-10 w-10 text-[#3182F6]" />
+            <h3 className="mb-2 text-heading font-semibold text-gray-800 dark:text-white">
+              SMS 발송 확인
+            </h3>
+            <p className="mb-6 text-body text-[#4E5968] dark:text-gray-300">
+              {sendConfirm?.type === 'campaign'
+                ? `${templateLabels.find(t => t.key === selectedTemplateKey)?.name || selectedTemplateKey} — ${targets.length}건을 발송하시겠습니까?`
+                : sendConfirm?.type === 'toggle'
+                ? (() => {
+                    const r = reservations.find(r => r.id === sendConfirm.resId);
+                    const isSent = r?.sms_assignments?.some(a => a.template_key === sendConfirm.templateKey && !!a.sent_at);
+                    return isSent
+                      ? `${sendConfirm.customerName}님의 ${sendConfirm.scheduleName} 발송을 취소하시겠습니까?`
+                      : `${sendConfirm.customerName}님에게 ${sendConfirm.scheduleName}을(를) 발송하시겠습니까?`;
+                  })()
+                : `${sendConfirm?.scheduleName} 스케줄을 실행하시겠습니까?`}
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button color="blue" onClick={() => {
+                if (sendConfirm?.type === 'campaign') {
+                  handleSendCampaign();
+                } else if (sendConfirm?.type === 'toggle' && sendConfirm.resId && sendConfirm.templateKey) {
+                  setSendConfirm(null);
+                  doSmsToggle(sendConfirm.resId, sendConfirm.templateKey);
+                } else if (sendConfirm?.type === 'schedule' && sendConfirm.scheduleId && sendConfirm.scheduleName) {
+                  handleRunSchedule(sendConfirm.scheduleId, sendConfirm.scheduleName);
+                }
+              }}>
+                발송
+              </Button>
+              <Button color="light" onClick={() => setSendConfirm(null)}>
                 취소
               </Button>
             </div>

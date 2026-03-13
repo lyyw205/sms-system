@@ -3,16 +3,16 @@ Provider factory for hot-swapping Mock and Real implementations.
 This is the CRITICAL file for demo/production mode switching.
 """
 from app.config import settings
-from app.providers.base import SMSProvider, ReservationProvider, LLMProvider, StorageProvider
+from app.providers.base import SMSProvider, ReservationProvider, LLMProvider
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def get_sms_provider() -> SMSProvider:
-    """Get SMS provider based on DEMO_MODE"""
+    """Get SMS provider - DEMO_MODE only affects SMS (uses mock to prevent real sends)"""
     if settings.DEMO_MODE:
-        logger.info("🎭 Using MockSMSProvider (DEMO_MODE=true)")
+        logger.info("🎭 Using MockSMSProvider (DEMO_MODE=true — SMS only)")
         from app.mock.sms import MockSMSProvider
         return MockSMSProvider()
     else:
@@ -24,40 +24,18 @@ def get_sms_provider() -> SMSProvider:
 
 
 def get_reservation_provider() -> ReservationProvider:
-    """Get reservation provider based on DEMO_MODE"""
-    if settings.DEMO_MODE:
-        logger.info("🎭 Using MockReservationProvider (DEMO_MODE=true)")
-        from app.mock.reservation import MockReservationProvider
-        return MockReservationProvider()
-    else:
-        logger.info("🚀 Using RealReservationProvider (DEMO_MODE=false)")
-        from app.real.reservation import RealReservationProvider
-        from app.api.settings import get_naver_cookie
-        return RealReservationProvider(
-            business_id=settings.NAVER_BUSINESS_ID,
-            cookie=get_naver_cookie(),
-        )
+    """Get reservation provider - always uses Real (Naver API)"""
+    logger.info("🚀 Using RealReservationProvider")
+    from app.real.reservation import RealReservationProvider
+    from app.api.settings import get_naver_cookie
+    return RealReservationProvider(
+        business_id=settings.NAVER_BUSINESS_ID,
+        cookie=get_naver_cookie(),
+    )
 
 
 def get_llm_provider() -> LLMProvider:
-    """Get LLM provider based on DEMO_MODE"""
-    if settings.DEMO_MODE:
-        logger.info("🎭 Using MockLLMProvider (DEMO_MODE=true)")
-        from app.mock.llm import MockLLMProvider
-        return MockLLMProvider()
-    else:
-        logger.info("🚀 Using RealLLMProvider (DEMO_MODE=false)")
-        from app.real.llm import RealLLMProvider
-        return RealLLMProvider(api_key=settings.CLAUDE_API_KEY)
-
-
-def get_storage_provider() -> StorageProvider:
-    """Get storage provider based on DEMO_MODE"""
-    if settings.DEMO_MODE:
-        logger.info("🎭 Using MockStorageProvider (DEMO_MODE=true)")
-        from app.mock.storage import MockStorageProvider
-        return MockStorageProvider()
-    else:
-        logger.info("🚀 Using RealStorageProvider (DEMO_MODE=false)")
-        from app.real.storage import RealStorageProvider
-        return RealStorageProvider(credentials_path=settings.GOOGLE_SHEETS_CREDENTIALS)
+    """Get LLM provider - always uses Real (Claude API)"""
+    logger.info("🚀 Using RealLLMProvider")
+    from app.real.llm import RealLLMProvider
+    return RealLLMProvider(api_key=settings.CLAUDE_API_KEY)

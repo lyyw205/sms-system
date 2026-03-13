@@ -43,6 +43,8 @@ interface Reservation {
   external_id?: string | null;
   customer_name: string;
   phone: string;
+  visitor_name?: string | null;
+  visitor_phone?: string | null;
   date: string;
   end_date?: string | null;
   time?: string | null;
@@ -69,7 +71,6 @@ interface FormState {
   customer_name: string;
   phone: string;
   reservation_date: string;
-  reservation_time: string;
   status: string;
   male_count: number | null;
   female_count: number | null;
@@ -82,7 +83,6 @@ const EMPTY_FORM: FormState = {
   customer_name: '',
   phone: '',
   reservation_date: '',
-  reservation_time: '',
   status: 'confirmed',
   male_count: null,
   female_count: null,
@@ -197,7 +197,7 @@ export default function Reservations() {
   }, [filterDate]);
 
   const filtered = useMemo(() => {
-    return reservations.filter((r) => {
+    const list = reservations.filter((r) => {
       if (filterStatus.length > 0 && !filterStatus.includes(r.status)) return false;
       const src = r.source ?? 'manual';
       if (filterSource.length > 0 && !filterSource.includes(src)) return false;
@@ -209,6 +209,13 @@ export default function Reservations() {
       }
       return true;
     });
+    // Sort by most recent confirmed or cancelled datetime
+    list.sort((a, b) => {
+      const aDate = a.cancelled_datetime || a.confirmed_datetime || a.created_at || '';
+      const bDate = b.cancelled_datetime || b.confirmed_datetime || b.created_at || '';
+      return bDate.localeCompare(aDate);
+    });
+    return list;
   }, [reservations, filterStatus, filterSource, searchQuery]);
 
   // Reset to page 1 when filters change
@@ -275,7 +282,6 @@ export default function Reservations() {
       customer_name:    r.customer_name ?? '',
       phone:            r.phone ?? '',
       reservation_date: r.date ? dayjs(r.date).format('YYYY-MM-DD') : '',
-      reservation_time: fmtTime(r.time ?? r.date),
       status:           r.status ?? 'confirmed',
       male_count:       maleCount,
       female_count:     femaleCount,
@@ -325,7 +331,7 @@ export default function Reservations() {
         customer_name:      form.customer_name.trim(),
         phone:              form.phone.trim(),
         date:               form.reservation_date,
-        time:               form.reservation_time || '00:00',
+        time:               '00:00',
         status:             form.status,
         party_participants: (maleCount + femaleCount) || null,
         gender:             genderParts.join('') || null,
@@ -578,7 +584,9 @@ export default function Reservations() {
                   <TableHeadCell className="whitespace-nowrap text-center">상품명</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap text-center">객실</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap text-right">결제금액</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">메모</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">요청사항</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-center">확정일시</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-center">취소일시</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">작업</TableHeadCell>
                 </TableRow>
               </TableHead>
@@ -597,14 +605,24 @@ export default function Reservations() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {r.customer_name}
-                        </span>
+                        <div>
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {r.customer_name}
+                          </span>
+                          {r.visitor_name && r.visitor_name !== r.customer_name && (
+                            <p className="text-caption text-gray-400">{r.visitor_name}</p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <span className="tabular-nums text-gray-500">
-                          {r.phone}
-                        </span>
+                        <div>
+                          <span className="tabular-nums text-gray-500">
+                            {r.phone}
+                          </span>
+                          {r.visitor_phone && r.visitor_phone !== r.phone && (
+                            <p className="text-caption tabular-nums text-gray-400">{r.visitor_phone}</p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <span className="text-body tabular-nums">{fmtPeriod(r.date, r.end_date)}</span>
@@ -626,9 +644,15 @@ export default function Reservations() {
                         <span className="tabular-nums text-body text-gray-500">{fmtPrice(r.total_price)}</span>
                       </TableCell>
                       <TableCell>
-                        <p className="line-clamp-1 max-w-[120px] text-body text-gray-500" title={r.notes ?? ''}>
-                          {r.notes ?? '-'}
+                        <p className="line-clamp-1 max-w-[160px] text-body text-gray-500" title={r.custom_form_input ?? ''}>
+                          {r.custom_form_input ?? '-'}
                         </p>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="tabular-nums text-body text-gray-500">{fmtDatetime(r.confirmed_datetime)}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="tabular-nums text-body text-gray-500">{fmtDatetime(r.cancelled_datetime)}</span>
                       </TableCell>
                       <TableCell>
                         {isNaver ? (

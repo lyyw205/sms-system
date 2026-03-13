@@ -318,6 +318,7 @@ class RealReservationProvider:
                         'biz_item_id': str(item.get('bizItemId', '')),
                         'name': item.get('name', ''),
                         'biz_item_type': item.get('bizItemType', ''),
+                        'is_exposed': bool(item.get('isImp', False)),
                     })
                 return items
         except Exception as e:

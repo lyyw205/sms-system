@@ -23,6 +23,7 @@ class TemplateCreate(BaseModel):
     variables: Optional[str] = None
     category: Optional[str] = None
     active: bool = True
+    short_label: Optional[str] = None
 
 
 class TemplateUpdate(BaseModel):
@@ -32,6 +33,7 @@ class TemplateUpdate(BaseModel):
     variables: Optional[str] = None
     category: Optional[str] = None
     active: Optional[bool] = None
+    short_label: Optional[str] = None
 
 
 class TemplateResponse(BaseModel):
@@ -45,6 +47,7 @@ class TemplateResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     schedule_count: int = 0
+    short_label: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -89,11 +92,29 @@ def get_templates(
             "active": template.active,
             "created_at": template.created_at,
             "updated_at": template.updated_at,
-            "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0
+            "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0,
+            "short_label": template.short_label,
         }
         result.append(template_dict)
 
     return result
+
+
+@router.get("/api/templates/labels")
+def get_template_labels(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get template labels for chip display"""
+    templates = db.query(MessageTemplate).filter(MessageTemplate.active == True).order_by(MessageTemplate.key).all()
+    return [
+        {
+            "key": t.key,
+            "name": t.name,
+            "short_label": t.short_label,
+        }
+        for t in templates
+    ]
 
 
 @router.get("/api/templates/{template_id}", response_model=TemplateResponse)
@@ -114,7 +135,8 @@ def get_template(template_id: int, db: Session = Depends(get_db), current_user: 
         "active": template.active,
         "created_at": template.created_at,
         "updated_at": template.updated_at,
-        "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0
+        "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0,
+        "short_label": template.short_label,
     }
 
 
@@ -133,7 +155,8 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_db), cur
         content=template.content,
         variables=template.variables,
         category=template.category,
-        active=template.active
+        active=template.active,
+        short_label=template.short_label,
     )
 
     db.add(db_template)
@@ -150,7 +173,8 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_db), cur
         "active": db_template.active,
         "created_at": db_template.created_at,
         "updated_at": db_template.updated_at,
-        "schedule_count": 0
+        "schedule_count": 0,
+        "short_label": db_template.short_label,
     }
 
 
@@ -187,7 +211,8 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         "active": db_template.active,
         "created_at": db_template.created_at,
         "updated_at": db_template.updated_at,
-        "schedule_count": len(db_template.schedules) if hasattr(db_template, 'schedules') else 0
+        "schedule_count": len(db_template.schedules) if hasattr(db_template, 'schedules') else 0,
+        "short_label": db_template.short_label,
     }
 
 

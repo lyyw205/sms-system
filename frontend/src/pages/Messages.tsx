@@ -11,15 +11,6 @@ import { Avatar, Badge, Button, Spinner, TextInput, Textarea } from 'flowbite-re
 import { messagesAPI } from '@/services/api'
 import { formatRelativeTime, formatTime } from '@/lib/utils'
 
-const OUR_NUMBER = '010-9999-0000'
-
-const QUICK_MESSAGES = [
-  { label: '영업시간', text: '영업시간이 어떻게 되나요?' },
-  { label: '예약문의', text: '예약하고 싶습니다' },
-  { label: '가격문의', text: '가격이 어떻게 되나요?' },
-  { label: '주차안내', text: '주차 가능한가요?' },
-  { label: '취소문의', text: '예약 취소하고 싶습니다' },
-]
 
 interface Contact {
   phone: string
@@ -199,7 +190,7 @@ const Messages = () => {
     try {
       await messagesAPI.simulateReceive({
         from_: selectedContact.phone,
-        to: OUR_NUMBER,
+        to: '010-9999-0000',
         message: text,
       })
       setInputText('')
@@ -223,11 +214,6 @@ const Messages = () => {
     },
     [handleSend],
   )
-
-  const handleQuickMessage = (text: string) => {
-    setInputText(text)
-    textareaRef.current?.focus()
-  }
 
   return (
     <div className="section-card flex h-[calc(100vh-7rem)] overflow-hidden">
@@ -358,21 +344,6 @@ const Messages = () => {
 
             {/* Input area */}
             <div className="border-t border-[#F2F4F6] bg-white px-4 py-3 dark:border-gray-800 dark:bg-[#1E1E24]">
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {QUICK_MESSAGES.map((qm) => (
-                  <Button
-                    key={qm.label}
-                    color="light"
-                    size="xs"
-                    pill
-                    onClick={() => handleQuickMessage(qm.text)}
-                    disabled={sending}
-                  >
-                    {qm.label}
-                  </Button>
-                ))}
-              </div>
-
               <div className="flex items-end gap-2">
                 <Textarea
                   ref={textareaRef}

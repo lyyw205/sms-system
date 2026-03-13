@@ -20,10 +20,14 @@ class RuleEngine:
 
     def load_rules(self):
         """Load rules from YAML file"""
+        if not self.rules_file.exists():
+            logger.info(f"Rules file not found at {self.rules_file}, starting with empty rules")
+            self.rules = []
+            return
         try:
             with open(self.rules_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-                self.rules = data.get("rules", [])
+                self.rules = data.get("rules", []) if data else []
                 # Sort by priority (descending)
                 self.rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
                 logger.info(f"Loaded {len(self.rules)} rules from {self.rules_file}")

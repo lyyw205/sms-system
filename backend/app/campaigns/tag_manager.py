@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
 
-from ..db.models import Reservation, CampaignLog
+from ..db.models import Reservation, CampaignLog, ReservationSmsAssignment
 from ..providers.base import SMSProvider
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,21 @@ class TagCampaignManager:
                     if tag not in types_list:
                         types_list.append(tag)
                         reservation.sent_sms_types = ','.join(types_list)
+
+                    # Record in join table
+                    existing_assign = self.db.query(ReservationSmsAssignment).filter(
+                        ReservationSmsAssignment.reservation_id == reservation.id,
+                        ReservationSmsAssignment.template_key == template_key,
+                    ).first()
+                    if existing_assign:
+                        existing_assign.sent_at = datetime.utcnow()
+                    else:
+                        self.db.add(ReservationSmsAssignment(
+                            reservation_id=reservation.id,
+                            template_key=template_key,
+                            assigned_by='auto',
+                            sent_at=datetime.utcnow(),
+                        ))
 
                 logger.info(f"Campaign successful: {campaign.sent_count} messages sent")
 

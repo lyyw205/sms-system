@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
 
-from ..db.models import Reservation, CampaignLog
-from ..providers.base import SMSProvider, StorageProvider
+from ..db.models import Reservation, CampaignLog, RoomAssignment, ReservationSmsAssignment
+from ..providers.base import SMSProvider
 from ..templates.renderer import TemplateRenderer
 
 logger = logging.getLogger(__name__)
@@ -25,26 +25,20 @@ class NotificationService:
         self,
         db: Session,
         sms_provider: SMSProvider,
-        storage_provider: Optional[StorageProvider] = None
     ):
         self.db = db
         self.sms_provider = sms_provider
-        self.storage_provider = storage_provider
         self.renderer = TemplateRenderer(db)
 
     async def send_room_guide(
         self,
         date: Optional[datetime] = None,
-        start_row: int = 3,
-        end_row: int = 68
     ) -> CampaignLog:
         """
         Send room guide messages to confirmed guests
 
         Args:
             date: Target date (defaults to today)
-            start_row: Starting row in sheet
-            end_row: Ending row in sheet
 
         Returns:
             CampaignLog record
@@ -63,17 +57,25 @@ class NotificationService:
         )
 
         try:
-            # Get reservations for the date that haven't received room SMS
-            reservations = self.db.query(Reservation).filter(
-                Reservation.date == date_str,
-                Reservation.room_sms_sent == False,
-                Reservation.room_number.isnot(None),
-                Reservation.phone.isnot(None)
+            # Get RoomAssignment records for the date that haven't had room SMS sent
+            assignments = self.db.query(RoomAssignment).filter(
+                RoomAssignment.date == date_str,
+                RoomAssignment.sms_sent == False,
             ).all()
 
-            campaign.target_count = len(reservations)
+            # Filter to reservations with a phone number
+            targets = []
+            for assignment in assignments:
+                reservation = self.db.query(Reservation).filter(
+                    Reservation.id == assignment.reservation_id,
+                    Reservation.phone.isnot(None),
+                ).first()
+                if reservation:
+                    targets.append((assignment, reservation))
 
-            if not reservations:
+            campaign.target_count = len(targets)
+
+            if not targets:
                 logger.info(f"No room guide targets for {date_str}")
                 campaign.completed_at = datetime.utcnow()
                 self.db.add(campaign)
@@ -84,15 +86,9 @@ class NotificationService:
             messages = []
             phone_numbers = []
 
-            for reservation in reservations:
-                # Generate room password if not set
-                if not reservation.room_password:
-                    reservation.room_password = TemplateRenderer.generate_room_password(
-                        reservation.room_number
-                    )
-
-                # Render message
-                message = self.renderer.render_room_guide(reservation)
+            for assignment, reservation in targets:
+                # Pass per-date assignment directly to renderer (no ORM mutation)
+                message = self.renderer.render_room_guide(reservation, room_assignment=assignment)
 
                 messages.append({
                     'to': reservation.phone,
@@ -109,7 +105,9 @@ class NotificationService:
                 campaign.sent_count = len(messages)
 
                 # Mark as sent
-                for reservation in reservations:
+                for assignment, reservation in targets:
+                    assignment.sms_sent = True
+                    assignment.sms_sent_at = datetime.utcnow()
                     reservation.room_sms_sent = True
                     reservation.room_sms_sent_at = datetime.utcnow()
 
@@ -120,13 +118,20 @@ class NotificationService:
                         types_list.append("객실안내")
                         reservation.sent_sms_types = ','.join(types_list)
 
-                # Mark in Google Sheets if provider available
-                if self.storage_provider:
-                    await self.storage_provider.mark_sent_phone_numbers(
-                        phone_numbers,
-                        date,
-                        '객실문자O'
-                    )
+                    # Record in join table
+                    existing_assign = self.db.query(ReservationSmsAssignment).filter(
+                        ReservationSmsAssignment.reservation_id == reservation.id,
+                        ReservationSmsAssignment.template_key == 'room_guide',
+                    ).first()
+                    if existing_assign:
+                        existing_assign.sent_at = datetime.utcnow()
+                    else:
+                        self.db.add(ReservationSmsAssignment(
+                            reservation_id=reservation.id,
+                            template_key='room_guide',
+                            assigned_by='auto',
+                            sent_at=datetime.utcnow(),
+                        ))
 
                 logger.info(f"Room guide campaign successful: {campaign.sent_count} sent")
 
@@ -134,6 +139,7 @@ class NotificationService:
                 campaign.failed_count = len(messages)
                 campaign.error_message = result.get('error', 'Unknown error')
                 logger.error(f"Room guide campaign failed: {campaign.error_message}")
+
 
             campaign.completed_at = datetime.utcnow()
             self.db.add(campaign)
@@ -152,16 +158,12 @@ class NotificationService:
     async def send_party_guide(
         self,
         date: Optional[datetime] = None,
-        start_row: int = 3,
-        end_row: int = 68
     ) -> CampaignLog:
         """
         Send party guide messages to unassigned guests
 
         Args:
             date: Target date (defaults to today)
-            start_row: Starting row in sheet
-            end_row: Ending row in sheet
 
         Returns:
             CampaignLog record
@@ -208,11 +210,8 @@ class NotificationService:
 
             logger.info(f"Total party participants: {total_participants}")
 
-            # Check if weekend (Friday or Saturday) - from line 332-335
-            is_weekend = date.weekday() in [4, 5]
-
             # Build party price message (from line 315-349)
-            party_price = self._get_party_price_message(is_weekend)
+            party_price = self._get_party_price_message()
 
             # Build full message
             message = f"""
@@ -262,13 +261,20 @@ class NotificationService:
                         types_list.append("파티안내")
                         reservation.sent_sms_types = ','.join(types_list)
 
-                # Mark in Google Sheets if provider available
-                if self.storage_provider:
-                    await self.storage_provider.mark_sent_phone_numbers(
-                        phone_numbers,
-                        date,
-                        '파티문자O'
-                    )
+                    # Record in join table
+                    existing_assign = self.db.query(ReservationSmsAssignment).filter(
+                        ReservationSmsAssignment.reservation_id == reservation.id,
+                        ReservationSmsAssignment.template_key == 'party_guide',
+                    ).first()
+                    if existing_assign:
+                        existing_assign.sent_at = datetime.utcnow()
+                    else:
+                        self.db.add(ReservationSmsAssignment(
+                            reservation_id=reservation.id,
+                            template_key='party_guide',
+                            assigned_by='auto',
+                            sent_at=datetime.utcnow(),
+                        ))
 
                 logger.info(f"Party guide campaign successful: {campaign.sent_count} sent")
 
@@ -291,21 +297,16 @@ class NotificationService:
             self.db.commit()
             raise
 
-    def _get_party_price_message(self, is_weekend: bool) -> str:
+    def _get_party_price_message(self) -> str:
         """
-        Get party pricing message based on day of week
-
-        Args:
-            is_weekend: Whether it's Friday or Saturday
+        Get party pricing message
 
         Returns:
             Formatted price message
 
         Ported from: stable-clasp-main/00_main.js:315-349
         """
-        if is_weekend:
-            # Weekend pricing (Friday/Saturday) - from line 338-349
-            return """
+        return """
 [1차 파티]
 - 오후8시~10시30분
 - 흑돼지바베큐 무제한(90분), 설탕토마토, 고구마샐러드, 물만두, 과일안주, 팝콘, 토닉워터 등
@@ -320,22 +321,4 @@ class NotificationService:
 
 - 1차+2차 신청 시 남자 5.5만원 / 여자 4만원
 (금일 인원이 많아 1차 이후 현장 2차 신청이 안될 수 있으니 꼭 동시 신청해주세요!)
-            """.strip()
-        else:
-            # Weekday pricing - from line 315-330
-            return """
-[1차 파티]
-- 오후8시~10시30분
-- 흑돼지바베큐 무제한(90분), 설탕토마토, 고구마샐러드, 물만두, 과일안주, 팝콘, 토닉워터 등
-- 주류 1병(1인당)
-- 남자 3만 원, 여자 2만 원
-
-[2차 파티]
-- 오후10시30분~12시30분
-- 치킨, 시원한 콩나물국, 과자, 샐러드
-- 주류 1병(2인당)
-- 남자 2.5만 원, 여자 2만 원
-
-- 1차+2차 신청 시 남자 5.5만원 / 여자 4만원
-(금일 인원이 많아 1차 이후 현장 2차 신청이 안될 수 있으니 꼭 동시 신청해주세요!)
-            """.strip()
+        """.strip()

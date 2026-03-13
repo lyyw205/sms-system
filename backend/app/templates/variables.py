@@ -108,7 +108,8 @@ def calculate_template_variables(
     reservation: Reservation,
     db: Session,
     date: Optional[str] = None,
-    custom_vars: Optional[Dict[str, Any]] = None
+    custom_vars: Optional[Dict[str, Any]] = None,
+    room_assignment=None,
 ) -> Dict[str, Any]:
     """
     Calculate all template variables for a reservation
@@ -128,23 +129,26 @@ def calculate_template_variables(
     variables['name'] = reservation.customer_name or ''
     variables['phone'] = reservation.phone or ''
 
-    # 객실 정보
-    if reservation.room_number:
-        variables['roomNumber'] = reservation.room_number
+    # 객실 정보 - prefer room_assignment if provided, else fallback to reservation fields
+    effective_room_number = (room_assignment.room_number if room_assignment else None) or reservation.room_number
+    effective_room_password = (room_assignment.room_password if room_assignment else None) or reservation.room_password
+
+    if effective_room_number:
+        variables['roomNumber'] = effective_room_number
         # 건물과 호수 분리 (예: A101 → building=A, roomNum=101)
-        if len(reservation.room_number) >= 2:
-            variables['building'] = reservation.room_number[0]
-            variables['roomNum'] = reservation.room_number[1:]
+        if len(effective_room_number) >= 2:
+            variables['building'] = effective_room_number[0]
+            variables['roomNum'] = effective_room_number[1:]
         else:
             variables['building'] = ''
-            variables['roomNum'] = reservation.room_number
+            variables['roomNum'] = effective_room_number
     else:
         variables['roomNumber'] = ''
         variables['building'] = ''
         variables['roomNum'] = ''
 
     variables['roomInfo'] = reservation.room_info or ''
-    variables['password'] = reservation.room_password or ''
+    variables['password'] = effective_room_password or ''
 
     # 파티 정보 - 기본값 설정
     variables['priceInfo'] = '남자 3만원 / 여자 2만원\n계좌: 카카오뱅크 3333-12-3456789 (홍길동)'

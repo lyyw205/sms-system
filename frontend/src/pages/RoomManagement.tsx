@@ -33,6 +33,8 @@ interface Room {
   sort_order: number;
   created_at: string;
   naver_biz_item_id?: string | null;
+  is_dormitory: boolean;
+  dormitory_beds: number;
 }
 
 interface RoomForm {
@@ -43,6 +45,8 @@ interface RoomForm {
   sort_order: number;
   is_active: boolean;
   naver_biz_item_id: string;
+  is_dormitory: boolean;
+  dormitory_beds: number;
 }
 
 interface NaverBizItem {
@@ -50,6 +54,7 @@ interface NaverBizItem {
   biz_item_id: string;
   name: string;
   biz_item_type?: string | null;
+  is_exposed?: boolean;
   is_active: boolean;
 }
 
@@ -61,6 +66,8 @@ const EMPTY_FORM: RoomForm = {
   sort_order: 1,
   is_active: true,
   naver_biz_item_id: '',
+  is_dormitory: false,
+  dormitory_beds: 1,
 };
 
 const RoomManagement = () => {
@@ -134,6 +141,8 @@ const RoomManagement = () => {
       sort_order: room.sort_order,
       is_active: room.is_active,
       naver_biz_item_id: room.naver_biz_item_id || '',
+      is_dormitory: room.is_dormitory || false,
+      dormitory_beds: room.dormitory_beds || 1,
     });
     setDialogOpen(true);
   };
@@ -273,6 +282,7 @@ const RoomManagement = () => {
                 <TableHeadCell className="w-px text-center">타입</TableHeadCell>
                 <TableHeadCell className="w-px text-center">인원</TableHeadCell>
                 <TableHeadCell className="w-px text-center">상태</TableHeadCell>
+                <TableHeadCell className="w-px text-center">도미토리</TableHeadCell>
                 <TableHeadCell className="w-px text-center">네이버 상품</TableHeadCell>
                 <TableHeadCell />
                 <TableHeadCell className="w-px text-center">작업</TableHeadCell>
@@ -319,9 +329,24 @@ const RoomManagement = () => {
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center text-xs text-gray-500">
+                  <TableCell>
+                    <div className="flex justify-center">
+                      {room.is_dormitory ? (
+                        <Badge color="purple" size="sm">{room.dormitory_beds}인실</Badge>
+                      ) : (
+                        <span className="text-caption text-[#B0B8C1] dark:text-gray-600">-</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center text-xs">
                     {room.naver_biz_item_id
-                      ? bizItems.find((b) => b.biz_item_id === room.naver_biz_item_id)?.name || room.naver_biz_item_id
+                      ? (() => {
+                          const item = bizItems.find((b) => b.biz_item_id === room.naver_biz_item_id);
+                          if (!item) return <span className="text-gray-500">{room.naver_biz_item_id}</span>;
+                          return item.is_exposed === false
+                            ? <span className="text-[#B0B8C1]">[미노출] {item.name}</span>
+                            : <span className="text-gray-500">{item.name}</span>;
+                        })()
                       : '-'}
                   </TableCell>
                   <TableCell />
@@ -386,8 +411,12 @@ const RoomManagement = () => {
               >
                 <option value="">선택 안 함</option>
                 {bizItems.map((item) => (
-                  <option key={item.biz_item_id} value={item.biz_item_id}>
-                    {item.name}
+                  <option
+                    key={item.biz_item_id}
+                    value={item.biz_item_id}
+                    style={item.is_exposed === false ? { color: '#B0B8C1' } : undefined}
+                  >
+                    {item.is_exposed === false ? `[미노출] ${item.name}` : item.name}
                   </option>
                 ))}
               </Select>
@@ -437,6 +466,32 @@ const RoomManagement = () => {
                 checked={form.is_active}
                 onChange={(v) => setForm((f) => ({ ...f, is_active: v }))}
               />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="mb-0">도미토리</Label>
+                <span className={`text-body font-medium ${form.is_dormitory ? 'text-[#9061F9]' : 'text-[#B0B8C1]'}`}>
+                  {form.is_dormitory ? '도미토리' : '일반'}
+                </span>
+              </div>
+              <ToggleSwitch
+                checked={form.is_dormitory}
+                onChange={(v) => setForm((f) => ({ ...f, is_dormitory: v }))}
+              />
+              {form.is_dormitory && (
+                <div className="space-y-1 pt-1">
+                  <Label htmlFor="dormitory-beds">인실 수</Label>
+                  <TextInput
+                    id="dormitory-beds"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={String(form.dormitory_beds ?? 1)}
+                    onChange={(e) => setForm((f) => ({ ...f, dormitory_beds: parseInt(e.target.value) || 1 }))}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </ModalBody>

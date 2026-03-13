@@ -8,9 +8,10 @@ from datetime import datetime
 import logging
 
 from ..db.database import SessionLocal
-from ..factory import get_reservation_provider, get_sms_provider, get_storage_provider
+from ..factory import get_reservation_provider, get_sms_provider
 from ..notifications.service import NotificationService
 from ..analytics.gender_analyzer import GenderAnalyzer
+from ..scheduler.room_reassign import daily_assign_rooms
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,7 @@ async def extract_gender_stats_job():
 
     db = SessionLocal()
     try:
-        storage_provider = get_storage_provider()
-        analyzer = GenderAnalyzer(db, storage_provider)
+        analyzer = GenderAnalyzer(db)
 
         today = datetime.now()
         stat = await analyzer.extract_gender_stats(today)
@@ -89,6 +89,24 @@ async def extract_gender_stats_job():
 
     except Exception as e:
         logger.error(f"Error in gender stats job: {e}")
+    finally:
+        db.close()
+
+
+async def daily_room_assign_job():
+    """
+    Daily room auto-assignment for today and tomorrow.
+    Only fills missing assignments, never overwrites manual ones.
+    """
+    logger.info("Running daily room auto-assignment job")
+
+    db = SessionLocal()
+    try:
+        result = daily_assign_rooms(db)
+        logger.info(f"Daily room auto-assignment result: {result}")
+    except Exception as e:
+        logger.error(f"Error in daily room auto-assignment job: {e}")
+        db.rollback()
     finally:
         db.close()
 
@@ -126,6 +144,22 @@ def setup_scheduler():
         id='extract_gender_stats',
         name='Extract Gender Stats',
         replace_existing=True
+    )
+
+    # Daily room auto-assignment - 6am and noon KST
+    scheduler.add_job(
+        daily_room_assign_job,
+        trigger=CronTrigger(hour=6, minute=0, timezone='Asia/Seoul'),
+        id='daily_room_assign_morning',
+        name='객실 자동 배정 (오전)',
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        daily_room_assign_job,
+        trigger=CronTrigger(hour=12, minute=0, timezone='Asia/Seoul'),
+        id='daily_room_assign_noon',
+        name='객실 자동 배정 (정오)',
+        replace_existing=True,
     )
 
     # Load template schedules on startup

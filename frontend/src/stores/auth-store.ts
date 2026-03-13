@@ -17,10 +17,26 @@ interface AuthState {
   loadFromStorage: () => void
 }
 
+function getInitialAuth() {
+  const token = localStorage.getItem('sms-token')
+  const userStr = localStorage.getItem('sms-user')
+  if (token && userStr) {
+    try {
+      const user = JSON.parse(userStr) as AuthUser
+      return { token, user, isAuthenticated: true }
+    } catch {
+      // invalid data
+    }
+  }
+  return { token: null, user: null, isAuthenticated: false }
+}
+
+const initial = getInitialAuth()
+
 export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  user: null,
-  isAuthenticated: false,
+  token: initial.token,
+  user: initial.user,
+  isAuthenticated: initial.isAuthenticated,
 
   login: (token, user) => {
     localStorage.setItem('sms-token', token)

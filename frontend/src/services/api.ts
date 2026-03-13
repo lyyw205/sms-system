@@ -48,16 +48,14 @@ export const reservationsAPI = {
   create: (data: any) => api.post('/api/reservations', data),
   update: (id: number, data: any) => api.put(`/api/reservations/${id}`, data),
   delete: (id: number) => api.delete(`/api/reservations/${id}`),
-  assignRoom: (id: number, data: { room_number: string | null }) =>
+  assignRoom: (id: number, data: { room_number: string | null; date?: string; apply_subsequent?: boolean }) =>
     api.put(`/api/reservations/${id}/room`, data),
   syncNaver: () => api.post('/api/reservations/sync/naver'),
-  syncSheets: () => api.post('/api/reservations/sync/sheets'),
 };
 
 // Rooms API
 export const roomsAPI = {
   getAll: (params?: { include_inactive?: boolean }) => api.get('/api/rooms', { params }),
-  getById: (id: number) => api.get(`/api/rooms/${id}`),
   create: (data: { room_number: string; room_type: string; is_active?: boolean; sort_order?: number }) =>
     api.post('/api/rooms', data),
   update: (id: number, data: any) => api.put(`/api/rooms/${id}`, data),
@@ -110,18 +108,8 @@ export const campaignsAPI = {
   preview: (campaignType: string, date?: string) =>
     api.get('/campaigns/preview', { params: { campaign_type: campaignType, date } }),
 
-  // Legacy APIs
-  getTargets: (tag: string, smsType: string = 'room', date?: string) =>
-    api.get('/campaigns/targets', { params: { tag, sms_type: smsType, date } }),
-  sendByTag: (data: { tag: string; template_key: string; variables?: any; sms_type?: string; date?: string }) =>
-    api.post('/campaigns/send-by-tag', data),
   getHistory: (params?: { skip?: number; limit?: number }) =>
     api.get('/campaigns/history', { params }),
-  getTemplates: () => api.get('/campaigns/templates'),
-  sendRoomGuide: (data: { date?: string }) =>
-    api.post('/campaigns/notifications/room-guide', data),
-  sendPartyGuide: (data: { date?: string }) =>
-    api.post('/campaigns/notifications/party-guide', data),
 };
 
 // Scheduler API
@@ -133,14 +121,6 @@ export const schedulerAPI = {
   getStatus: () => api.get('/scheduler/status'),
 };
 
-// Gender Stats API
-export const genderStatsAPI = {
-  get: (date?: string) => api.get('/campaigns/gender-stats', { params: { date } }),
-  getHistory: (days?: number) =>
-    api.get('/campaigns/gender-stats/history', { params: { days } }),
-  refresh: (date?: string) => api.post('/campaigns/gender-stats/refresh', null, { params: { date } }),
-};
-
 // Templates API
 export const templatesAPI = {
   getAll: (params?: { category?: string; active?: boolean }) =>
@@ -149,6 +129,7 @@ export const templatesAPI = {
   create: (data: {
     key: string;
     name: string;
+    short_label?: string | null;
     content: string;
     variables?: string;
     category?: string;
@@ -159,6 +140,16 @@ export const templatesAPI = {
   preview: (id: number, variables: any) =>
     api.post(`/api/templates/${id}/preview`, { variables }),
   getAvailableVariables: () => api.get('/api/template-variables'),
+  getLabels: () => api.get('/api/templates/labels'),
+};
+
+export const smsAssignmentsAPI = {
+  assign: (reservationId: number, data: { template_key: string }) =>
+    api.post(`/api/reservations/${reservationId}/sms-assign`, data),
+  remove: (reservationId: number, templateKey: string) =>
+    api.delete(`/api/reservations/${reservationId}/sms-assign/${templateKey}`),
+  toggle: (reservationId: number, templateKey: string) =>
+    api.patch(`/api/reservations/${reservationId}/sms-toggle/${templateKey}`),
 };
 
 // Template Schedules API
@@ -178,7 +169,6 @@ export const templateSchedulesAPI = {
     target_type: string;
     target_value?: string;
     date_filter?: string;
-    sms_type?: string;
     exclude_sent?: boolean;
     active?: boolean;
   }) => api.post('/api/template-schedules', data),
@@ -187,6 +177,8 @@ export const templateSchedulesAPI = {
   run: (id: number) => api.post(`/api/template-schedules/${id}/run`),
   preview: (id: number) => api.get(`/api/template-schedules/${id}/preview`),
   sync: () => api.post('/api/template-schedules/sync'),
+  autoAssign: (date?: string) =>
+    api.post('/api/template-schedules/auto-assign', null, { params: date ? { date } : undefined }),
 };
 
 // Auth API

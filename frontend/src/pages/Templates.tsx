@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 
 import {
-  Card,
   Tabs,
   TabItem,
   Modal,
@@ -40,7 +39,6 @@ import {
   TableCell,
   Badge,
   Spinner,
-  Alert,
 } from 'flowbite-react';
 
 import { templatesAPI, templateSchedulesAPI, campaignsAPI } from '@/services/api';
@@ -53,6 +51,7 @@ interface Template {
   id: number;
   key: string;
   name: string;
+  short_label: string | null;
   content: string;
   variables: string | null;
   category: string | null;
@@ -77,7 +76,6 @@ interface TemplateSchedule {
   target_type: string;
   target_value: string | null;
   date_filter: string | null;
-  sms_type: string;
   exclude_sent: boolean;
   active: boolean;
   created_at: string;
@@ -133,7 +131,9 @@ function formatScheduleTime(s: TemplateSchedule): string {
 
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return '-';
-  const date = new Date(iso);
+  // Backend stores next_run as UTC (naive) — append 'Z' if no timezone info
+  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+  const date = new Date(normalized);
   const diff = date.getTime() - Date.now();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 0) return date.toLocaleString('ko-KR');
@@ -231,6 +231,7 @@ const Templates: React.FC = () => {
   // template form
   const [tKey, setTKey] = useState('');
   const [tName, setTName] = useState('');
+  const [tShortLabel, setTShortLabel] = useState('');
   const [tContent, setTContent] = useState('');
   const [tVariables, setTVariables] = useState('');
   const [tActive, setTActive] = useState(true);
@@ -256,8 +257,7 @@ const Templates: React.FC = () => {
   const [sIntervalMinutes, setSIntervalMinutes] = useState('10');
   const [sTargetType, setSTargetType] = useState('all');
   const [sTargetValue, setSTargetValue] = useState('');
-  const [sDateFilter, setSDateFilter] = useState('');
-  const [sSmsType, setSSmsType] = useState('room');
+  const [sDateFilter, setSDateFilter] = useState('today');
   const [sExcludeSent, setSExcludeSent] = useState(true);
   const [sActive, setSActive] = useState(true);
 
@@ -337,7 +337,7 @@ const Templates: React.FC = () => {
 
   const openCreateTemplate = () => {
     setEditingTemplate(null);
-    setTKey(''); setTName(''); setTContent('');
+    setTKey(''); setTName(''); setTShortLabel(''); setTContent('');
     setTVariables(''); setTActive(true); setTKeyError('');
     setDetectedVars({ valid: [], invalid: [] });
     setShowVarRef(false);
@@ -346,7 +346,7 @@ const Templates: React.FC = () => {
 
   const openEditTemplate = (t: Template) => {
     setEditingTemplate(t);
-    setTKey(t.key); setTName(t.name);
+    setTKey(t.key); setTName(t.name); setTShortLabel(t.short_label ?? '');
     setTContent(t.content); setTVariables(t.variables ?? '');
     setTActive(t.active); setTKeyError('');
     setDetectedVars(extractAndValidateVariables(t.content, availableVariables));
@@ -371,6 +371,7 @@ const Templates: React.FC = () => {
     try {
       const data = {
         key: tKey, name: tName, content: tContent,
+        short_label: tShortLabel || null,
         variables: tVariables || undefined,
         active: tActive,
       };
@@ -411,7 +412,7 @@ const Templates: React.FC = () => {
     setSHour('9'); setSMinute('0'); setSDayOfWeek([]);
     setSIntervalMinutes('10'); setSTargetType('all');
     setSTargetValue(''); setSDateFilter('');
-    setSSmsType('room'); setSExcludeSent(true); setSActive(true);
+    setSExcludeSent(true); setSActive(true);
   };
 
   const openCreateSchedule = () => {
@@ -431,8 +432,7 @@ const Templates: React.FC = () => {
     setSIntervalMinutes(String(s.interval_minutes ?? 10));
     setSTargetType(s.target_type);
     setSTargetValue(s.target_value ?? '');
-    setSDateFilter(s.date_filter ?? '');
-    setSSmsType(s.sms_type);
+    setSDateFilter(s.date_filter || 'today');
     setSExcludeSent(s.exclude_sent);
     setSActive(s.active);
     setScheduleDialogOpen(true);
@@ -449,8 +449,7 @@ const Templates: React.FC = () => {
     timezone: 'Asia/Seoul',
     target_type: sTargetType,
     target_value: sTargetType === 'tag' ? sTargetValue : undefined,
-    date_filter: sDateFilter || undefined,
-    sms_type: sSmsType,
+    date_filter: sDateFilter || 'today',
     exclude_sent: sExcludeSent,
     active: sActive,
   });
@@ -572,6 +571,7 @@ const Templates: React.FC = () => {
                   <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
                   <TableHeadCell className="w-1 whitespace-nowrap">템플릿 키</TableHeadCell>
                   <TableHeadCell className="w-1 whitespace-nowrap">템플릿 이름</TableHeadCell>
+                  <TableHeadCell className="w-1 whitespace-nowrap">축약명</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">사용 변수</TableHeadCell>
                   <TableHeadCell className="w-16 whitespace-nowrap text-center">상태</TableHeadCell>
                   <TableHeadCell className="w-16 whitespace-nowrap text-center">스케줄</TableHeadCell>
@@ -591,6 +591,15 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      {t.short_label ? (
+                        <span className="inline-flex items-center rounded-md bg-[#E8F3FF] px-1.5 py-0.5 text-caption font-medium text-[#3182F6] dark:bg-blue-900/20 dark:text-blue-400">
+                          {t.short_label}
+                        </span>
+                      ) : (
+                        <span className="text-caption text-gray-400 dark:text-gray-500">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {t.variables ? (() => {
@@ -899,6 +908,21 @@ const Templates: React.FC = () => {
               onChange={e => setTName(e.target.value)}
             />
             <p className="text-caption text-gray-400 dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
+          </div>
+
+          {/* Short label */}
+          <div className="space-y-2">
+            <Label htmlFor="t-short-label">축약명</Label>
+            <TextInput
+              id="t-short-label"
+              placeholder="예: 객안"
+              value={tShortLabel}
+              onChange={e => setTShortLabel(e.target.value)}
+              maxLength={10}
+            />
+            <p className="text-caption text-gray-400 dark:text-gray-500">
+              객실배정 페이지에서 칩으로 표시될 짧은 이름입니다. 미입력 시 템플릿 이름이 그대로 표시됩니다.
+            </p>
           </div>
 
           {/* Content */}
@@ -1220,39 +1244,9 @@ const Templates: React.FC = () => {
           <div className="space-y-2">
             <Label>날짜 필터</Label>
             <Select value={sDateFilter} onChange={e => setSDateFilter(e.target.value)}>
-              <option value="">필터 없음 (모든 날짜)</option>
               <option value="today">오늘 예약자</option>
               <option value="tomorrow">내일 예약자</option>
             </Select>
-          </div>
-
-          {/* SMS type */}
-          <div className="space-y-3">
-            <Label>SMS 유형</Label>
-            <div className="flex gap-3">
-              {[
-                { value: 'room', label: '객실 (Room)' },
-                { value: 'party', label: '파티 (Party)' },
-              ].map(opt => (
-                <label
-                  key={opt.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2.5 text-body font-medium transition-colors ${
-                    sSmsType === opt.value
-                      ? 'border-[#3182F6] bg-[#E8F3FF] text-[#3182F6] dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-300'
-                      : 'border-[#F2F4F6] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  <Radio
-                    name="smsType"
-                    value={opt.value}
-                    checked={sSmsType === opt.value}
-                    onChange={() => setSSmsType(opt.value)}
-                    className="hidden"
-                  />
-                  <span>{opt.label}</span>
-                </label>
-              ))}
-            </div>
           </div>
 
           {/* Exclude sent */}
@@ -1360,7 +1354,7 @@ const Templates: React.FC = () => {
         </div>
       </ModalBody>
       <ModalFooter className="flex justify-end border-t border-[#F2F4F6] dark:border-gray-800">
-        <Button size="sm" onClick={() => setPreviewDialogOpen(false)}>확인</Button>
+        <Button size="sm" color="light" onClick={() => setPreviewDialogOpen(false)}>닫기</Button>
       </ModalFooter>
     </Modal>
   );

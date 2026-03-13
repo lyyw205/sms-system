@@ -1,7 +1,7 @@
 """
 Template Schedules API
 """
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -30,7 +30,6 @@ class TemplateScheduleCreate(BaseModel):
     target_type: str  # 'all', 'tag', 'room_assigned', 'party_only'
     target_value: Optional[str] = None
     date_filter: Optional[str] = None
-    sms_type: str = 'room'
     exclude_sent: bool = True
     active: bool = True
 
@@ -47,7 +46,6 @@ class TemplateScheduleUpdate(BaseModel):
     target_type: Optional[str] = None
     target_value: Optional[str] = None
     date_filter: Optional[str] = None
-    sms_type: Optional[str] = None
     exclude_sent: Optional[bool] = None
     active: Optional[bool] = None
 
@@ -67,7 +65,6 @@ class TemplateScheduleResponse(BaseModel):
     target_type: str
     target_value: Optional[str]
     date_filter: Optional[str]
-    sms_type: str
     exclude_sent: bool
     active: bool
     created_at: datetime
@@ -134,7 +131,6 @@ def get_schedules(
             "target_type": schedule.target_type,
             "target_value": schedule.target_value,
             "date_filter": schedule.date_filter,
-            "sms_type": schedule.sms_type,
             "exclude_sent": schedule.exclude_sent,
             "active": schedule.active,
             "created_at": schedule.created_at,
@@ -169,7 +165,6 @@ def get_schedule(schedule_id: int, db: Session = Depends(get_db), current_user: 
         "target_type": schedule.target_type,
         "target_value": schedule.target_value,
         "date_filter": schedule.date_filter,
-        "sms_type": schedule.sms_type,
         "exclude_sent": schedule.exclude_sent,
         "active": schedule.active,
         "created_at": schedule.created_at,
@@ -210,7 +205,6 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         target_type=schedule.target_type,
         target_value=schedule.target_value,
         date_filter=schedule.date_filter,
-        sms_type=schedule.sms_type,
         exclude_sent=schedule.exclude_sent,
         active=schedule.active
     )
@@ -243,7 +237,6 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         "target_type": db_schedule.target_type,
         "target_value": db_schedule.target_value,
         "date_filter": db_schedule.date_filter,
-        "sms_type": db_schedule.sms_type,
         "exclude_sent": db_schedule.exclude_sent,
         "active": db_schedule.active,
         "created_at": db_schedule.created_at,
@@ -292,7 +285,6 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
         "target_type": db_schedule.target_type,
         "target_value": db_schedule.target_value,
         "date_filter": db_schedule.date_filter,
-        "sms_type": db_schedule.sms_type,
         "exclude_sent": db_schedule.exclude_sent,
         "active": db_schedule.active,
         "created_at": db_schedule.created_at,
@@ -350,6 +342,51 @@ def preview_targets(schedule_id: int, db: Session = Depends(get_db), current_use
     targets = executor.preview_targets(schedule)
 
     return targets
+
+
+@router.post("/api/template-schedules/auto-assign")
+def auto_assign(
+    date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Auto-assign ReservationSmsAssignment records for all active schedules.
+    Only creates records that don't yet exist (no duplicates).
+    """
+    schedules = db.query(TemplateSchedule).filter(TemplateSchedule.active == True).all()
+
+    total_created = 0
+    schedule_results = []
+
+    executor = TemplateScheduleExecutor(db)
+
+    for schedule in schedules:
+        if not schedule.template or not schedule.template.active:
+            continue
+        # If a date was provided, temporarily override date_filter for this call
+        if date and not schedule.date_filter:
+            # Only apply date override when schedule has no date_filter itself
+            original_date_filter = schedule.date_filter
+            schedule.date_filter = date
+            created = executor.auto_assign_for_schedule(schedule)
+            schedule.date_filter = original_date_filter
+        else:
+            created = executor.auto_assign_for_schedule(schedule)
+
+        total_created += created
+        schedule_results.append({
+            "schedule_id": schedule.id,
+            "schedule_name": schedule.schedule_name,
+            "template_key": schedule.template.key,
+            "created": created,
+        })
+
+    return {
+        "success": True,
+        "total_created": total_created,
+        "schedules": schedule_results,
+    }
 
 
 @router.post("/api/template-schedules/sync")

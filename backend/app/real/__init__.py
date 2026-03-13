@@ -4,11 +4,9 @@ These providers connect to actual external services (Naver API, Google Sheets, S
 """
 
 from .reservation import RealReservationProvider
-from .storage import RealStorageProvider
 from .sms import RealSMSProvider
 
 __all__ = [
     "RealReservationProvider",
-    "RealStorageProvider",
     "RealSMSProvider",
 ]

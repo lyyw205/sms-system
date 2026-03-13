@@ -84,7 +84,7 @@
   }
 
   body {
-    @apply bg-white font-sans text-[#191F28] antialiased dark:bg-[#17171C] dark:text-gray-100;
+    @apply bg-[#FAFBFC] font-sans text-[#191F28] antialiased dark:bg-[#17171C] dark:text-gray-100;
   }
 
   /* Thin scrollbar */
@@ -156,8 +156,8 @@
 
   /* Stat card — borderless, white, subtle hover */
   .stat-card {
-    @apply rounded-2xl bg-[#F8F9FA] p-5 transition-colors
-      dark:bg-[#1E1E24];
+    @apply rounded-2xl border border-[#F2F4F6] bg-white p-5 transition-colors shadow-[0_1px_4px_rgba(0,0,0,0.02)]
+      dark:border-[#2C2C34] dark:bg-[#1E1E24] dark:shadow-[0_1px_4px_rgba(0,0,0,0.15)];
   }
   .stat-value {
     @apply text-title font-bold tabular-nums text-[#191F28] dark:text-white;
@@ -171,7 +171,7 @@
 
   /* Section card — clean, subtle border */
   .section-card {
-    @apply overflow-hidden rounded-2xl border border-[#F2F4F6] bg-white dark:border-gray-800 dark:bg-[#1E1E24];
+    @apply overflow-hidden rounded-2xl border border-[#F2F4F6] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.02)] dark:border-gray-800 dark:bg-[#1E1E24] dark:shadow-[0_1px_4px_rgba(0,0,0,0.15)];
   }
   .section-header {
     @apply flex items-center justify-between px-5 py-4;
@@ -198,10 +198,6 @@
   .outbound-bubble {
     @apply max-w-[75%] rounded-[20px] rounded-br-[4px] bg-[#3182F6] px-4 py-2.5 text-body leading-relaxed text-white;
   }
-  .contact-active {
-    @apply bg-[#E8F3FF] dark:bg-[#3182F6]/10;
-  }
-
   /* Drag & drop */
   .drag-handle {
     @apply cursor-grab text-[#B0B8C1] hover:text-[#8B95A1] active:cursor-grabbing dark:text-gray-600 dark:hover:text-gray-400;
@@ -218,9 +214,6 @@
     @apply rounded-xl border-2 border-dashed border-[#E5E8EB] bg-[#F8F9FA] p-2
       transition-colors dark:border-gray-700 dark:bg-[#1E1E24];
   }
-  .room-cell-hover {
-    @apply border-[#3182F6] bg-[#E8F3FF] dark:border-[#3182F6] dark:bg-[#3182F6]/10;
-  }
 }
 
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
@@ -231,5 +224,12 @@
   }
   .scrollbar-thin {
     scrollbar-width: thin;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 }

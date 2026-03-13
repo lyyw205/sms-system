@@ -10,7 +10,7 @@ from datetime import datetime
 from ..db.database import get_db
 from ..db.models import CampaignLog, GenderStat, MessageTemplate, User
 from ..auth.dependencies import get_current_user, require_admin_or_above
-from ..factory import get_sms_provider, get_storage_provider
+from ..factory import get_sms_provider
 from ..campaigns.tag_manager import TagCampaignManager
 from ..notifications.service import NotificationService
 from ..analytics.gender_analyzer import GenderAnalyzer
@@ -109,35 +109,32 @@ class CampaignRequest(BaseModel):
 
 class RoomGuideRequest(BaseModel):
     date: Optional[str] = None  # YYYY-MM-DD
-    start_row: int = 3
-    end_row: int = 68
 
 
 class PartyGuideRequest(BaseModel):
     date: Optional[str] = None
-    start_row: int = 100
-    end_row: int = 117
-
-
-class GenderStatsResponse(BaseModel):
-    date: str
-    male_count: int
-    female_count: int
-    total_participants: int
-    balance: Dict[str, Any]
 
 
 @router.get("/list")
-async def get_campaign_list(current_user: User = Depends(get_current_user)):
-    """Get list of available independent campaigns"""
+async def get_campaign_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get list of available independent campaigns (only those with existing templates)"""
+    existing_keys = {
+        t.key
+        for t in db.query(MessageTemplate.key).filter(MessageTemplate.active == True).all()
+    }
     return [
         {
             "id": campaign_id,
             "name": campaign["name"],
             "description": campaign["description"],
             "target_type": campaign["target_type"],
+            "template_key": campaign.get("template_key"),
         }
         for campaign_id, campaign in CAMPAIGN_DEFINITIONS.items()
+        if campaign.get("template_key") in existing_keys
     ]
 
 
@@ -366,9 +363,8 @@ async def send_room_guide(
     Automated version of stable-clasp-main roomGuideSMS()
     """
     sms_provider = get_sms_provider()
-    storage_provider = get_storage_provider()
 
-    service = NotificationService(db, sms_provider, storage_provider)
+    service = NotificationService(db, sms_provider)
 
     # Parse date
     if request.date:
@@ -379,8 +375,6 @@ async def send_room_guide(
     try:
         campaign = await service.send_room_guide(
             date=date,
-            start_row=request.start_row,
-            end_row=request.end_row
         )
 
         return {
@@ -408,9 +402,8 @@ async def send_party_guide(
     Automated version of stable-clasp-main partyGuideSMS()
     """
     sms_provider = get_sms_provider()
-    storage_provider = get_storage_provider()
 
-    service = NotificationService(db, sms_provider, storage_provider)
+    service = NotificationService(db, sms_provider)
 
     # Parse date
     if request.date:
@@ -421,8 +414,6 @@ async def send_party_guide(
     try:
         campaign = await service.send_party_guide(
             date=date,
-            start_row=request.start_row,
-            end_row=request.end_row
         )
 
         return {
@@ -450,8 +441,7 @@ async def get_gender_stats(
     Args:
         date: Date in YYYY-MM-DD format (defaults to today)
     """
-    storage_provider = get_storage_provider()
-    analyzer = GenderAnalyzer(db, storage_provider)
+    analyzer = GenderAnalyzer(db)
 
     # Parse date
     if date:
@@ -494,8 +484,7 @@ async def refresh_gender_stats(
     Args:
         date: Date in YYYY-MM-DD format (defaults to today)
     """
-    storage_provider = get_storage_provider()
-    analyzer = GenderAnalyzer(db, storage_provider)
+    analyzer = GenderAnalyzer(db)
 
     # Parse date
     if date:

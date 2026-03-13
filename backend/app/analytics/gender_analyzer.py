@@ -9,99 +9,17 @@ import re
 import logging
 
 from ..db.models import GenderStat
-from ..providers.base import StorageProvider
 
 logger = logging.getLogger(__name__)
 
 
 class GenderAnalyzer:
     """
-    Analyzer for gender statistics from Google Sheets
-
-    Ported from: stable-clasp-main/function_extractGenderCount.js
+    Analyzer for gender statistics
     """
 
-    def __init__(self, db: Session, storage_provider: Optional[StorageProvider] = None):
+    def __init__(self, db: Session):
         self.db = db
-        self.storage_provider = storage_provider
-
-    async def extract_gender_stats(self, date: datetime) -> Optional[GenderStat]:
-        """
-        Extract gender statistics from Google Sheets
-
-        Args:
-            date: Date to extract stats for
-
-        Returns:
-            GenderStat record or None if extraction fails
-
-        Ported from: stable-clasp-main/function_extractGenderCount.js
-        """
-        if not self.storage_provider:
-            logger.error("Storage provider not available for gender stats extraction")
-            return None
-
-        try:
-            # Get sheet name (YYYYMM format)
-            sheet_name = date.strftime("%Y%m")
-
-            # Get cell value from row 134, column offset +5
-            # This cell contains gender stats in format "남: X / 여: Y"
-            cell_value = await self.storage_provider.get_cell_value(
-                sheet_name,
-                134,
-                5  # Column offset
-            )
-
-            if not cell_value:
-                logger.warning(f"No gender stats found for {date}")
-                return None
-
-            # Parse using regex (from line 7-8)
-            # Pattern: "남: X / 여: Y" or "남:X/여:Y"
-            regex = r"남:\s*(\d+)\s*/\s*여:\s*(\d+)"
-            match = re.match(regex, str(cell_value))
-
-            if not match:
-                logger.warning(f"Gender stats format invalid: {cell_value}")
-                return None
-
-            # Extract counts (from line 10-16)
-            male_count = int(match.group(1))
-            female_count = int(match.group(2))
-            total = male_count + female_count
-
-            logger.info(f"Extracted gender stats for {date}: M={male_count}, F={female_count}")
-
-            # Create or update GenderStat record
-            date_str = date.strftime("%Y-%m-%d")
-
-            stat = self.db.query(GenderStat).filter_by(date=date_str).first()
-
-            if stat:
-                # Update existing
-                stat.male_count = male_count
-                stat.female_count = female_count
-                stat.total_participants = total
-                stat.updated_at = datetime.utcnow()
-            else:
-                # Create new
-                stat = GenderStat(
-                    date=date_str,
-                    male_count=male_count,
-                    female_count=female_count,
-                    total_participants=total
-                )
-                self.db.add(stat)
-
-            self.db.commit()
-            self.db.refresh(stat)
-
-            return stat
-
-        except Exception as e:
-            logger.error(f"Error extracting gender stats: {e}")
-            return None
 
     def get_gender_stats(self, date: datetime) -> Optional[GenderStat]:
         """Get gender statistics from database"""

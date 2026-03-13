@@ -50,22 +50,3 @@ class LLMProvider(Protocol):
         """
         ...
 
-
-class StorageProvider(Protocol):
-    """External storage abstraction (Google Sheets)"""
-
-    async def sync_to_storage(self, data: List[Dict[str, Any]], sheet_name: str) -> bool:
-        """Export data to external storage"""
-        ...
-
-    async def sync_from_storage(self, sheet_name: str) -> List[Dict[str, Any]]:
-        """Import data from external storage"""
-        ...
-
-    async def mark_sent_phone_numbers(self, phone_numbers: List[str], date: Any, mark_text: str) -> bool:
-        """Mark phone numbers as sent in storage"""
-        ...
-
-    async def get_cell_value(self, sheet_name: str, row: int, col: int) -> Optional[str]:
-        """Get a specific cell value from storage"""
-        ...

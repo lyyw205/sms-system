@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from app.db.database import get_db
-from app.db.models import Room, NaverBizItem, User
+from app.db.models import Room, NaverBizItem, User, RoomAssignment
 from app.factory import get_reservation_provider
 from app.auth.dependencies import get_current_user
 from datetime import datetime
@@ -24,6 +24,8 @@ class RoomCreate(BaseModel):
     is_active: bool = True
     sort_order: int = 0
     naver_biz_item_id: Optional[str] = None
+    is_dormitory: bool = False
+    dormitory_beds: int = 1
 
 
 class RoomUpdate(BaseModel):
@@ -34,6 +36,8 @@ class RoomUpdate(BaseModel):
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
     naver_biz_item_id: Optional[str] = None
+    is_dormitory: Optional[bool] = None
+    dormitory_beds: Optional[int] = None
 
 
 class RoomResponse(BaseModel):
@@ -45,6 +49,8 @@ class RoomResponse(BaseModel):
     is_active: bool
     sort_order: int
     naver_biz_item_id: Optional[str] = None
+    is_dormitory: bool = False
+    dormitory_beds: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -57,6 +63,7 @@ class NaverBizItemResponse(BaseModel):
     biz_item_id: str
     name: str
     biz_item_type: Optional[str] = None
+    is_exposed: bool = True
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -104,6 +111,7 @@ async def sync_naver_biz_items(db: Session = Depends(get_db)):
         if existing:
             existing.name = item_data['name']
             existing.biz_item_type = item_data.get('biz_item_type')
+            existing.is_exposed = item_data.get('is_exposed', True)
             existing.updated_at = datetime.utcnow()
             updated += 1
         else:
@@ -111,6 +119,7 @@ async def sync_naver_biz_items(db: Session = Depends(get_db)):
                 biz_item_id=item_data['biz_item_id'],
                 name=item_data['name'],
                 biz_item_type=item_data.get('biz_item_type'),
+                is_exposed=item_data.get('is_exposed', True),
             )
             db.add(new_item)
             added += 1
@@ -139,6 +148,8 @@ async def create_room(room: RoomCreate, db: Session = Depends(get_db), current_u
         is_active=room.is_active,
         sort_order=room.sort_order,
         naver_biz_item_id=room.naver_biz_item_id,
+        is_dormitory=room.is_dormitory,
+        dormitory_beds=room.dormitory_beds,
     )
     db.add(db_room)
     db.commit()
@@ -180,9 +191,8 @@ async def delete_room(room_id: int, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=404, detail="Room not found")
 
     # Check if room is currently assigned to any reservations
-    from app.db.models import Reservation
-    assigned_count = db.query(Reservation).filter(
-        Reservation.room_number == db_room.room_number
+    assigned_count = db.query(RoomAssignment).filter(
+        RoomAssignment.room_number == db_room.room_number
     ).count()
 
     if assigned_count > 0:
