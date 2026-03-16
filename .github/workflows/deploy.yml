@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/stablehq/handam
+  IMAGE_PREFIX: ghcr.io/lyyw205/sms-system
 
 jobs:
   test:
