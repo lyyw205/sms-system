@@ -36,7 +36,19 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     """
     logger.info(f"Starting Naver reservation sync...{f' (from {from_date})' if from_date else ''}")
 
-    reservations = await reservation_provider.sync_reservations(target_date, from_date=from_date)
+    raw_reservations = await reservation_provider.sync_reservations(target_date, from_date=from_date)
+
+    # Deduplicate by external_id (monthly chunks can overlap)
+    seen_ids = {}
+    for r in raw_reservations:
+        ext_id = r.get("external_id") or r.get("naver_booking_id")
+        if ext_id:
+            seen_ids[ext_id] = r  # keep latest
+        else:
+            seen_ids[id(r)] = r
+    reservations = list(seen_ids.values())
+    if len(reservations) != len(raw_reservations):
+        logger.info(f"Deduplicated: {len(raw_reservations)} → {len(reservations)}")
 
     # Bulk-fetch existing reservations by external_id/naver_booking_id in one query
     all_ext_ids = [
