@@ -337,6 +337,12 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_db),
     if not db_reservation:
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
 
+    # 연관 레코드 먼저 삭제 (FK 제약)
+    from app.db.models import PartyCheckin
+    db.query(RoomAssignment).filter(RoomAssignment.reservation_id == reservation_id).delete()
+    db.query(ReservationSmsAssignment).filter(ReservationSmsAssignment.reservation_id == reservation_id).delete()
+    db.query(PartyCheckin).filter(PartyCheckin.reservation_id == reservation_id).delete()
+
     db.delete(db_reservation)
     db.commit()
     return {"success": True, "message": "예약이 삭제되었습니다"}
