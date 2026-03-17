@@ -93,8 +93,19 @@ def calculate_template_variables(
     variables['room_password'] = effective_room_password or ''
 
     if effective_room_number:
-        variables['building'] = effective_room_number[0] if len(effective_room_number) >= 2 else ''
-        variables['room_num'] = effective_room_number[1:] if len(effective_room_number) >= 2 else effective_room_number
+        # Room number format: "본관 101호" → building="본관", room_num="101호"
+        # Lookup Building name via Room → Building relationship
+        from app.db.models import Room, Building
+        room_obj = db.query(Room).filter(Room.room_number == effective_room_number).first()
+        if room_obj and room_obj.building_id:
+            building_obj = db.query(Building).filter(Building.id == room_obj.building_id).first()
+            variables['building'] = building_obj.name if building_obj else ''
+        else:
+            variables['building'] = ''
+        # Extract room number part: "본관 101호" → "101호", or just use as-is
+        import re
+        num_match = re.search(r'(\d[\d\-]*호?)', effective_room_number)
+        variables['room_num'] = num_match.group(1) if num_match else effective_room_number
     else:
         variables['building'] = ''
         variables['room_num'] = ''
