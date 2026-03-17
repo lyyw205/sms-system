@@ -375,6 +375,22 @@ class ActivityLog(Base):
     created_by = Column(String(50), nullable=True)  # username 또는 "system"
 
 
+class PartyCheckin(Base):
+    """Party check-in records per date"""
+
+    __tablename__ = "party_checkins"
+    __table_args__ = (
+        UniqueConstraint("reservation_id", "date", name="uq_party_checkin_res_date"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    reservation_id = Column(Integer, ForeignKey("reservations.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD
+    checked_in_at = Column(DateTime, nullable=True)
+
+    reservation = relationship("Reservation", backref="party_checkins")
+
+
 class User(Base):
     """User accounts for authentication"""
 

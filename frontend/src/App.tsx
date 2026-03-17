@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom'
 import Layout, { ThemeProvider } from './components/Layout'
 import FlowbiteWrapper from './components/FlowbiteTheme'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -16,6 +16,16 @@ import Login from './pages/Login'
 import UserManagement from './pages/UserManagement'
 import Settings from './pages/Settings'
 import ActivityLogs from './pages/ActivityLogs'
+import PartyCheckin from './pages/PartyCheckin'
+
+// 스태프 전용 리다이렉트: staff 계정은 /party-checkin 으로만 이동
+function StaffRedirect({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user)
+  if (user?.role === 'staff') {
+    return <Navigate to="/party-checkin" replace />
+  }
+  return <>{children}</>
+}
 
 function App() {
   const loadFromStorage = useAuthStore((s) => s.loadFromStorage)
@@ -39,15 +49,16 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/reservations" element={<Reservations />} />
-              <Route path="/rooms" element={<RoomAssignment />} />
-              <Route path="/rooms/manage" element={<RoomSettings />} />
-              <Route path="/messages" element={<Messages />} />
-              <Route path="/auto-response" element={<AutoResponse />} />
-              <Route path="/templates" element={<Templates />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/activity-logs" element={<ActivityLogs />} />
+              {/* 스태프는 / 에 접근하면 /party-checkin 으로 리다이렉트 */}
+              <Route path="/" element={<StaffRedirect><Dashboard /></StaffRedirect>} />
+              <Route path="/reservations" element={<StaffRedirect><Reservations /></StaffRedirect>} />
+              <Route path="/rooms" element={<StaffRedirect><RoomAssignment /></StaffRedirect>} />
+              <Route path="/rooms/manage" element={<StaffRedirect><RoomSettings /></StaffRedirect>} />
+              <Route path="/messages" element={<StaffRedirect><Messages /></StaffRedirect>} />
+              <Route path="/auto-response" element={<StaffRedirect><AutoResponse /></StaffRedirect>} />
+              <Route path="/templates" element={<StaffRedirect><Templates /></StaffRedirect>} />
+              <Route path="/settings" element={<StaffRedirect><Settings /></StaffRedirect>} />
+              <Route path="/activity-logs" element={<StaffRedirect><ActivityLogs /></StaffRedirect>} />
               <Route
                 path="/users"
                 element={
@@ -56,6 +67,8 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              {/* 파티 체크인: 모든 역할 접근 가능 */}
+              <Route path="/party-checkin" element={<PartyCheckin />} />
             </Route>
           </Routes>
         </Router>

@@ -29,6 +29,7 @@ import {
   Users,
   LogOut,
   History,
+  PartyPopper,
 } from 'lucide-react'
 
 // ── Theme Context ──
@@ -88,6 +89,13 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
+    title: '파티',
+    items: [
+      { path: '/party-checkin', label: '파티 입장 체크', icon: <PartyPopper size={18} /> },
+    ],
+    requiredRoles: ['staff'],
+  },
+  {
     title: '운영 관리',
     items: [
       { path: '/', label: '대시보드', icon: <LayoutDashboard size={18} /> },
@@ -95,7 +103,9 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/rooms', label: '객실 배정', icon: <BedDouble size={18} /> },
       { path: '/rooms/manage', label: '객실 설정', icon: <Settings2 size={18} /> },
       { path: '/templates', label: '템플릿 관리', icon: <FileText size={18} /> },
+      { path: '/party-checkin', label: '파티 입장 체크', icon: <PartyPopper size={18} /> },
     ],
+    requiredRoles: ['superadmin', 'admin'],
   },
   {
     title: 'SMS 자동화',
@@ -103,6 +113,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/messages', label: '메시지', icon: <MessageSquareText size={18} /> },
       { path: '/auto-response', label: '자동 응답', icon: <Zap size={18} /> },
     ],
+    requiredRoles: ['superadmin', 'admin'],
   },
   {
     title: '시스템',
@@ -111,6 +122,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/settings', label: '설정', icon: <Settings size={18} /> },
       { path: '/users', label: '계정 관리', icon: <Users size={18} /> },
     ],
+    requiredRoles: ['superadmin', 'admin'],
   },
 ]
 
@@ -126,6 +138,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/users': '계정 관리',
   '/settings': '설정',
   '/activity-logs': '활동 로그',
+  '/party-checkin': '파티 입장 체크',
 }
 
 // ── Role Badge ──

@@ -204,4 +204,11 @@ export const settingsAPI = {
   getBookmarklet: () => api.get('/api/settings/naver/bookmarklet'),
 };
 
+// Party Check-in API
+export const partyCheckinAPI = {
+  getList: (date: string) => api.get('/api/party-checkin', { params: { date } }),
+  toggle: (reservationId: number, date: string) =>
+    api.patch(`/api/party-checkin/${reservationId}/toggle`, null, { params: { date } }),
+};
+
 export default api;

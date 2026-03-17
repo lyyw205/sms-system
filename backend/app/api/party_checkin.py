@@ -1,0 +1,163 @@
+"""
+Party check-in API endpoints
+스태프가 파티 참여 예약자의 입장을 체크인/체크아웃하는 API
+"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from typing import List, Optional
+from datetime import datetime, timezone
+from pydantic import BaseModel
+
+from app.db.database import get_db
+from app.db.models import Reservation, ReservationStatus, PartyCheckin
+from app.auth.dependencies import require_any_role
+
+router = APIRouter(prefix="/api/party-checkin", tags=["party-checkin"])
+
+
+class PartyCheckinItem(BaseModel):
+    id: int
+    customer_name: str
+    phone: str
+    gender: Optional[str]
+    male_count: Optional[int]
+    female_count: Optional[int]
+    checked_in: bool
+    checked_in_at: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class ToggleResponse(BaseModel):
+    success: bool
+    checked_in: bool
+    checked_in_at: Optional[str]
+
+
+def _is_party_only(res: Reservation) -> bool:
+    """파티만 예약자인지 확인 (RoomAssignment 페이지의 partyOnlyList 로직과 동일)"""
+    tags = res.tags or ""
+    room_type = res.naver_room_type or ""
+    return "파티만" in tags or "파티만" in room_type
+
+
+@router.get("", response_model=List[PartyCheckinItem])
+async def get_party_checkin_list(
+    date: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_any_role),
+):
+    """해당 날짜의 파티 참여 예약자 목록 조회 (가나다순)"""
+    # confirmed 예약 중 파티만 태그를 가진 예약자 조회
+    reservations = (
+        db.query(Reservation)
+        .filter(
+            and_(
+                Reservation.check_in_date == date,
+                Reservation.status == ReservationStatus.CONFIRMED,
+            )
+        )
+        .all()
+    )
+
+    # 파티만 섹션에 해당하는 예약자만 필터링 (room_number 없음 + 파티만 태그)
+    party_reservations = [r for r in reservations if _is_party_only(r) and not r.room_number]
+
+    # 가나다순 정렬
+    party_reservations.sort(key=lambda r: r.customer_name or "")
+
+    # 체크인 상태 조회
+    reservation_ids = [r.id for r in party_reservations]
+    checkin_map: dict[int, PartyCheckin] = {}
+    if reservation_ids:
+        checkins = (
+            db.query(PartyCheckin)
+            .filter(
+                and_(
+                    PartyCheckin.reservation_id.in_(reservation_ids),
+                    PartyCheckin.date == date,
+                )
+            )
+            .all()
+        )
+        checkin_map = {c.reservation_id: c for c in checkins}
+
+    result = []
+    for res in party_reservations:
+        checkin = checkin_map.get(res.id)
+        result.append(
+            PartyCheckinItem(
+                id=res.id,
+                customer_name=res.customer_name,
+                phone=res.phone,
+                gender=res.gender,
+                male_count=res.male_count,
+                female_count=res.female_count,
+                checked_in=checkin is not None and checkin.checked_in_at is not None,
+                checked_in_at=(
+                    checkin.checked_in_at.isoformat() if checkin and checkin.checked_in_at else None
+                ),
+            )
+        )
+
+    return result
+
+
+@router.patch("/{reservation_id}/toggle", response_model=ToggleResponse)
+async def toggle_party_checkin(
+    reservation_id: int,
+    date: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_any_role),
+):
+    """파티 체크인/체크아웃 토글"""
+    # 예약 존재 확인
+    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+    if not reservation:
+        raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
+
+    # 기존 체크인 레코드 조회
+    checkin = (
+        db.query(PartyCheckin)
+        .filter(
+            and_(
+                PartyCheckin.reservation_id == reservation_id,
+                PartyCheckin.date == date,
+            )
+        )
+        .first()
+    )
+
+    if checkin and checkin.checked_in_at is not None:
+        # 체크인 상태 → 체크아웃 (checked_in_at을 None으로)
+        checkin.checked_in_at = None
+        db.commit()
+        db.refresh(checkin)
+        return ToggleResponse(success=True, checked_in=False, checked_in_at=None)
+    elif checkin:
+        # 레코드는 있지만 미체크인 → 체크인
+        checkin.checked_in_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(checkin)
+        return ToggleResponse(
+            success=True,
+            checked_in=True,
+            checked_in_at=checkin.checked_in_at.isoformat(),
+        )
+    else:
+        # 새 체크인 레코드 생성
+        new_checkin = PartyCheckin(
+            reservation_id=reservation_id,
+            date=date,
+            checked_in_at=datetime.now(timezone.utc),
+        )
+        db.add(new_checkin)
+        db.commit()
+        db.refresh(new_checkin)
+        return ToggleResponse(
+            success=True,
+            checked_in=True,
+            checked_in_at=new_checkin.checked_in_at.isoformat(),
+        )
