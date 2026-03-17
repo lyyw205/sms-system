@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 from app.rate_limit import limiter
-from app.api import messages, webhooks, auto_response, rules, documents, reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin
+from app.api import messages, webhooks, auto_response, rules, documents, reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin, events
 from app.config import settings as app_settings
 from app.db.database import init_db, get_db
 from app.scheduler.jobs import start_scheduler, stop_scheduler
@@ -105,6 +105,7 @@ app.include_router(settings.router)
 app.include_router(activity_logs.router)
 app.include_router(buildings.router)
 app.include_router(party_checkin.router)
+app.include_router(events.router)
 
 
 @app.get("/")

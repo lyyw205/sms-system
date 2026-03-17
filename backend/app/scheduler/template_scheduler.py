@@ -14,6 +14,7 @@ from app.factory import get_sms_provider
 from app.templates.renderer import TemplateRenderer
 from app.services.sms_tracking import record_sms_sent
 from app.services.activity_logger import log_activity
+from app.services.event_bus import publish as publish_event
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,13 @@ class TemplateScheduleExecutor:
             self.db.commit()
 
             logger.info(f"Schedule #{schedule_id} execution completed: {sent_count} sent, {failed_count} failed")
+
+            if sent_count > 0:
+                publish_event("schedule_complete", {
+                    "schedule_id": schedule_id,
+                    "sent_count": sent_count,
+                    "failed_count": failed_count,
+                })
 
             return {
                 "success": True,

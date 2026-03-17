@@ -523,6 +523,22 @@ const RoomAssignment = () => {
     setTargets([]);
   }, [selectedDate, fetchReservations]);
 
+  // SSE: 스케줄 발송 완료 시 예약 목록 자동 새로고침
+  useEffect(() => {
+    const es = new EventSource('/api/events/stream');
+    es.onmessage = (e) => {
+      try {
+        const { event } = JSON.parse(e.data);
+        if (event === 'schedule_complete') {
+          fetchReservations(selectedDate);
+        }
+      } catch {
+        // malformed payload, ignore
+      }
+    };
+    return () => es.close();
+  }, [selectedDate, fetchReservations]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizing) {
