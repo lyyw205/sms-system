@@ -25,15 +25,18 @@ def _parse_datetime(value: str | None) -> datetime | None:
         return None
 
 
-async def sync_naver_to_db(reservation_provider, db: Session, target_date=None) -> Dict[str, Any]:
+async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, from_date: str = None) -> Dict[str, Any]:
     """
     Fetch reservations from Naver and upsert into DB.
 
+    Args:
+        from_date: Optional start date (YYYY-MM-DD) for historical sync.
+
     Returns summary dict with synced/added/updated counts.
     """
-    logger.info("Starting Naver reservation sync...")
+    logger.info(f"Starting Naver reservation sync...{f' (from {from_date})' if from_date else ''}")
 
-    reservations = await reservation_provider.sync_reservations(target_date)
+    reservations = await reservation_provider.sync_reservations(target_date, from_date=from_date)
 
     # Bulk-fetch existing reservations by external_id/naver_booking_id in one query
     all_ext_ids = [

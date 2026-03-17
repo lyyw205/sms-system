@@ -63,20 +63,9 @@ class RealReservationProvider:
             'Cookie': self.cookie,
         }
 
-    async def sync_reservations(self, target_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """
-        Fetch reservations from Naver Smart Place API.
-
-        Uses REGDATE (registration date) filter to catch all newly created
-        and cancelled reservations regardless of check-in date.
-        Fetches last 7 days of registrations by default.
-        """
+    async def _fetch_page(self, client: httpx.AsyncClient, start_date: datetime, end_date: datetime, page: int = 0, size: int = 200) -> List[Dict]:
+        """Fetch a single page of reservations from Naver API"""
         now = datetime.now()
-
-        # Fetch by registration date: last 1 day (서버에서 5분마다 동기화하므로 충분)
-        end_date = now
-        start_date = now - timedelta(days=1)
-
         start_str = start_date.strftime("%Y-%m-%dT00%%3A00%%3A00.000Z")
         end_str = end_date.strftime("%Y-%m-%dT23%%3A59%%3A59.999Z")
 
@@ -95,84 +84,124 @@ class RealReservationProvider:
             f"&searchValue="
             f"&searchValueCode=USER_NAME"
             f"&startDateTime={start_str}"
-            f"&page=0"
-            f"&size=200"
+            f"&page={page}"
+            f"&size={size}"
             f"&noCache={int(now.timestamp() * 1000)}"
         )
 
-        try:
+        response = await client.get(url, headers=self._get_headers(), timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+
+    async def sync_reservations(self, target_date: Optional[datetime] = None, from_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch reservations from Naver Smart Place API.
+
+        Uses REGDATE (registration date) filter to catch all newly created
+        and cancelled reservations regardless of check-in date.
+
+        Args:
+            target_date: Not used (kept for interface compatibility)
+            from_date: Optional start date string (YYYY-MM-DD). If provided,
+                       fetches from that date to now in monthly chunks.
+                       Default: last 1 day.
+        """
+        now = datetime.now()
+
+        if from_date:
+            # 월별 청크로 나눠서 전체 가져오기
+            chunk_start = datetime.strptime(from_date, "%Y-%m-%d")
+            all_data = []
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=self._get_headers(), timeout=30.0)
-                response.raise_for_status()
+                while chunk_start < now:
+                    chunk_end = min(chunk_start + timedelta(days=30), now)
+                    # 페이징
+                    page = 0
+                    while True:
+                        data = await self._fetch_page(client, chunk_start, chunk_end, page=page)
+                        logger.info(f"Fetched {len(data)} reservations ({chunk_start.strftime('%m/%d')}~{chunk_end.strftime('%m/%d')}, page {page})")
+                        all_data.extend(data)
+                        if len(data) < 200:
+                            break
+                        page += 1
+                    chunk_start = chunk_end + timedelta(days=1)
+            data = all_data
+            logger.info(f"Total fetched: {len(data)} reservations from {from_date}")
+        else:
+            # 기본: 최근 1일
+            end_date = now
+            start_date = now - timedelta(days=1)
+            async with httpx.AsyncClient() as client:
+                data = await self._fetch_page(client, start_date, end_date)
+                logger.info(f"Fetched {len(data)} reservations from Naver API (last 1 day)")
 
-                data = response.json()
-                logger.info(f"Fetched {len(data)} reservations from Naver API (REGDATE last 7 days)")
+        # 공통 처리: 필터링 → 유저정보 → 변환
+        try:
+            # Filter confirmed (RC03)
+            confirmed = [
+                item for item in data
+                if item.get('bookingStatusCode') == 'RC03'
+            ]
 
-                # Filter confirmed (RC03)
-                confirmed = [
-                    item for item in data
-                    if item.get('bookingStatusCode') == 'RC03'
-                ]
+            # Filter cancelled (RC04)
+            cancelled = [
+                item for item in data
+                if item.get('bookingStatusCode') == 'RC04'
+            ]
 
-                # Filter cancelled (RC04)
-                cancelled = [
-                    item for item in data
-                    if item.get('bookingStatusCode') == 'RC04'
-                ]
+            # Remove cancelled that were re-booked (same bizItemId+name+phone in confirmed)
+            cancelled_filtered = []
+            for cancel_item in cancelled:
+                is_rebooked = any(
+                    cancel_item.get('bizItemId') == c.get('bizItemId')
+                    and cancel_item.get('name') == c.get('name')
+                    and cancel_item.get('phone') == c.get('phone')
+                    for c in confirmed
+                )
+                if not is_rebooked:
+                    cancelled_filtered.append(cancel_item)
 
-                # Remove cancelled that were re-booked (same bizItemId+name+phone in confirmed)
-                cancelled_filtered = []
-                for cancel_item in cancelled:
-                    is_rebooked = any(
-                        cancel_item.get('bizItemId') == c.get('bizItemId')
-                        and cancel_item.get('name') == c.get('name')
-                        and cancel_item.get('phone') == c.get('phone')
-                        for c in confirmed
-                    )
-                    if not is_rebooked:
-                        cancelled_filtered.append(cancel_item)
+            logger.info(f"Confirmed: {len(confirmed)}, Cancelled: {len(cancelled_filtered)}")
 
-                logger.info(f"Confirmed: {len(confirmed)}, Cancelled: {len(cancelled_filtered)}")
+            # Detect multi-bookings
+            multi_booking_ids = self._detect_multi_bookings(confirmed)
 
-                # Detect multi-bookings
-                multi_booking_ids = self._detect_multi_bookings(confirmed)
+            # Fetch user info (gender/age) with dedup by userId, parallel with semaphore
+            all_items = confirmed + cancelled_filtered
+            unique_user_ids = {str(item.get('userId', '')) for item in all_items if item.get('userId')}
+            sem = asyncio.Semaphore(10)
 
-                # Fetch user info (gender/age) with dedup by userId, parallel with semaphore
-                all_items = confirmed + cancelled_filtered
-                unique_user_ids = {str(item.get('userId', '')) for item in all_items if item.get('userId')}
-                sem = asyncio.Semaphore(10)
+            async def _fetch_user(uid: str):
+                async with sem:
+                    return uid, await self.get_user_info(uid)
 
-                async def _fetch_user(uid: str):
-                    async with sem:
-                        return uid, await self.get_user_info(uid)
+            results = await asyncio.gather(*[_fetch_user(uid) for uid in unique_user_ids])
+            user_info_cache = {uid: info for uid, info in results if info}
 
-                results = await asyncio.gather(*[_fetch_user(uid) for uid in unique_user_ids])
-                user_info_cache = {uid: info for uid, info in results if info}
+            logger.info(f"Fetched user info for {len(user_info_cache)}/{len(unique_user_ids)} users")
 
-                logger.info(f"Fetched user info for {len(user_info_cache)}/{len(unique_user_ids)} users")
+            def _enrich(reservation: Dict, item: Dict):
+                uid = str(item.get('userId', ''))
+                if uid in user_info_cache:
+                    reservation['gender'] = user_info_cache[uid].get('gender', '')
+                    reservation['age_group'] = user_info_cache[uid].get('age_group', '')
+                    reservation['visit_count'] = user_info_cache[uid].get('visit_count', 0)
 
-                def _enrich(reservation: Dict, item: Dict):
-                    uid = str(item.get('userId', ''))
-                    if uid in user_info_cache:
-                        reservation['gender'] = user_info_cache[uid].get('gender', '')
-                        reservation['age_group'] = user_info_cache[uid].get('age_group', '')
-                        reservation['visit_count'] = user_info_cache[uid].get('visit_count', 0)
+            # Convert to standardized format
+            reservations = []
+            for item in confirmed:
+                reservation = self._parse_reservation(item, multi_booking_ids)
+                _enrich(reservation, item)
+                reservations.append(reservation)
 
-                # Convert to standardized format
-                reservations = []
-                for item in confirmed:
-                    reservation = self._parse_reservation(item, multi_booking_ids)
-                    _enrich(reservation, item)
-                    reservations.append(reservation)
+            for item in cancelled_filtered:
+                reservation = self._parse_reservation(item, multi_booking_ids)
+                reservation['status'] = 'cancelled'
+                reservation['cancelled_at'] = item.get('cancelledDateTime', '')
+                _enrich(reservation, item)
+                reservations.append(reservation)
 
-                for item in cancelled_filtered:
-                    reservation = self._parse_reservation(item, multi_booking_ids)
-                    reservation['status'] = 'cancelled'
-                    reservation['cancelled_at'] = item.get('cancelledDateTime', '')
-                    _enrich(reservation, item)
-                    reservations.append(reservation)
-
-                return reservations
+            return reservations
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching reservations: {e}")

@@ -385,12 +385,16 @@ async def assign_room(
 
 @router.post("/sync/naver")
 @limiter.limit("5/minute")
-async def sync_from_naver(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Sync reservations from Naver Smart Place API"""
+async def sync_from_naver(request: Request, from_date: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Sync reservations from Naver Smart Place API.
+
+    Args:
+        from_date: Optional start date (YYYY-MM-DD) for historical sync.
+    """
     from app.api.reservations_sync import sync_naver_to_db
 
     reservation_provider = get_reservation_provider()
-    result = await sync_naver_to_db(reservation_provider, db)
+    result = await sync_naver_to_db(reservation_provider, db, from_date=from_date)
 
     log_activity(
         db,

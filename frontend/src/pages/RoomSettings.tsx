@@ -1,5 +1,5 @@
 import { useEffect, useState, DragEvent } from 'react';
-import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { roomsAPI, buildingsAPI } from '@/services/api';
 
@@ -36,6 +36,14 @@ interface Building {
 interface BuildingForm {
   name: string;
   description: string;
+}
+
+// Building manage modal: local editable row
+interface BuildingEditRow {
+  id: number | null; // null = new
+  name: string;
+  description: string;
+  _deleted?: boolean;
 }
 
 interface Room {
@@ -97,10 +105,7 @@ const EMPTY_ROOM_FORM: RoomForm = {
   building_id: null,
 };
 
-const EMPTY_BUILDING_FORM: BuildingForm = {
-  name: '',
-  description: '',
-};
+// EMPTY_BUILDING_FORM removed — building editing is now inline in manage modal
 
 // ── Component ─────────────────────────────────────────
 
@@ -120,12 +125,10 @@ const RoomSettings = () => {
   // ── Buildings state ──
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingsLoading, setBuildingsLoading] = useState(false);
-  const [buildingSectionOpen, setBuildingSectionOpen] = useState(true);
-  const [buildingDialogOpen, setBuildingDialogOpen] = useState(false);
-  const [editingBuildingId, setEditingBuildingId] = useState<number | null>(null);
-  const [buildingForm, setBuildingForm] = useState<BuildingForm>(EMPTY_BUILDING_FORM);
-  const [savingBuilding, setSavingBuilding] = useState(false);
-  const [deleteBuildingTarget, setDeleteBuildingTarget] = useState<Building | null>(null);
+  const [buildingManageOpen, setBuildingManageOpen] = useState(false);
+  const [buildingRows, setBuildingRows] = useState<BuildingEditRow[]>([]);
+  const [buildingHistory, setBuildingHistory] = useState<BuildingEditRow[][]>([]);
+  const [savingBuildings, setSavingBuildings] = useState(false);
 
   // ── Init ──
   useEffect(() => {
@@ -268,57 +271,72 @@ const RoomSettings = () => {
     }
   };
 
-  // ── Building CRUD ──
-  const openCreateBuilding = () => {
-    setEditingBuildingId(null);
-    setBuildingForm(EMPTY_BUILDING_FORM);
-    setBuildingDialogOpen(true);
+  // ── Building manage modal helpers ──
+  const openBuildingManage = () => {
+    const rows: BuildingEditRow[] = buildings.map((b) => ({ id: b.id, name: b.name, description: b.description || '' }));
+    setBuildingRows(rows);
+    setBuildingHistory([]);
+    setBuildingManageOpen(true);
   };
 
-  const openEditBuilding = (building: Building) => {
-    setEditingBuildingId(building.id);
-    setBuildingForm({
-      name: building.name,
-      description: building.description || '',
-    });
-    setBuildingDialogOpen(true);
+  const pushBuildingHistory = () => {
+    setBuildingHistory((prev) => [...prev, buildingRows]);
   };
 
-  const handleBuildingSubmit = async () => {
-    if (!buildingForm.name.trim()) {
-      toast.error('건물 이름은 필수입니다');
+  const handleBuildingRowChange = (index: number, field: 'name' | 'description', value: string) => {
+    pushBuildingHistory();
+    setBuildingRows((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const handleBuildingRowDelete = (index: number) => {
+    pushBuildingHistory();
+    setBuildingRows((prev) => prev.map((r, i) => (i === index ? { ...r, _deleted: true } : r)));
+  };
+
+  const handleBuildingRowAdd = () => {
+    pushBuildingHistory();
+    setBuildingRows((prev) => [...prev, { id: null, name: '', description: '' }]);
+  };
+
+  const handleBuildingUndo = () => {
+    if (buildingHistory.length === 0) return;
+    const prev = buildingHistory[buildingHistory.length - 1];
+    setBuildingHistory((h) => h.slice(0, -1));
+    setBuildingRows(prev);
+  };
+
+  const handleBuildingSaveAll = async () => {
+    const visibleRows = buildingRows.filter((r) => !r._deleted);
+    if (visibleRows.some((r) => !r.name.trim())) {
+      toast.error('건물 이름을 입력하세요');
       return;
     }
-    setSavingBuilding(true);
+    setSavingBuildings(true);
     try {
-      const payload = { ...buildingForm };
-      if (editingBuildingId !== null) {
-        await buildingsAPI.update(editingBuildingId, payload);
-        toast.success('건물 수정 완료');
-      } else {
-        await buildingsAPI.create(payload);
-        toast.success('건물 추가 완료');
+      // Delete removed buildings
+      const deletedIds = buildingRows.filter((r) => r._deleted && r.id !== null).map((r) => r.id!);
+      for (const id of deletedIds) {
+        await buildingsAPI.delete(id);
       }
-      setBuildingDialogOpen(false);
-      loadBuildings();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '저장 실패');
-    } finally {
-      setSavingBuilding(false);
-    }
-  };
-
-  const confirmDeleteBuilding = async () => {
-    if (!deleteBuildingTarget) return;
-    try {
-      await buildingsAPI.delete(deleteBuildingTarget.id);
-      toast.success('건물 삭제 완료');
+      // Create or update
+      for (const row of visibleRows) {
+        if (row.id === null) {
+          await buildingsAPI.create({ name: row.name.trim(), description: row.description.trim() });
+        } else {
+          const original = buildings.find((b) => b.id === row.id);
+          if (original && (original.name !== row.name.trim() || (original.description || '') !== row.description.trim())) {
+            await buildingsAPI.update(row.id, { name: row.name.trim(), description: row.description.trim() });
+          }
+        }
+      }
+      toast.success('건물 저장 완료');
+      setBuildingManageOpen(false);
       loadBuildings();
       loadRooms();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '삭제 실패');
+      toast.error(err?.response?.data?.detail || '저장 실패');
     } finally {
-      setDeleteBuildingTarget(null);
+      setSavingBuildings(false);
     }
   };
 
@@ -375,121 +393,73 @@ const RoomSettings = () => {
             <h1 className="page-title">객실 설정</h1>
             <p className="page-subtitle">건물 및 객실을 추가, 수정, 삭제하고 순서를 변경합니다.</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Button color="light" size="sm" onClick={handleSyncBizItems} disabled={syncingBizItems}>
-              {syncingBizItems ? (
-                <Spinner size="sm" className="mr-1.5" />
-              ) : (
-                <RefreshCw className="mr-1.5 h-4 w-4" />
-              )}
-              상품 동기화
-            </Button>
-            <Button color="blue" size="sm" onClick={openCreate}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              객실 추가
-            </Button>
-          </div>
         </div>
       </div>
 
-      {/* ── Building Management Section ── */}
+      {/* ── Building + Room List (combined card) ── */}
       <div className="section-card">
-        <div className="section-header cursor-pointer select-none" onClick={() => setBuildingSectionOpen((v) => !v)}>
+        {/* Building List */}
+        <div className="flex items-center gap-3 px-5 py-4">
           <div className="flex items-center gap-2">
             <Building2 size={16} className="text-[#3182F6]" />
-            <span className="text-subheading font-semibold text-[#191F28] dark:text-white">건물 관리</span>
+            <span className="text-subheading font-semibold text-[#191F28] dark:text-white">건물 목록</span>
             {buildings.length > 0 && (
               <Badge color="info" size="sm">{buildings.length}</Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              color="blue"
-              size="sm"
-              onClick={(e) => { e.stopPropagation(); openCreateBuilding(); }}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              건물 추가
+          {buildingsLoading ? (
+            <Spinner size="sm" />
+          ) : buildings.length === 0 ? (
+            <span className="text-label text-[#B0B8C1] dark:text-gray-500">등록된 건물이 없습니다</span>
+          ) : (
+            <div className="flex items-center gap-2">
+              {buildings.map((building) => (
+                <Badge key={building.id} color="gray" size="sm">
+                  {building.name}
+                  <span className="ml-1 tabular-nums">
+                    ({building.room_count ?? rooms.filter((r) => r.building_id === building.id).length})
+                  </span>
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="ml-auto">
+            <Button color="light" size="sm" onClick={openBuildingManage}>
+              <Building2 className="mr-1.5 h-3.5 w-3.5" />
+              건물 관리
             </Button>
-            {buildingSectionOpen ? (
-              <ChevronUp size={16} className="text-[#8B95A1] dark:text-gray-500" />
-            ) : (
-              <ChevronDown size={16} className="text-[#8B95A1] dark:text-gray-500" />
-            )}
           </div>
         </div>
 
-        {buildingSectionOpen && (
-          <>
-            {buildingsLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <Spinner size="md" />
-              </div>
-            ) : buildings.length === 0 ? (
-              <div className="empty-state py-10">
-                <Building2 size={36} strokeWidth={1} className="text-[#B0B8C1] dark:text-gray-600" />
-                <p className="text-body text-[#8B95A1] dark:text-gray-500">등록된 건물이 없습니다</p>
-                <Button color="light" size="sm" onClick={openCreateBuilding} className="mt-2">
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  건물 추가
-                </Button>
-              </div>
-            ) : (
-              <Table hoverable>
-                <TableHead>
-                  <TableRow>
-                    <TableHeadCell>이름</TableHeadCell>
-                    <TableHeadCell>설명</TableHeadCell>
-                    <TableHeadCell className="w-px text-center">객실 수</TableHeadCell>
-                    <TableHeadCell className="w-px text-center">작업</TableHeadCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody className="divide-y">
-                  {buildings.map((building) => (
-                    <TableRow key={building.id}>
-                      <TableCell className="font-semibold text-[#191F28] dark:text-white">
-                        {building.name}
-                      </TableCell>
-                      <TableCell className="text-[#4E5968] dark:text-gray-400">
-                        {building.description || (
-                          <span className="text-caption text-[#B0B8C1] dark:text-gray-600">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="tabular-nums font-semibold text-[#191F28] dark:text-white">
-                          {building.room_count ?? rooms.filter((r) => r.building_id === building.id).length}
-                        </span>
-                        <span className="ml-0.5 text-label font-normal text-[#B0B8C1]">개</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex justify-center gap-1">
-                          <Button color="light" size="xs" onClick={() => openEditBuilding(building)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button color="failure" size="xs" onClick={() => setDeleteBuildingTarget(building)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </>
-        )}
-      </div>
+        {/* Divider */}
+        <div className="border-t border-[#E5E8EB] dark:border-gray-800" />
 
-      {/* ── Room List Section ── */}
-      <div className="section-card">
+        {/* Room List */}
         <div className="section-header">
           <div className="flex items-center gap-2">
             <Home size={16} className="text-[#3182F6]" />
             <span className="text-subheading font-semibold text-[#191F28] dark:text-white">객실 목록</span>
+            {rooms.length > 0 && (
+              <Badge color="info" size="sm">{rooms.length}</Badge>
+            )}
+            <div className="flex items-center gap-1.5 text-caption text-[#B0B8C1] dark:text-gray-600">
+              <GripVertical size={14} />
+              <span>드래그하여 순서 변경</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 text-caption text-[#B0B8C1] dark:text-gray-600">
-            <GripVertical size={14} />
-            <span>드래그하여 순서 변경</span>
+          <div className="flex items-center gap-2">
+            <Button color="light" size="sm" onClick={handleSyncBizItems} disabled={syncingBizItems}>
+              {syncingBizItems ? (
+                <Spinner size="sm" className="mr-1.5" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              상품 동기화
+            </Button>
+            <Button color="blue" size="sm" onClick={openCreate}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              객실 추가
+            </Button>
           </div>
         </div>
 
@@ -819,69 +789,87 @@ const RoomSettings = () => {
         </ModalBody>
       </Modal>
 
-      {/* ── Building Modal ── */}
-      <Modal show={buildingDialogOpen} onClose={() => setBuildingDialogOpen(false)} size="md">
-        <ModalHeader>{editingBuildingId !== null ? '건물 수정' : '건물 추가'}</ModalHeader>
+      {/* ── Building Manage Modal (inline edit) ── */}
+      <Modal show={buildingManageOpen} onClose={() => setBuildingManageOpen(false)} size="md">
+        <ModalHeader>건물 관리</ModalHeader>
         <ModalBody>
-          <div className="flex flex-col gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="building-name">
-                건물 이름 <span className="text-[#F04452] dark:text-red-400">*</span>
-              </Label>
-              <TextInput
-                id="building-name"
-                value={buildingForm.name}
-                onChange={(e) => setBuildingForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="본관"
-              />
+          <div className="flex flex-col gap-2">
+            {/* Header row */}
+            <div className="flex items-center gap-2">
+              <span className="w-28 shrink-0 text-caption font-medium text-[#8B95A1] dark:text-gray-500">건물명</span>
+              <span className="flex-1 text-caption font-medium text-[#8B95A1] dark:text-gray-500">설명 <span className="font-normal text-[#B0B8C1] dark:text-gray-600">(선택)</span></span>
+              <span className="w-6 shrink-0 text-center text-caption font-medium text-[#8B95A1] dark:text-gray-500">객실</span>
+              <span className="w-7 shrink-0" />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="building-description">설명</Label>
-              <Textarea
-                id="building-description"
-                value={buildingForm.description}
-                onChange={(e) => setBuildingForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="건물에 대한 설명을 입력하세요"
-                rows={2}
-              />
-            </div>
+            {buildingRows.filter((r) => !r._deleted).length === 0 && (
+              <p className="py-4 text-center text-label text-[#8B95A1] dark:text-gray-500">
+                건물이 없습니다. 아래 버튼으로 추가하세요.
+              </p>
+            )}
+            {buildingRows.map((row, idx) =>
+              row._deleted ? null : (
+                <div key={row.id ?? `new-${idx}`} className="flex items-center gap-2">
+                  <TextInput
+                    sizing="sm"
+                    className={`w-28 shrink-0 ${row.id === null || row.name ? '' : '!bg-[#F8F9FA] dark:!bg-[#2C2C34]'}`}
+                    value={row.name}
+                    onChange={(e) => handleBuildingRowChange(idx, 'name', e.target.value)}
+                    placeholder={row.id === null ? '건물명' : undefined}
+                  />
+                  <TextInput
+                    sizing="sm"
+                    className={`flex-1 ${row.id === null || row.description ? '' : '!bg-[#F8F9FA] dark:!bg-[#2C2C34]'}`}
+                    value={row.description}
+                    onChange={(e) => handleBuildingRowChange(idx, 'description', e.target.value)}
+                    placeholder={row.id === null ? '설명' : undefined}
+                  />
+                  <span className="w-6 shrink-0 text-center tabular-nums text-caption text-[#8B95A1] dark:text-gray-500">
+                    {row.id !== null
+                      ? (buildings.find((b) => b.id === row.id)?.room_count ?? rooms.filter((r) => r.building_id === row.id).length)
+                      : ''}
+                  </span>
+                  <Button color="failure" size="xs" onClick={() => handleBuildingRowDelete(idx)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )
+            )}
+            {/* 추가 버튼 */}
+            <button
+              onClick={handleBuildingRowAdd}
+              className="flex items-center justify-center rounded-lg bg-[#F2F4F6] py-2.5 text-[#8B95A1] transition-colors hover:bg-[#E5E8EB] hover:text-[#3182F6] dark:bg-[#2C2C34] dark:text-gray-500 dark:hover:bg-[#35353E] dark:hover:text-[#3182F6]"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button color="blue" onClick={handleBuildingSubmit} disabled={savingBuilding}>
-            {savingBuilding ? (
-              <>
-                <Spinner size="sm" className="mr-2" />
-                저장 중...
-              </>
-            ) : (
-              '저장'
-            )}
-          </Button>
-          <Button color="light" onClick={() => setBuildingDialogOpen(false)}>취소</Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* ── Building Delete Confirm ── */}
-      <Modal show={!!deleteBuildingTarget} onClose={() => setDeleteBuildingTarget(null)} size="md" popup>
-        <ModalHeader />
-        <ModalBody>
-          <div className="text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFEBEE] dark:bg-[#F04452]/10">
-              <Building2 className="h-6 w-6 text-[#F04452] dark:text-red-400" />
-            </div>
-            <h3 className="mb-2 text-heading font-semibold text-[#191F28] dark:text-white">건물 삭제</h3>
-            <p className="mb-5 text-body text-[#8B95A1] dark:text-gray-400">
-              건물 <strong>"{deleteBuildingTarget?.name}"</strong>을(를) 정말 삭제하시겠습니까?
-              이 건물에 배정된 객실의 건물 정보가 해제됩니다.
-            </p>
-            <div className="flex justify-center gap-3">
-              <Button color="failure" onClick={confirmDeleteBuilding}>삭제</Button>
-              <Button color="light" onClick={() => setDeleteBuildingTarget(null)}>취소</Button>
+          <div className="flex w-full items-center justify-between">
+            <Button color="light" size="sm" onClick={() => setBuildingManageOpen(false)}>
+              취소
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                color="light"
+                size="sm"
+                disabled={buildingHistory.length === 0}
+                onClick={handleBuildingUndo}
+              >
+                되돌리기
+              </Button>
+              <Button color="blue" size="sm" onClick={handleBuildingSaveAll} disabled={savingBuildings}>
+                {savingBuildings ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    저장 중...
+                  </>
+                ) : (
+                  '저장'
+                )}
+              </Button>
             </div>
           </div>
-        </ModalBody>
+        </ModalFooter>
       </Modal>
     </div>
   );
