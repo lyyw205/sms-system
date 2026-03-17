@@ -100,7 +100,7 @@ class RealSMSProvider:
 
             logger.info(f"[Aligo] 단건 응답: {result}")
 
-            success = result.get("result_code") == 1
+            success = str(result.get("result_code")) == "1"
             if not success:
                 logger.warning(f"[Aligo] 발송 실패: result_code={result.get('result_code')}, message={result.get('message')}")
 
@@ -218,7 +218,7 @@ class RealSMSProvider:
                 result = response.json()
 
             logger.info(f"[Aligo] 잔여건수: SMS={result.get('SMS_CNT')}, LMS={result.get('LMS_CNT')}, MMS={result.get('MMS_CNT')}")
-            success = result.get("result_code") == 1
+            success = str(result.get("result_code")) == "1"
             return {
                 "success": success,
                 "SMS_CNT": result.get("SMS_CNT", 0),
@@ -294,7 +294,7 @@ class RealSMSProvider:
 
             logger.info(f"[Aligo] /send_mass/ 응답: {result}")
 
-            success = result.get("result_code") == 1
+            success = str(result.get("result_code")) == "1"
             return {
                 "success": success,
                 "success_cnt": result.get("success_cnt", 0),
