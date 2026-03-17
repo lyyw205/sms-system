@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from app.db.database import get_db
-from app.db.models import Reservation, ReservationStatus, PartyCheckin
+from app.db.models import Reservation, ReservationStatus, PartyCheckin, RoomAssignment
 from app.auth.dependencies import require_any_role
 
 router = APIRouter(prefix="/api/party-checkin", tags=["party-checkin"])
@@ -25,6 +25,7 @@ class PartyCheckinItem(BaseModel):
     female_count: Optional[int]
     checked_in: bool
     checked_in_at: Optional[str]
+    room_number: Optional[str]
 
     class Config:
         from_attributes = True
@@ -69,6 +70,7 @@ async def get_party_checkin_list(
     # 체크인 상태 조회
     reservation_ids = [r.id for r in party_reservations]
     checkin_map: dict[int, PartyCheckin] = {}
+    room_map: dict[int, str] = {}
     if reservation_ids:
         checkins = (
             db.query(PartyCheckin)
@@ -81,6 +83,18 @@ async def get_party_checkin_list(
             .all()
         )
         checkin_map = {c.reservation_id: c for c in checkins}
+
+        room_assignments = (
+            db.query(RoomAssignment)
+            .filter(
+                and_(
+                    RoomAssignment.reservation_id.in_(reservation_ids),
+                    RoomAssignment.date == date,
+                )
+            )
+            .all()
+        )
+        room_map = {ra.reservation_id: ra.room_number for ra in room_assignments}
 
     result = []
     for res in party_reservations:
@@ -97,6 +111,7 @@ async def get_party_checkin_list(
                 checked_in_at=(
                     checkin.checked_in_at.isoformat() if checkin and checkin.checked_in_at else None
                 ),
+                room_number=room_map.get(res.id),
             )
         )
 
