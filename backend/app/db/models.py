@@ -77,6 +77,7 @@ class Reservation(Base):
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     booking_source = Column("source", String(20), default="manual")  # 'naver', 'manual', 'phone'
+    section = Column(String(20), default="unassigned")  # 'room', 'unassigned', 'party'
 
     # Naver Booking integration fields
     naver_booking_id = Column(String(50), nullable=True, index=True)

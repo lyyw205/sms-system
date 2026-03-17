@@ -39,19 +39,12 @@ def _condition_by_tag(value, ctx):
 
 def _condition_by_assignment(value, ctx):
     """Return condition for assignment status: room / party / unassigned."""
-    assigned_ids = _get_assigned_ids(ctx)
     if value == "room":
-        return Reservation.id.in_(assigned_ids)
+        return Reservation.section == 'room'
     elif value == "party":
-        return and_(
-            Reservation.id.notin_(assigned_ids),
-            Reservation.naver_room_type.like('%파티만%'),
-        )
+        return Reservation.section == 'party'
     elif value == "unassigned":
-        return and_(
-            Reservation.id.notin_(assigned_ids),
-            ~Reservation.naver_room_type.like('%파티만%'),
-        )
+        return Reservation.section == 'unassigned'
     return None
 
 

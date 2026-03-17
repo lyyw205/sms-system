@@ -140,6 +140,9 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
 
     male_count, female_count = _init_gender_counts(res_data)
 
+    naver_room_type = res_data.get("room_type", "")
+    section = 'party' if naver_room_type and '파티만' in naver_room_type else 'unassigned'
+
     return Reservation(
         external_id=res_data.get("external_id"),
         naver_booking_id=res_data.get("naver_booking_id"),
@@ -152,7 +155,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         check_in_time=res_data.get("time", ""),
         status=status_enum,
         booking_source="naver",
-        naver_room_type=res_data.get("room_type", ""),
+        naver_room_type=naver_room_type,
         party_size=res_data.get("people_count", 1),
         male_count=male_count,
         female_count=female_count,
@@ -165,6 +168,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         confirmed_at=_parse_datetime(res_data.get("confirmed_at")),
         cancelled_at=_parse_datetime(res_data.get("cancelled_at")),
         gender=res_data.get("gender"),
+        section=section,
     )
 
 

@@ -31,7 +31,9 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
         RoomAssignment.reservation_id == reservation_id,
         RoomAssignment.date == reservation.check_in_date,
     ).first()
-    has_room = room_assignment_row is not None
+
+    # Use section field as the canonical location indicator
+    section = reservation.section or 'unassigned'
 
     if schedules is None:
         schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
@@ -45,7 +47,7 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
     # Compute which template_keys should exist based on schedule rules
     expected_keys: set[str] = set()
     for schedule in schedules:
-        if _reservation_matches_schedule(reservation, schedule, has_room, room_assignment_row, building_id):
+        if _reservation_matches_schedule(reservation, schedule, section, room_assignment_row, building_id):
             expected_keys.add(schedule.template.template_key)
 
     # Get current tags
@@ -74,7 +76,7 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
 def _reservation_matches_schedule(
     reservation: Reservation,
     schedule: TemplateSchedule,
-    has_room: bool,
+    section: str,
     room_assignment_row=None,
     building_id: Optional[int] = None,
 ) -> bool:
@@ -106,7 +108,7 @@ def _reservation_matches_schedule(
         # Each group must match (AND between groups)
         for ftype, values in groups.items():
             # Any value in group must match (OR within group)
-            if not _matches_filter_group(reservation, ftype, values, has_room, room_assignment_row, building_id):
+            if not _matches_filter_group(reservation, ftype, values, section, room_assignment_row, building_id):
                 return False
         return True
 
@@ -114,10 +116,9 @@ def _reservation_matches_schedule(
     if schedule.target_type == 'all':
         return True
     elif schedule.target_type == 'room_assigned':
-        return has_room
+        return section == 'room'
     elif schedule.target_type == 'party_only':
-        tags = reservation.tags or ''
-        return not has_room and '파티만' in tags
+        return section == 'party'
     elif schedule.target_type == 'tag':
         if not schedule.target_value:
             return False
@@ -132,23 +133,19 @@ def _matches_filter_group(
     reservation: Reservation,
     ftype: str,
     values: list[str],
-    has_room: bool,
+    section: str,
     room_assignment_row=None,
     building_id: Optional[int] = None,
 ) -> bool:
     """Check if reservation matches any value in a filter group (OR logic)."""
     for value in values:
         if ftype == "assignment":
-            if value == "room" and has_room:
+            if value == "room" and section == 'room':
                 return True
-            if value == "party":
-                naver_rt = reservation.naver_room_type or ''
-                if not has_room and '파티만' in naver_rt:
-                    return True
-            if value == "unassigned":
-                naver_rt = reservation.naver_room_type or ''
-                if not has_room and '파티만' not in naver_rt:
-                    return True
+            if value == "party" and section == 'party':
+                return True
+            if value == "unassigned" and section == 'unassigned':
+                return True
         elif ftype == "building":
             if building_id is not None and str(building_id) == str(value):
                 return True
@@ -249,6 +246,9 @@ def assign_room(
     # Update denormalized field
     sync_denormalized_field(db, reservation)
 
+    # Update section field
+    reservation.section = 'room'
+
     # skip_sms_sync=True이면 태그 동기화를 건너뜀 (일괄 처리 시 사용)
     if not skip_sms_sync:
         db.flush()
@@ -286,8 +286,7 @@ def unassign_room(
     # Update denormalized field
     sync_denormalized_field(db, reservation)
 
-    # Reconcile SMS tags based on new state
-    sync_sms_tags(db, reservation_id)
+    # section과 SMS 태그는 호출자가 관리 (PUT endpoint → sync_sms_tags)
 
     return count
 
@@ -359,8 +358,7 @@ def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
         reservation.room_number = None
         reservation.room_password = None
 
-    # Reconcile SMS tags based on new state
-    sync_sms_tags(db, reservation_id)
+    # section과 SMS 태그는 호출자가 관리
 
     return count
 

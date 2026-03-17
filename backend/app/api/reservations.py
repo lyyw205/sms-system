@@ -36,6 +36,7 @@ class ReservationCreate(BaseModel):
     party_type: Optional[str] = None
     booking_source: str = "manual"
     naver_room_type: Optional[str] = None  # Original reservation room type
+    section: Optional[str] = None  # 'room', 'unassigned', 'party'
 
     @field_validator('tags')
     @classmethod
@@ -62,6 +63,7 @@ class ReservationUpdate(BaseModel):
     party_size: Optional[int] = None
     party_type: Optional[str] = None
     naver_room_type: Optional[str] = None  # Original reservation room type
+    section: Optional[str] = None  # 'room', 'unassigned', 'party'
 
     @field_validator('tags')
     @classmethod
@@ -125,6 +127,7 @@ class ReservationResponse(BaseModel):
     total_price: Optional[int] = None
     confirmed_at: Optional[str] = None
     cancelled_at: Optional[str] = None
+    section: Optional[str] = None  # 'room', 'unassigned', 'party'
     created_at: datetime
     updated_at: datetime
     sms_assignments: List[SmsAssignmentResponse] = []
@@ -175,6 +178,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         total_price=res.total_price,
         confirmed_at=res.confirmed_at,
         cancelled_at=res.cancelled_at,
+        section=res.section or 'unassigned',
         created_at=res.created_at,
         updated_at=res.updated_at,
         sms_assignments=assignments,
@@ -321,8 +325,15 @@ async def update_reservation(
         except ValueError:
             raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다")
 
+    section_changed = "section" in update_data and update_data["section"] != db_reservation.section
+
     for field, value in update_data.items():
         setattr(db_reservation, field, value)
+
+    # 섹션 변경 시 SMS 태그 재계산
+    if section_changed:
+        db.flush()
+        room_assignment.sync_sms_tags(db, reservation_id)
 
     db.commit()
     db.refresh(db_reservation)

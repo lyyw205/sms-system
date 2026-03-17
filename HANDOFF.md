@@ -1,51 +1,46 @@
 # HANDOFF
 
-## Current [1773666411]
-- **Task**: 전체 프로젝트 감사 + CRITICAL/HIGH/MEDIUM 이슈 해결 + 객실-상품 N:M 개선 + 다중 필터 스케줄 + 건물 관리 + 네이밍 컨벤션 정리
+## Current [1773736337]
+- **Task**: 파티만 태그 분리 리팩토링 + SMS 시스템 안정화 + 스태프 페이지
 - **Completed**:
-  - 프로젝트 전체 감사 (9개 전문가 에이전트 병렬 분석)
-  - CRITICAL 7건 해결: 인증 추가(7 엔드포인트), JWT Secret 하드코딩 제거, 비밀번호 정책+Rate Limiting, Mock/Real SMS 반환값 통일, 타입 버그 수정, DB 롤백 추가
-  - HIGH 26건 해결: N+1 쿼리 6건, SMS 추적 헬퍼 추출, factory 역방향 import 수정, API prefix 통일, 인덱스 8개 추가, Dashboard 쿼리 통합, Alembic env.py 복구, Docker 멀티스테이지+비루트, CI 테스트+캐시+롤백, 서버사이드 필터링
-  - MEDIUM 16건 해결: datetime 통일, 하드코딩 설정 외부화, ReDoS/Path Traversal 방어, Provider 싱글톤, import 스타일 통일
-  - Room-BizItem N:M 관계 구현 (RoomBizItemLink 중간 테이블, 멀티셀렉트 토글 칩 UI)
-  - 도미토리 배정 로직 N:M 기반 전환 (성별만 분리, 인실 그룹핑 제거)
-  - Building 테이블 + 건물 관리 CRUD + 건물별 객실 그룹핑
-  - 다중 필터 스케줄 시스템 (FILTER_BUILDERS AND 체이닝: assignment/building/room/tag)
-  - 활동 로그 시스템 (ActivityLog 테이블 + 페이지 + 5곳 연동)
-  - campaigns 시스템 제거 → SmsSender + ActivityLog로 대체
-  - SMS 추적 통합 (3중 체계 → ReservationSmsAssignment 단일 source of truth)
-  - NotificationService dead code 제거
-  - CampaignLog → ActivityLog 완전 이전
-  - 네이밍 컨벤션 정리 16건 (파일명, Relationship, Boolean is_, 날짜 _at, Config 접두사)
-  - 객실 배정 페이지 UX 개선 (날짜 전환 깜빡임 제거, 자동배정 플로팅 카드+오버레이, 연박자 파스텔톤)
+  - 알리고 SMS API 연동 완료 (실제 발송 동작 확인)
+  - result_code 문자열 비교 수정, renderer key→template_key 수정
+  - SMS toggle → 실제 발송 + skip_send + upsert(404 방지)
+  - send_single_sms 공통 함수로 발송 로직 통합
+  - SMS 발송 활동 로그 (전체 메시지 + 대상자 테이블)
+  - sync_sms_tags filters 기반 매칭 (building/assignment)
+  - N+1 Room 쿼리 해소 + 필터 일관성 테스트 5건
+  - building/room_num 템플릿 변수 Room/Building 모델 기반
+  - DEFAULT_CAPACITY 상품별 기본 인원
+  - 타임존 통일 UTC/KST (16파일)
+  - 스케줄러 detached instance 에러 수정 (클로저 → schedule_id 캡처)
+  - 스태프 전용 파티 체크인 페이지 (사이드바 없음, party_type 필터)
+  - 예약 삭제 cascade (FK 제약 해결)
+  - 스케줄 활성화 시간 범위 (active_start_hour/active_end_hour)
+  - 활동 로그 detail JSON 파싱 + UTC→KST + targets 테이블 표시
+  - 성별 색상 진하게, 파티/성별 컬럼 순서 교체
 - **Next Steps**:
-  - M18~M22 의존성 정리 (미사용 패키지 제거, CVE 패치)
-  - H10 FK 제약 추가 (Alembic 마이그레이션)
-  - DEPRECATED 필드 최종 제거 (room_sms_sent, party_sms_sent, sent_sms_types, naver_biz_item_id, target_type/value, CampaignLog)
-  - 향후 확장: 객실 배정 우선순위 시스템 (_future/room_priority_assignment.md)
-  - 테스트 인프라 구축 (pytest + conftest.py)
+  - 파티만 태그 분리 리팩토링 (진행 예정):
+    - tags의 "파티만" → SMS 필터에서 제거
+    - 파티존 판단: RoomAssignment 유무 + 섹션 위치로만
+    - 출처 구분: naver_room_type에 통합 (수동추가/파티만)
+    - 프론트 6곳 + 백엔드 8곳 수정
+  - GUNICORN_WORKERS=1 설정 (중복 실행 방지)
+  - 스태프 사이드바 제한 동작 확인
 - **Blockers**: None
 - **Related Files**:
-  - `backend/app/db/models.py` - 전체 모델 (Building, RoomBizItemLink, ActivityLog 추가)
-  - `backend/app/scheduler/template_scheduler.py` - FILTER_BUILDERS 다중 필터 엔진
-  - `backend/app/scheduler/room_auto_assign.py` - N:M 기반 자동배정 (renamed)
-  - `backend/app/services/sms_sender.py` - SMS 발송 서비스 (campaigns에서 이동)
-  - `backend/app/services/sms_tracking.py` - SMS 추적 공통 헬퍼
-  - `backend/app/services/activity_logger.py` - 활동 로그 헬퍼
-  - `backend/app/api/buildings.py` - 건물 관리 API
-  - `backend/app/api/activity_logs.py` - 활동 로그 API
-  - `backend/app/_future/` - 향후 확장 기능 (notifier, 배정 우선순위)
-  - `frontend/src/pages/RoomSettings.tsx` - 객실+건물 설정 (renamed)
-  - `frontend/src/pages/RoomAssignment.tsx` - 객실 배정 (UX 개선)
-  - `frontend/src/pages/ActivityLogs.tsx` - 활동 로그 페이지
-  - `frontend/src/pages/Templates.tsx` - 다중 필터 스케줄 UI
+  - `backend/app/services/room_assignment.py` — sync_sms_tags, _matches_filter_group
+  - `backend/app/scheduler/template_scheduler.py` — FILTER_BUILDERS, execute_schedule
+  - `frontend/src/pages/RoomAssignment.tsx` — 파티존 판단 로직 (tags 참조 6곳)
+  - `backend/app/services/sms_sender.py` — send_single_sms
+  - `frontend/src/pages/PartyCheckin.tsx` — 스태프 전용 페이지
 
-## Past 1 [1773391397]
-- **Task**: Lightsail 서버 배포 + Supabase 연결 + 기존 CRM 분석
-- **Completed**: 기존 CRM 완전 분석, AWS Lightsail 배포, Supabase PostgreSQL 연결, Enum 호환성 수정
-- **Note**: commit 6043e3c, 고정 IP 43.201.235.206
+## Past 1 [1773729796]
+- **Task**: 알리고 SMS 연동 + 필드명 수정 + SMS 태그 시스템 개선 + 타임존 통일
+- **Completed**: 알리고 연동, 필드명 수정, 건물관리 모달, SMS 통합 발송, 태그 필터 매칭, N+1 해소, 타임존 UTC 통일
+- **Note**: commits f59e3c0~592f068
 
-## Past 2 [1773333022]
-- **Task**: 코드 정리 + SMS 태그 자동 관리 + 발송 확인 모달
-- **Completed**: 백엔드/프론트 dead code 정리, sync_sms_tags 중앙 함수 구현, SMS 발송 확인 모달
-- **Note**: StorageProvider 제거, mock/rules 삭제
+## Past 2 [1773678979]
+- **Task**: 네이밍 컨벤션 v2 전체 리팩토링 + 스케줄 필터 UI 개선 + 템플릿 변수 통일
+- **Completed**: 모델 필드 17건 리네이밍, ORM↔JSON 매핑 통일 8건, DEPRECATED 13건 삭제, 스케줄 필터 토글 UI
+- **Note**: commit e80c20e

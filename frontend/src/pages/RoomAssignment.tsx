@@ -48,6 +48,7 @@ interface Reservation {
   room_password: string | null;
   room_assigned_by: string | null;
   naver_room_type: string | null;
+  section: string;  // 'room', 'unassigned', 'party'
   gender: string | null;
   male_count: number | null;
   female_count: number | null;
@@ -620,12 +621,7 @@ const RoomAssignment = () => {
         const list = assigned.get(res.room_number) || [];
         list.push(res);
         assigned.set(res.room_number, list);
-      } else if (sectionOverrides[res.id] === 'party') {
-        partyOnlyList.push(res);
-      } else if (sectionOverrides[res.id] === 'unassigned') {
-        unassignedList.push(res);
-      } else if (res.naver_room_type?.includes('파티만')) {
-        // naver_room_type에 '파티만' 포함 시 파티만 섹션
+      } else if (sectionOverrides[res.id] === 'party' || (sectionOverrides[res.id] === undefined && res.section === 'party')) {
         partyOnlyList.push(res);
       } else {
         unassignedList.push(res);
@@ -746,8 +742,8 @@ const RoomAssignment = () => {
     if (!res) return;
 
     // Already in unassigned section → nothing to do
-    if (!res.room_number && sectionOverrides[resId] === 'unassigned') return;
-    if (!res.room_number && !sectionOverrides[resId] && !res.naver_room_type?.includes('파티만')) return;
+    const effectiveSectionPool = sectionOverrides[resId] ?? res.section;
+    if (!res.room_number && effectiveSectionPool === 'unassigned') return;
 
     if (res.room_number) {
       // Optimistic update: clear room + remove unsent room_info tag
@@ -762,6 +758,8 @@ const RoomAssignment = () => {
 
       try {
         await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
+        // unassign_room sets section by naver_room_type; override to 'unassigned' explicitly
+        await reservationsAPI.update(resId, { section: 'unassigned' });
         toast.success('미배정으로 이동');
         fetchReservations(selectedDate);
       } catch {
@@ -769,9 +767,21 @@ const RoomAssignment = () => {
         await fetchReservations(selectedDate);
       }
     } else {
-      // Local section move (party → unassigned)
+      // Section move (party → unassigned): update DB
       setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
       toast.success('미배정으로 이동');
+      try {
+        await reservationsAPI.update(resId, { section: 'unassigned' });
+        fetchReservations(selectedDate);
+      } catch {
+        // Revert optimistic update on failure
+        setSectionOverrides((prev) => {
+          const next = { ...prev };
+          delete next[resId];
+          return next;
+        });
+        toast.error('이동 실패');
+      }
     }
   };
 
@@ -798,8 +808,8 @@ const RoomAssignment = () => {
     if (!guest) return;
 
     // Already in party section → nothing to do
-    if (!guest.room_number && sectionOverrides[resId] === 'party') return;
-    if (!guest.room_number && !sectionOverrides[resId] && guest.naver_room_type?.includes('파티만')) return;
+    const effectiveSectionParty = sectionOverrides[resId] ?? guest.section;
+    if (!guest.room_number && effectiveSectionParty === 'party') return;
 
     if (guest.room_number) {
       // Optimistic update: clear room + remove unsent room_info tag
@@ -814,6 +824,8 @@ const RoomAssignment = () => {
 
       try {
         await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
+        // unassign_room sets section by naver_room_type; override to 'party' explicitly
+        await reservationsAPI.update(resId, { section: 'party' });
         toast.success('파티만으로 이동');
         fetchReservations(selectedDate);
       } catch {
@@ -821,9 +833,21 @@ const RoomAssignment = () => {
         await fetchReservations(selectedDate);
       }
     } else {
-      // Local section move (unassigned → party)
+      // Section move (unassigned → party): update DB
       setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
       toast.success('파티만으로 이동');
+      try {
+        await reservationsAPI.update(resId, { section: 'party' });
+        fetchReservations(selectedDate);
+      } catch {
+        // Revert optimistic update on failure
+        setSectionOverrides((prev) => {
+          const next = { ...prev };
+          delete next[resId];
+          return next;
+        });
+        toast.error('이동 실패');
+      }
     }
   };
 
