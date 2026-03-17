@@ -328,6 +328,8 @@ class TemplateSchedule(Base):
     minute = Column(Integer, nullable=True)  # 0-59
     day_of_week = Column(String(20), nullable=True)  # 'mon,tue,wed,...'
     interval_minutes = Column(Integer, nullable=True)  # For interval type
+    active_start_hour = Column(Integer, nullable=True)  # 활성화 시작 시간 (0-23), hourly/interval 타입에서 사용
+    active_end_hour = Column(Integer, nullable=True)    # 활성화 종료 시간 (0-23), hourly/interval 타입에서 사용
     timezone = Column(String(50), default="Asia/Seoul")
 
     # Target filters

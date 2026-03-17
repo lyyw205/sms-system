@@ -71,6 +71,30 @@ class ScheduleManager:
 
         # Create executor function
         async def execute_job():
+            # Check active hours for hourly/interval schedules
+            if schedule.active_start_hour is not None and schedule.active_end_hour is not None:
+                import pytz
+                tz = pytz.timezone(schedule.timezone or "Asia/Seoul")
+                now_hour = datetime.now(tz).hour
+                start_h = schedule.active_start_hour
+                end_h = schedule.active_end_hour
+                if start_h <= end_h:
+                    # Normal range e.g. 9-20
+                    if not (start_h <= now_hour < end_h):
+                        logger.info(
+                            f"Skipping schedule #{schedule.id}: outside active hours "
+                            f"({start_h}-{end_h}, current={now_hour})"
+                        )
+                        return
+                else:
+                    # Overnight range e.g. 22-6
+                    if end_h <= now_hour < start_h:
+                        logger.info(
+                            f"Skipping schedule #{schedule.id}: outside active hours "
+                            f"({start_h}-{end_h}, current={now_hour})"
+                        )
+                        return
+
             from app.db.database import SessionLocal
             db_session = SessionLocal()
             try:

@@ -70,6 +70,8 @@ interface TemplateSchedule {
   minute: number | null;
   day_of_week: string | null;
   interval_minutes: number | null;
+  active_start_hour: number | null;
+  active_end_hour: number | null;
   timezone: string;
   filters: string | null;
   date_filter: string | null;
@@ -336,6 +338,8 @@ const Templates: React.FC = () => {
   const [sMinute, setSMinute] = useState<string>('0');
   const [sDayOfWeek, setSDayOfWeek] = useState<string[]>([]);
   const [sIntervalMinutes, setSIntervalMinutes] = useState('10');
+  const [sActiveStartHour, setSActiveStartHour] = useState<string>('');
+  const [sActiveEndHour, setSActiveEndHour] = useState<string>('');
 
   const [sFilters, setSFilters] = useState<ScheduleFilter[]>([]);
   const [sDateFilter, setSDateFilter] = useState('today');
@@ -524,7 +528,8 @@ const Templates: React.FC = () => {
   const resetScheduleForm = () => {
     setSName(''); setSTemplateId(''); setSType('daily');
     setSHour('9'); setSMinute('0'); setSDayOfWeek([]);
-    setSIntervalMinutes('10'); setSFilters([]); setSDateFilter('');
+    setSIntervalMinutes('10'); setSActiveStartHour(''); setSActiveEndHour('');
+    setSFilters([]); setSDateFilter('');
     setSActive(true);
   };
 
@@ -543,6 +548,8 @@ const Templates: React.FC = () => {
     setSMinute(String(s.minute ?? 0));
     setSDayOfWeek(s.day_of_week ? s.day_of_week.split(',').map(d => d.trim()) : []);
     setSIntervalMinutes(String(s.interval_minutes ?? 10));
+    setSActiveStartHour(s.active_start_hour != null ? String(s.active_start_hour) : '');
+    setSActiveEndHour(s.active_end_hour != null ? String(s.active_end_hour) : '');
     setSFilters(parseFilters(s.filters));
     setSDateFilter(s.date_filter || 'today');
     // sExcludeSent는 항상 true 고정
@@ -550,20 +557,26 @@ const Templates: React.FC = () => {
     setScheduleDialogOpen(true);
   };
 
-  const buildSchedulePayload = () => ({
-    schedule_name: sName,
-    template_id: Number(sTemplateId),
-    schedule_type: sType,
-    hour: sType === 'daily' || sType === 'weekly' ? Number(sHour) : undefined,
-    minute: sType === 'daily' || sType === 'weekly' || sType === 'hourly' ? Number(sMinute) : undefined,
-    day_of_week: sType === 'weekly' ? sDayOfWeek.join(',') : undefined,
-    interval_minutes: sType === 'interval' ? Number(sIntervalMinutes) : undefined,
-    timezone: 'Asia/Seoul',
-    filters: sFilters.length > 0 ? sFilters : undefined,
-    date_filter: sDateFilter || 'today',
-    exclude_sent: sExcludeSent,
-    active: sActive,
-  });
+  const buildSchedulePayload = () => {
+    const hasActiveHours = (sType === 'hourly' || sType === 'interval')
+      && sActiveStartHour !== '' && sActiveEndHour !== '';
+    return {
+      schedule_name: sName,
+      template_id: Number(sTemplateId),
+      schedule_type: sType,
+      hour: sType === 'daily' || sType === 'weekly' ? Number(sHour) : undefined,
+      minute: sType === 'daily' || sType === 'weekly' || sType === 'hourly' ? Number(sMinute) : undefined,
+      day_of_week: sType === 'weekly' ? sDayOfWeek.join(',') : undefined,
+      interval_minutes: sType === 'interval' ? Number(sIntervalMinutes) : undefined,
+      active_start_hour: hasActiveHours ? Number(sActiveStartHour) : null,
+      active_end_hour: hasActiveHours ? Number(sActiveEndHour) : null,
+      timezone: 'Asia/Seoul',
+      filters: sFilters.length > 0 ? sFilters : undefined,
+      date_filter: sDateFilter || 'today',
+      exclude_sent: sExcludeSent,
+      active: sActive,
+    };
+  };
 
   const handleSaveSchedule = async () => {
     if (!sName.trim()) { toast.error('스케줄 이름을 입력하세요'); return; }
@@ -1318,6 +1331,43 @@ const Templates: React.FC = () => {
                     {v}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Active hours — hourly/interval 타입에서만 표시 */}
+            {(sType === 'hourly' || sType === 'interval') && (
+              <div className="space-y-1.5">
+                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">
+                  활성화 시간 <span className="font-normal text-[#B0B8C1] dark:text-gray-600">(비워두면 하루 종일 실행)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={sActiveStartHour}
+                    onChange={e => setSActiveStartHour(e.target.value)}
+                    className="w-24"
+                  >
+                    <option value="">시작 시</option>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>{String(i).padStart(2, '0')}시</option>
+                    ))}
+                  </Select>
+                  <span className="text-body text-[#8B95A1] dark:text-gray-400">~</span>
+                  <Select
+                    value={sActiveEndHour}
+                    onChange={e => setSActiveEndHour(e.target.value)}
+                    className="w-24"
+                  >
+                    <option value="">종료 시</option>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>{String(i).padStart(2, '0')}시</option>
+                    ))}
+                  </Select>
+                  {sActiveStartHour !== '' && sActiveEndHour !== '' && (
+                    <span className="text-caption text-[#3182F6] dark:text-blue-400">
+                      {sActiveStartHour}시 ~ {sActiveEndHour}시에만 실행
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

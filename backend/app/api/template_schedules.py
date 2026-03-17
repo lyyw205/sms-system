@@ -40,6 +40,8 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "minute": schedule.minute,
         "day_of_week": schedule.day_of_week,
         "interval_minutes": schedule.interval_minutes,
+        "active_start_hour": schedule.active_start_hour,
+        "active_end_hour": schedule.active_end_hour,
         "timezone": schedule.timezone,
         "filters": filters,
         "date_filter": schedule.date_filter,
@@ -61,6 +63,8 @@ class TemplateScheduleCreate(BaseModel):
     minute: Optional[int] = None
     day_of_week: Optional[str] = None
     interval_minutes: Optional[int] = None
+    active_start_hour: Optional[int] = None
+    active_end_hour: Optional[int] = None
     timezone: str = "Asia/Seoul"
     filters: Optional[List[dict]] = None  # [{"type": "tag", "value": "객후"}, ...]
     date_filter: Optional[str] = None
@@ -76,6 +80,8 @@ class TemplateScheduleUpdate(BaseModel):
     minute: Optional[int] = None
     day_of_week: Optional[str] = None
     interval_minutes: Optional[int] = None
+    active_start_hour: Optional[int] = None
+    active_end_hour: Optional[int] = None
     timezone: Optional[str] = None
     filters: Optional[List[dict]] = None
     date_filter: Optional[str] = None
@@ -94,6 +100,8 @@ class TemplateScheduleResponse(BaseModel):
     minute: Optional[int]
     day_of_week: Optional[str]
     interval_minutes: Optional[int]
+    active_start_hour: Optional[int] = None
+    active_end_hour: Optional[int] = None
     timezone: str
     filters: Optional[List[dict]] = None
     date_filter: Optional[str]
@@ -186,6 +194,8 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         minute=schedule.minute,
         day_of_week=schedule.day_of_week,
         interval_minutes=schedule.interval_minutes,
+        active_start_hour=schedule.active_start_hour,
+        active_end_hour=schedule.active_end_hour,
         timezone=schedule.timezone,
         filters=filters_json,
         date_filter=schedule.date_filter,
