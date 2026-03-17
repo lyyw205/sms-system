@@ -18,21 +18,20 @@ logger = logging.getLogger(__name__)
 def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
     """
     Reconcile SMS tags for a reservation based on active TemplateSchedules.
-    - Evaluates each schedule's target_type against the reservation's current state
+    Supports both legacy target_type and new filters system.
     - Creates missing tags, removes obsolete unsent tags
     - Protects: sent tags (sent_at != null), manually assigned tags (assigned_by='manual')
-
-    schedules: pre-fetched list of active TemplateSchedule objects. If None, fetched
-               from DB automatically (backward-compatible single-call usage).
     """
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not reservation:
         return
 
-    # Check RoomAssignment table (source of truth) instead of denormalized field
-    has_room = db.query(RoomAssignment).filter(
-        RoomAssignment.reservation_id == reservation_id
-    ).first() is not None
+    # Get room assignment for this reservation (source of truth)
+    room_assignment_row = db.query(RoomAssignment).filter(
+        RoomAssignment.reservation_id == reservation_id,
+        RoomAssignment.date == reservation.check_in_date,
+    ).first()
+    has_room = room_assignment_row is not None
 
     if schedules is None:
         schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
@@ -40,10 +39,10 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
     # Compute which template_keys should exist based on schedule rules
     expected_keys: set[str] = set()
     for schedule in schedules:
-        if _reservation_matches_schedule(reservation, schedule, has_room):
+        if _reservation_matches_schedule(db, reservation, schedule, has_room, room_assignment_row):
             expected_keys.add(schedule.template.template_key)
 
-    # Get current auto-assigned (non-manual) unsent tags
+    # Get current tags
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.reservation_id == reservation_id,
     ).all()
@@ -66,10 +65,46 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
             db.delete(a)
 
 
-def _reservation_matches_schedule(reservation: Reservation, schedule: TemplateSchedule, has_room: bool) -> bool:
-    """Check if a reservation matches a schedule's target_type criteria.
-    has_room is derived from RoomAssignment table (source of truth), not denormalized field.
+def _reservation_matches_schedule(
+    db: Session,
+    reservation: Reservation,
+    schedule: TemplateSchedule,
+    has_room: bool,
+    room_assignment_row=None,
+) -> bool:
+    """Check if a reservation matches a schedule's filters or legacy target_type.
+
+    Uses filters (new system) if present, falls back to target_type (legacy).
+    Filters logic: same type = OR, different types = AND.
     """
+    import json as _json
+
+    # Parse filters
+    filters = []
+    if schedule.filters:
+        try:
+            filters = _json.loads(schedule.filters) if isinstance(schedule.filters, str) else schedule.filters
+        except (ValueError, TypeError):
+            filters = []
+
+    # If filters exist, use new system
+    if filters:
+        # Group by type
+        groups: dict[str, list[str]] = {}
+        for f in filters:
+            ftype = f.get("type", "")
+            fval = f.get("value", "")
+            if ftype and fval:
+                groups.setdefault(ftype, []).append(fval)
+
+        # Each group must match (AND between groups)
+        for ftype, values in groups.items():
+            # Any value in group must match (OR within group)
+            if not _matches_filter_group(db, reservation, ftype, values, has_room, room_assignment_row):
+                return False
+        return True
+
+    # Legacy target_type fallback
     if schedule.target_type == 'all':
         return True
     elif schedule.target_type == 'room_assigned':
@@ -82,6 +117,46 @@ def _reservation_matches_schedule(reservation: Reservation, schedule: TemplateSc
             return False
         tags = reservation.tags or ''
         return schedule.target_value in tags
+
+    # No filters and no target_type → match all
+    return True
+
+
+def _matches_filter_group(
+    db: Session,
+    reservation: Reservation,
+    ftype: str,
+    values: list[str],
+    has_room: bool,
+    room_assignment_row=None,
+) -> bool:
+    """Check if reservation matches any value in a filter group (OR logic)."""
+    for value in values:
+        if ftype == "assignment":
+            if value == "room" and has_room:
+                return True
+            if value == "party":
+                tags = reservation.tags or ''
+                naver_rt = reservation.naver_room_type or ''
+                if not has_room and ('파티만' in tags or '파티만' in naver_rt):
+                    return True
+            if value == "unassigned":
+                tags = reservation.tags or ''
+                naver_rt = reservation.naver_room_type or ''
+                if not has_room and '파티만' not in tags and '파티만' not in naver_rt:
+                    return True
+        elif ftype == "building":
+            if room_assignment_row:
+                room = db.query(Room).filter(Room.room_number == room_assignment_row.room_number).first()
+                if room and str(room.building_id) == str(value):
+                    return True
+        elif ftype == "room":
+            if room_assignment_row and room_assignment_row.room_number == value:
+                return True
+        elif ftype == "tag":
+            tags = reservation.tags or ''
+            if value in tags:
+                return True
     return False
 
 

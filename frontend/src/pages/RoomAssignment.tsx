@@ -687,9 +687,10 @@ const RoomAssignment = () => {
         apply_subsequent: applySubsequent,
       });
       toast.success(`${room} 배정 완료`);
+      // 서버에서 갱신된 sms_assignments 반영
+      fetchReservations(selectedDate);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || '객실 배정에 실패했습니다.');
-      // Revert on failure
       await fetchReservations(selectedDate);
     }
   };
@@ -762,6 +763,7 @@ const RoomAssignment = () => {
       try {
         await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
         toast.success('미배정으로 이동');
+        fetchReservations(selectedDate);
       } catch {
         toast.error('배정 해제에 실패했습니다.');
         await fetchReservations(selectedDate);
@@ -813,6 +815,7 @@ const RoomAssignment = () => {
       try {
         await reservationsAPI.assignRoom(resId, { room_number: null, date: selectedDate.format('YYYY-MM-DD') });
         toast.success('파티만으로 이동');
+        fetchReservations(selectedDate);
       } catch {
         toast.error('이동 실패');
         await fetchReservations(selectedDate);
