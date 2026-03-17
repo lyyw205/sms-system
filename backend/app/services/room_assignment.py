@@ -36,10 +36,16 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
     if schedules is None:
         schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
 
+    # Prefetch building_id once to avoid N+1 queries in _matches_filter_group
+    building_id: Optional[int] = None
+    if room_assignment_row:
+        room = db.query(Room).filter(Room.room_number == room_assignment_row.room_number).first()
+        building_id = room.building_id if room else None
+
     # Compute which template_keys should exist based on schedule rules
     expected_keys: set[str] = set()
     for schedule in schedules:
-        if _reservation_matches_schedule(db, reservation, schedule, has_room, room_assignment_row):
+        if _reservation_matches_schedule(reservation, schedule, has_room, room_assignment_row, building_id):
             expected_keys.add(schedule.template.template_key)
 
     # Get current tags
@@ -66,11 +72,11 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
 
 
 def _reservation_matches_schedule(
-    db: Session,
     reservation: Reservation,
     schedule: TemplateSchedule,
     has_room: bool,
     room_assignment_row=None,
+    building_id: Optional[int] = None,
 ) -> bool:
     """Check if a reservation matches a schedule's filters or legacy target_type.
 
@@ -100,7 +106,7 @@ def _reservation_matches_schedule(
         # Each group must match (AND between groups)
         for ftype, values in groups.items():
             # Any value in group must match (OR within group)
-            if not _matches_filter_group(db, reservation, ftype, values, has_room, room_assignment_row):
+            if not _matches_filter_group(reservation, ftype, values, has_room, room_assignment_row, building_id):
                 return False
         return True
 
@@ -123,12 +129,12 @@ def _reservation_matches_schedule(
 
 
 def _matches_filter_group(
-    db: Session,
     reservation: Reservation,
     ftype: str,
     values: list[str],
     has_room: bool,
     room_assignment_row=None,
+    building_id: Optional[int] = None,
 ) -> bool:
     """Check if reservation matches any value in a filter group (OR logic)."""
     for value in values:
@@ -146,10 +152,8 @@ def _matches_filter_group(
                 if not has_room and '파티만' not in tags and '파티만' not in naver_rt:
                     return True
         elif ftype == "building":
-            if room_assignment_row:
-                room = db.query(Room).filter(Room.room_number == room_assignment_row.room_number).first()
-                if room and str(room.building_id) == str(value):
-                    return True
+            if building_id is not None and str(building_id) == str(value):
+                return True
         elif ftype == "room":
             if room_assignment_row and room_assignment_row.room_number == value:
                 return True
