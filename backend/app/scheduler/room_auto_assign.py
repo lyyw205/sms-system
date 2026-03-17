@@ -10,6 +10,9 @@ Dormitory logic (N:M based on Room.biz_item_links):
 - Each room is filled up to its bed_capacity capacity.
 """
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 from math import ceil
 from typing import List, Dict
 from sqlalchemy.orm import Session
@@ -31,7 +34,7 @@ def auto_assign_rooms(db: Session, target_date: str = None):
     Never touches manual assignments.
     """
     if not target_date:
-        target_date = datetime.now().strftime("%Y-%m-%d")
+        target_date = datetime.now(KST).strftime("%Y-%m-%d")
 
     logger.info(f"Starting room auto-assignment for {target_date}")
 
@@ -328,8 +331,8 @@ def daily_assign_rooms(db: Session):
     Daily job: auto-assign rooms for today and tomorrow.
     Only fills in missing assignments, never overwrites manual ones.
     """
-    today = datetime.now().strftime("%Y-%m-%d")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    tomorrow = (datetime.now(KST) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     logger.info(f"Running daily room assignment for {today} and {tomorrow}")
 

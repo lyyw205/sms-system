@@ -2,7 +2,7 @@
 Shared Naver reservation sync logic.
 Used by both the API endpoint and the scheduler job.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -211,6 +211,6 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     if existing.check_in_date != old_date or existing.check_out_date != old_end_date:
         room_assignment.reconcile_dates(db, existing)
 
-    existing.updated_at = datetime.now()
+    existing.updated_at = datetime.now(timezone.utc)
 
 

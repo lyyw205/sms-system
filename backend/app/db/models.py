@@ -4,8 +4,12 @@ SQLAlchemy database models
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, Enum, ForeignKey, UniqueConstraint, Index, exists
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 Base = declarative_base()
 
@@ -47,7 +51,7 @@ class Message(Base):
     to = Column(String(20), nullable=False, index=True)
     content = Column("message", Text, nullable=False)
     status = Column(Enum(MessageStatus, name="message_status", native_enum=False), default=MessageStatus.PENDING)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
     # Auto-response metadata
     auto_response = Column(Text, nullable=True)
@@ -70,8 +74,8 @@ class Reservation(Base):
     check_in_time = Column("time", String(10), nullable=False)  # HH:MM  # TODO: PostgreSQL 전환 시 Time 타입으로 변경
     status = Column(Enum(ReservationStatus, name="reservation_status", native_enum=False), default=ReservationStatus.PENDING, index=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     booking_source = Column("source", String(20), default="manual")  # 'naver', 'manual', 'phone'
 
     # Naver Booking integration fields
@@ -129,8 +133,8 @@ class Rule(Base):
     response = Column(Text, nullable=False)
     priority = Column(Integer, default=0)  # Higher = higher priority
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class Document(Base):
@@ -142,7 +146,7 @@ class Document(Base):
     filename = Column(String(200), nullable=False)
     content = Column(Text, nullable=True)
     file_path = Column(String(500), nullable=True)
-    uploaded_at = Column(DateTime, default=datetime.now)
+    uploaded_at = Column(DateTime, default=utc_now)
     is_indexed = Column(Boolean, default=False)  # ChromaDB indexing status
 
 
@@ -159,8 +163,8 @@ class MessageTemplate(Base):
     variables = Column(Text, nullable=True)  # JSON list of variable names
     category = Column(String(50), nullable=True)  # 'room_guide', 'party_guide', etc.
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class ReservationSmsAssignment(Base):
@@ -171,7 +175,7 @@ class ReservationSmsAssignment(Base):
     id = Column(Integer, primary_key=True, index=True)
     reservation_id = Column(Integer, ForeignKey("reservations.id", ondelete="CASCADE"), nullable=False, index=True)
     template_key = Column(String(100), nullable=False, index=True)
-    assigned_at = Column(DateTime, default=datetime.now)
+    assigned_at = Column(DateTime, default=utc_now)
     sent_at = Column(DateTime, nullable=True)  # null=pending, value=sent
     assigned_by = Column(String(20), default="auto")  # 'auto', 'manual', 'schedule'
 
@@ -196,7 +200,7 @@ class CampaignLog(Base):
     target_count = Column(Integer, default=0)
     sent_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)
-    sent_at = Column(DateTime, default=datetime.now)
+    sent_at = Column(DateTime, default=utc_now)
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     extra_data = Column("metadata", Text, nullable=True)  # JSON for additional info
@@ -212,8 +216,8 @@ class GenderStat(Base):
     male_count = Column(Integer, default=0)
     female_count = Column(Integer, default=0)
     participant_count = Column("total_participants", Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class RoomBizItemLink(Base):
@@ -224,7 +228,7 @@ class RoomBizItemLink(Base):
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
     biz_item_id = Column(String(100), ForeignKey("naver_biz_items.biz_item_id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
     __table_args__ = (
         UniqueConstraint("room_id", "biz_item_id", name="uq_room_biz_item"),
@@ -245,7 +249,7 @@ class Building(Base):
     description = Column(String(200), nullable=True)  # 건물 설명/주소
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
     # Relationships
     rooms = relationship("Room", back_populates="building")
@@ -268,8 +272,8 @@ class Room(Base):
     is_dormitory = Column(Boolean, default=False)
     bed_capacity = Column("dormitory_beds", Integer, default=1)
     door_password = Column("default_password", String(20), nullable=True)  # 객실 고정 비밀번호
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     # N:M relationship to NaverBizItem via RoomBizItemLink
     biz_item_links = relationship("RoomBizItemLink", back_populates="room", cascade="all, delete-orphan")
@@ -291,8 +295,8 @@ class RoomAssignment(Base):
     room_number = Column(String(20), nullable=False)
     room_password = Column(String(20), nullable=True)
     assigned_by = Column(String(10), default="auto")  # 'auto' or 'manual'
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     reservation = relationship("Reservation", back_populates="room_assignments")
 
@@ -308,8 +312,8 @@ class NaverBizItem(Base):
     biz_item_type = Column(String(50), nullable=True)  # STANDARD etc.
     is_exposed = Column(Boolean, default=True)  # 네이버 노출 상태
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class TemplateSchedule(Base):
@@ -345,8 +349,8 @@ class TemplateSchedule(Base):
     is_active = Column(Boolean, default=True)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
 
@@ -367,7 +371,7 @@ class ActivityLog(Base):
     target_count = Column(Integer, default=0)
     success_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now, index=True)
+    created_at = Column(DateTime, default=utc_now, index=True)
     created_by = Column(String(50), nullable=True)  # username 또는 "system"
 
 
@@ -382,5 +386,5 @@ class User(Base):
     name = Column(String(100), nullable=False)
     role = Column(Enum(UserRole, name="user_role", native_enum=False), nullable=False, default=UserRole.STAFF)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

@@ -4,7 +4,7 @@ Ported from stable-clasp-main/03_trigger.js
 """
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.db.database import SessionLocal
@@ -114,7 +114,7 @@ def setup_scheduler():
     scheduler.add_job(
         load_template_schedules,
         trigger='date',
-        run_date=datetime.now(),
+        run_date=datetime.now(timezone.utc),
         id='load_template_schedules',
         name='Load Template Schedules',
         replace_existing=True

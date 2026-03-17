@@ -14,7 +14,7 @@ from app.rate_limit import limiter
 from app.services import room_assignment
 from app.services.activity_logger import log_activity
 from app.api.shared_schemas import ActionResponse
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
@@ -495,7 +495,7 @@ async def toggle_sms_sent(
         return {"success": True, "sent_at": None}
     elif skip_send:
         # 발송 없이 상태만 변경
-        assignment.sent_at = datetime.now()
+        assignment.sent_at = datetime.now(timezone.utc)
         db.commit()
         return {"success": True, "sent_at": assignment.sent_at}
     else:
@@ -519,7 +519,7 @@ async def toggle_sms_sent(
             raise HTTPException(status_code=400, detail=f"SMS 발송 실패: {e}")
 
         if result.get("success"):
-            assignment.sent_at = datetime.now()
+            assignment.sent_at = datetime.now(timezone.utc)
             db.commit()
             return {"success": True, "sent_at": assignment.sent_at}
         else:

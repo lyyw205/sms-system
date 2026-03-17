@@ -3,7 +3,7 @@ SMS 발송 추적 공통 헬퍼
 ReservationSmsAssignment upsert를 한 곳에서 관리
 """
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from app.db.models import ReservationSmsAssignment
 import logging
 
@@ -38,11 +38,11 @@ def record_sms_sent(
     )
 
     if existing:
-        existing.sent_at = datetime.now()
+        existing.sent_at = datetime.now(timezone.utc)
     else:
         db.add(ReservationSmsAssignment(
             reservation_id=reservation_id,
             template_key=template_key,
             assigned_by=assigned_by,
-            sent_at=datetime.now(),
+            sent_at=datetime.now(timezone.utc),
         ))

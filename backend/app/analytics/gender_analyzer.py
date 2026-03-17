@@ -5,7 +5,7 @@ Ported from stable-clasp-main/function_extractGenderCount.js
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.db.models import GenderStat, Reservation, ReservationStatus
@@ -62,7 +62,7 @@ class GenderAnalyzer:
             stat.male_count = male_total
             stat.female_count = female_total
             stat.participant_count = total
-            stat.updated_at = datetime.now()
+            stat.updated_at = datetime.now(timezone.utc)
         else:
             stat = GenderStat(
                 date=date_str,

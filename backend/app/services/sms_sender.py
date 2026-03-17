@@ -5,7 +5,7 @@ Ported from stable-clasp-main/01_sns.js
 """
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from sqlalchemy import exists
@@ -365,7 +365,7 @@ class SmsSender:
                 )
                 if result.get("success"):
                     sent_count += 1
-                    assignment.sent_at = datetime.now()
+                    assignment.sent_at = datetime.now(timezone.utc)
                     self.db.commit()
                 else:
                     failed_count += 1

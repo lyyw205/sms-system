@@ -9,7 +9,7 @@ from app.db.models import Message, MessageDirection, MessageStatus, User
 from app.auth.dependencies import get_current_user
 from app.factory import get_sms_provider
 from app.router.message_router import message_router
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -78,7 +78,7 @@ async def receive_sms(request: SMSReceiveRequest, db: Session = Depends(get_db),
         await sms_provider.send_sms(to=request.from_, message=auto_result["response"])
 
         outbound_msg = Message(
-            message_id=f"auto_{msg.id}_{int(datetime.now().timestamp())}",
+            message_id=f"auto_{msg.id}_{int(datetime.now(timezone.utc).timestamp())}",
             direction=MessageDirection.OUTBOUND,
             from_=request.to,
             to=request.from_,

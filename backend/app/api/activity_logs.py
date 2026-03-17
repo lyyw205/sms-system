@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 
 from app.db.database import get_db
 from app.db.models import ActivityLog, User
@@ -62,7 +65,7 @@ def get_activity_stats(
     current_user: User = Depends(get_current_user),
 ):
     """Get today's activity statistics by type"""
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 
     rows = (

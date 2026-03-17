@@ -10,7 +10,7 @@ from app.db.models import Room, NaverBizItem, User, RoomAssignment, RoomBizItemL
 from app.factory import get_reservation_provider
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.rate_limit import limiter
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.scheduler.room_auto_assign import auto_assign_rooms
@@ -183,7 +183,7 @@ async def sync_naver_biz_items(request: Request, db: Session = Depends(get_db), 
             existing.biz_item_type = item_data.get('biz_item_type')
             existing.is_exposed = item_data.get('is_exposed', True)
             existing.is_active = True
-            existing.updated_at = datetime.now()
+            existing.updated_at = datetime.now(timezone.utc)
             updated += 1
         else:
             new_item = NaverBizItem(
@@ -331,9 +331,10 @@ async def trigger_auto_assign(
     자동 배정된 객실만 초기화 후 재배정.
     """
     from datetime import datetime as dt, timedelta
+    from zoneinfo import ZoneInfo as _ZI
 
     if not date:
-        date = dt.now().strftime("%Y-%m-%d")
+        date = dt.now(_ZI("Asia/Seoul")).strftime("%Y-%m-%d")
 
     today = date
     tomorrow = (dt.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")

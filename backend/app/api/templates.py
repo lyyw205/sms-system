@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.db.database import get_db
 from app.db.models import MessageTemplate, User
@@ -202,7 +202,7 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     for field, value in update_data.items():
         setattr(db_template, field, value)
 
-    db_template.updated_at = datetime.now()
+    db_template.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(db_template)
 

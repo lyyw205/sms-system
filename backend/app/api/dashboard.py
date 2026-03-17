@@ -8,6 +8,9 @@ from app.db.database import get_db
 from app.db.models import Message, Reservation, ActivityLog, GenderStat, MessageDirection, ReservationStatus, User
 from app.auth.dependencies import get_current_user
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -71,7 +74,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db), current_user: User 
     total_campaign_sent = db.query(func.sum(ActivityLog.success_count)).filter(ActivityLog.activity_type == "sms_template").scalar() or 0
 
     # Gender stats (today)
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(KST).strftime("%Y-%m-%d")
     today_gender = db.query(GenderStat).filter(GenderStat.date == today_str).first()
 
     return {

@@ -5,7 +5,7 @@ import json
 import logging
 from collections import defaultdict
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -145,7 +145,7 @@ class TemplateScheduleExecutor:
 
             if not targets:
                 # Update last_run even if no targets
-                schedule.last_run_at = datetime.now()
+                schedule.last_run_at = datetime.now(timezone.utc)
                 self.db.commit()
                 return {"success": True, "sent_count": 0, "message": "No targets found"}
 
@@ -196,7 +196,7 @@ class TemplateScheduleExecutor:
                     logger.error(f"Error sending SMS to reservation #{reservation.id}: {str(e)}")
 
             # Update schedule
-            schedule.last_run_at = datetime.now()
+            schedule.last_run_at = datetime.now(timezone.utc)
 
             # 활동 로그 기록
             log_activity(
