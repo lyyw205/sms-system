@@ -38,8 +38,8 @@ class TemplateRenderer:
         """
         # Get template from database
         template = self.db.query(MessageTemplate).filter_by(
-            key=template_key,
-            active=True
+            template_key=template_key,
+            is_active=True
         ).first()
 
         if not template:
@@ -151,7 +151,7 @@ class TemplateRenderer:
     def get_template(self, template_key: str) -> Optional[MessageTemplate]:
         """Get template by key"""
         return self.db.query(MessageTemplate).filter_by(
-            key=template_key,
-            active=True
+            template_key=template_key,
+            is_active=True
         ).first()
 
