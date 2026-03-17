@@ -152,6 +152,7 @@ class TemplateScheduleExecutor:
             # Send messages
             sent_count = 0
             failed_count = 0
+            send_results = []
 
             target_date = self._parse_date_filter(schedule.date_filter) if schedule.date_filter else None
 
@@ -187,22 +188,47 @@ class TemplateScheduleExecutor:
 
                         self.db.flush()
                         logger.info(f"Sent SMS to {reservation.customer_name} ({reservation.phone})")
+                        send_results.append({
+                            "name": reservation.customer_name,
+                            "phone": reservation.phone,
+                            "status": "success",
+                            "message_id": result.get("message_id"),
+                        })
                     else:
                         failed_count += 1
-                        logger.error(f"Failed to send SMS to {reservation.phone}: {result.get('error')}")
+                        error_msg = result.get('error', 'unknown')
+                        logger.error(f"Failed to send SMS to {reservation.phone}: {error_msg}")
+                        send_results.append({
+                            "name": reservation.customer_name,
+                            "phone": reservation.phone,
+                            "status": "failed",
+                            "error": error_msg,
+                        })
 
                 except Exception as e:
                     failed_count += 1
                     logger.error(f"Error sending SMS to reservation #{reservation.id}: {str(e)}")
+                    send_results.append({
+                        "name": reservation.customer_name,
+                        "phone": reservation.phone,
+                        "status": "error",
+                        "error": str(e),
+                    })
 
             # Update schedule
             schedule.last_run_at = datetime.now(timezone.utc)
 
-            # 활동 로그 기록
+            # 활동 로그 기록 (대상자 상세 포함)
             log_activity(
                 self.db,
                 type="sms_template",
                 title=f"스케줄 발송: {schedule.schedule_name}",
+                detail={
+                    "schedule_id": schedule.id,
+                    "template_key": schedule.template.template_key,
+                    "date_filter": schedule.date_filter,
+                    "targets": send_results,
+                },
                 target_count=len(targets),
                 success_count=sent_count,
                 failed_count=failed_count,

@@ -429,15 +429,44 @@ const ActivityLogs = () => {
                         <TableRow>
                           <TableCell colSpan={6} className="!py-3 !px-5 bg-[#F8F9FA] dark:bg-[#1E1E24]">
                             <div className="space-y-2">
-                              {/* Meta fields (exclude message) */}
+                              {/* Meta fields (exclude message, targets) */}
                               <div className="flex flex-wrap gap-x-5 gap-y-1 text-caption">
-                                {Object.entries(parsedDetail!).filter(([key]) => key !== 'message').map(([key, value]) => (
+                                {Object.entries(parsedDetail!).filter(([key]) => key !== 'message' && key !== 'targets').map(([key, value]) => (
                                   <span key={key} className="text-[#4E5968] dark:text-gray-400">
                                     <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
                                     {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
                                   </span>
                                 ))}
                               </div>
+                              {/* Targets list (schedule bulk send) */}
+                              {Array.isArray(parsedDetail!.targets) && parsedDetail!.targets.length > 0 && (
+                                <div className="rounded-lg border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#2C2C34] overflow-hidden">
+                                  <table className="w-full text-caption">
+                                    <thead>
+                                      <tr className="border-b border-[#E5E8EB] dark:border-gray-700 bg-[#F8F9FA] dark:bg-[#1E1E24]">
+                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">이름</th>
+                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">전화번호</th>
+                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">결과</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(parsedDetail!.targets as Array<{name: string; phone: string; status: string; error?: string; message_id?: string}>).map((t, i) => (
+                                        <tr key={i} className="border-b last:border-b-0 border-[#F2F4F6] dark:border-gray-800">
+                                          <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200">{t.name}</td>
+                                          <td className="px-3 py-1.5 tabular-nums text-[#4E5968] dark:text-gray-400">{t.phone}</td>
+                                          <td className="px-3 py-1.5">
+                                            {t.status === 'success' ? (
+                                              <span className="text-[#00C9A7]">성공</span>
+                                            ) : (
+                                              <span className="text-[#F04452]">{t.error || '실패'}</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                               {/* Full message content */}
                               {parsedDetail!.message && (
                                 <pre className="whitespace-pre-wrap rounded-lg bg-white p-3 text-caption text-[#191F28] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:border-gray-700">
