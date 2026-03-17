@@ -428,13 +428,22 @@ const ActivityLogs = () => {
                       {isExpanded && hasDetail && (
                         <TableRow>
                           <TableCell colSpan={6} className="!py-3 !px-5 bg-[#F8F9FA] dark:bg-[#1E1E24]">
-                            <div className="flex flex-wrap gap-x-6 gap-y-1 text-caption">
-                              {Object.entries(parsedDetail!).map(([key, value]) => (
-                                <span key={key} className="text-[#4E5968] dark:text-gray-400">
-                                  <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
-                                  {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
-                                </span>
-                              ))}
+                            <div className="space-y-2">
+                              {/* Meta fields (exclude message) */}
+                              <div className="flex flex-wrap gap-x-5 gap-y-1 text-caption">
+                                {Object.entries(parsedDetail!).filter(([key]) => key !== 'message').map(([key, value]) => (
+                                  <span key={key} className="text-[#4E5968] dark:text-gray-400">
+                                    <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
+                                  </span>
+                                ))}
+                              </div>
+                              {/* Full message content */}
+                              {parsedDetail!.message && (
+                                <pre className="whitespace-pre-wrap rounded-lg bg-white p-3 text-caption text-[#191F28] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:border-gray-700">
+                                  {String(parsedDetail!.message)}
+                                </pre>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
