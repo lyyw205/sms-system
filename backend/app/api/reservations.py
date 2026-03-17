@@ -478,11 +478,45 @@ async def toggle_sms_sent(
 
     if assignment.sent_at:
         assignment.sent_at = None  # Mark as unsent
+        db.commit()
+        return {"success": True, "sent_at": None}
     else:
-        assignment.sent_at = datetime.now()  # Mark as sent
+        # 실제 SMS 발송
+        reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        if not reservation or not reservation.phone:
+            raise HTTPException(status_code=400, detail="전화번호가 없습니다")
 
-    db.commit()
-    return {"success": True, "sent_at": assignment.sent_at}
+        from app.templates.renderer import TemplateRenderer
+        from app.templates.variables import calculate_template_variables
+
+        renderer = TemplateRenderer(db)
+        message_vars = calculate_template_variables(reservation=reservation, db=db)
+        try:
+            message_content = renderer.render(template_key, message_vars)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"템플릿 렌더링 실패: {e}")
+
+        sms_provider = get_sms_provider()
+        result = await sms_provider.send_sms(to=reservation.phone, message=message_content)
+
+        if result.get("success"):
+            assignment.sent_at = datetime.now()
+            db.commit()
+
+            log_activity(
+                db,
+                type="sms_manual",
+                title=f"SMS 발송 ({template_key}) → {reservation.customer_name}",
+                detail={"to": reservation.phone, "template_key": template_key, "success": True},
+                target_count=1,
+                success_count=1,
+                created_by=current_user.username,
+            )
+            db.commit()
+
+            return {"success": True, "sent_at": assignment.sent_at}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "SMS 발송 실패"))
 
 
 class SmsSendByTagRequest(BaseModel):
