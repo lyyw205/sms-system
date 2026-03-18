@@ -54,7 +54,6 @@ interface Reservation {
   female_count: number | null;
   party_size: number | null;
   party_type: string | null;  // '1'=1차만, '2'=1+2차, '2차만'
-  tags: string | null;
   notes: string | null;
   check_out_date: string | null;
   booking_source?: string;
@@ -110,6 +109,7 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, onToggle
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownAbove, setDropdownAbove] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const assignments = [...(reservation.sms_assignments || [])].sort((a, b) => {
@@ -209,14 +209,21 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, onToggle
       {/* + button with checklist dropdown */}
       <div className="relative flex-shrink-0 ml-1" ref={dropdownRef}>
         <button
-          onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!dropdownOpen) {
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setDropdownAbove(window.innerHeight - rect.bottom < 200);
+            }
+            setDropdownOpen(!dropdownOpen);
+          }}
           className="inline-flex items-center justify-center w-[18px] h-[18px] rounded border border-dashed border-[#E5E8EB] dark:border-[#2C2C34] text-[#B0B8C1] dark:text-[#8B95A1] hover:border-[#3182F6] hover:text-[#3182F6] dark:hover:border-[#3182F6] dark:hover:text-[#3182F6] transition-colors cursor-pointer"
           title="문자 템플릿 관리"
         >
           <Plus size={10} />
         </button>
         {dropdownOpen && templateLabels.length > 0 && (
-          <div className="absolute top-full right-0 mt-1 z-50 min-w-[160px] rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg py-1">
+          <div className={`absolute right-0 z-50 min-w-[160px] rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg py-1 ${dropdownAbove ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             {templateLabels.map(t => {
               const assigned = isAssigned(t.template_key);
               const sent = assignments.find(a => a.template_key === t.template_key)?.sent_at;
@@ -299,9 +306,13 @@ const RoomAssignment = () => {
   const [dragOverRoom, setDragOverRoom] = useState<string | null>(null);
   const [dragOverPool, setDragOverPool] = useState(false);
   const [dragOverPartyZone, setDragOverPartyZone] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [dragOverTrash, setDragOverTrash] = useState(false);
+  const [recentlyMovedId, setRecentlyMovedId] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [savingReservation, setSavingReservation] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formValues, setFormValues] = useState<any>({
     guest_type: 'manual',
@@ -312,7 +323,6 @@ const RoomAssignment = () => {
     gender: '',
     party_size: 1,
     naver_room_type: '',
-    tags: '',
     notes: '',
     status: 'confirmed',
     booking_source: 'manual',
@@ -644,6 +654,19 @@ const RoomAssignment = () => {
       }
     });
 
+    // 최근 이동한 게스트를 맨 위로
+    if (recentlyMovedId !== null) {
+      const bumpToTop = (list: Reservation[]) => {
+        const idx = list.findIndex(r => r.id === recentlyMovedId);
+        if (idx > 0) {
+          const [item] = list.splice(idx, 1);
+          list.unshift(item);
+        }
+      };
+      bumpToTop(unassignedList);
+      bumpToTop(partyOnlyList);
+    }
+
     return {
       assignedRooms: assigned,
       unassigned: unassignedList,
@@ -654,6 +677,7 @@ const RoomAssignment = () => {
   const onDragStart = (e: DragEvent, resId: number) => {
     e.dataTransfer.setData('text/plain', String(resId));
     e.dataTransfer.effectAllowed = 'move';
+    setDragActive(true);
 
     // Custom small drag ghost — show guest name in a compact pill
     const res = reservations.find((r) => r.id === resId);
@@ -663,6 +687,11 @@ const RoomAssignment = () => {
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
     requestAnimationFrame(() => document.body.removeChild(ghost));
+  };
+
+  const onDragEnd = () => {
+    setDragActive(false);
+    setDragOverTrash(false);
   };
 
   const onRoomDragOver = (e: DragEvent, room: string) => {
@@ -756,6 +785,7 @@ const RoomAssignment = () => {
     if (!resId) return;
     const res = reservations.find((r) => r.id === resId);
     if (!res) return;
+    setRecentlyMovedId(resId);
 
     // Already in unassigned section → nothing to do
     const effectiveSectionPool = sectionOverrides[resId] ?? res.section;
@@ -819,6 +849,7 @@ const RoomAssignment = () => {
     setDragOverPartyZone(false);
     const resId = Number(e.dataTransfer.getData('text/plain'));
     if (!resId) return;
+    setRecentlyMovedId(resId);
 
     const guest = reservations.find((r) => r.id === resId);
     if (!guest) return;
@@ -878,7 +909,6 @@ const RoomAssignment = () => {
       gender: '',
       party_size: 1,
       naver_room_type: '',
-      tags: '',
       notes: '',
       status: 'confirmed',
       booking_source: 'manual',
@@ -892,7 +922,6 @@ const RoomAssignment = () => {
       setEditingId(id);
       setFormValues({
         ...guest,
-        tags: guest.tags || '',
         guest_type: undefined,
       });
       setModalVisible(true);
@@ -912,6 +941,7 @@ const RoomAssignment = () => {
   };
 
   const handleSubmit = async () => {
+    if (savingReservation) return;
     const values = { ...formValues };
 
     if (!values.customer_name) { toast.error('이름을 입력하세요'); return; }
@@ -938,6 +968,7 @@ const RoomAssignment = () => {
     if (!editingId && values.guest_type) {
       if (values.guest_type === 'party_only') {
         values.naver_room_type = '파티만';
+        values.section = 'party';
       } else {
         // 수동 추가 - 미배정: naver_room_type을 '수동추가'로 설정
         if (!values.naver_room_type) {
@@ -947,6 +978,7 @@ const RoomAssignment = () => {
       delete values.guest_type;
     }
 
+    setSavingReservation(true);
     try {
       if (editingId) {
         await reservationsAPI.update(editingId, values);
@@ -959,6 +991,8 @@ const RoomAssignment = () => {
       fetchReservations(selectedDate);
     } catch {
       toast.error('저장 실패');
+    } finally {
+      setSavingReservation(false);
     }
   };
 
@@ -1059,6 +1093,7 @@ const RoomAssignment = () => {
           <div
             draggable
             onDragStart={(e) => onDragStart(e, res.id)}
+            onDragEnd={onDragEnd}
             className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${multiNight ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
           >
             <GripVertical size={14} />
@@ -1678,11 +1713,7 @@ const RoomAssignment = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => {
-                      if (opt.value === 'party_only') {
-                        setFormValues({ ...formValues, guest_type: opt.value, tags: '파티만' });
-                      } else {
-                        setFormValues({ ...formValues, guest_type: opt.value });
-                      }
+                      setFormValues({ ...formValues, guest_type: opt.value });
                     }}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
                       ${(formValues.guest_type || 'manual') === opt.value
@@ -1771,10 +1802,46 @@ const RoomAssignment = () => {
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button color="blue" onClick={handleSubmit}>저장</Button>
+          <Button color="blue" onClick={handleSubmit} disabled={savingReservation}>
+            {savingReservation ? '저장 중...' : '저장'}
+          </Button>
           <Button color="light" onClick={() => setModalVisible(false)}>취소</Button>
         </ModalFooter>
       </Modal>
+
+      {/* Trash Drop Zone — visible only while dragging */}
+      {dragActive && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!dragOverTrash) setDragOverTrash(true);
+          }}
+          onDragLeave={(e) => {
+            const related = e.relatedTarget as Node | null;
+            if (!related || !e.currentTarget.contains(related)) {
+              setDragOverTrash(false);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverTrash(false);
+            setDragActive(false);
+            const resId = Number(e.dataTransfer.getData('text/plain'));
+            if (resId) handleDeleteGuest(resId);
+          }}
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-2xl px-6 py-3 shadow-lg transition-all duration-300 animate-in slide-in-from-bottom-4
+            ${dragOverTrash
+              ? 'bg-[#F04452] text-white scale-110 shadow-[#F04452]/30'
+              : 'bg-white text-[#F04452] border-2 border-dashed border-[#F04452] dark:bg-[#1E1E24]'
+            }`}
+        >
+          <Trash2 className="h-5 w-5" />
+          <span className="text-body font-semibold">
+            {dragOverTrash ? '놓으면 삭제됩니다' : '여기에 놓으면 삭제'}
+          </span>
+        </div>
+      )}
 
       {/* Confirm Dialog */}
       <Modal
