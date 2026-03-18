@@ -11,6 +11,7 @@ interface PartyGuest {
   gender: string | null
   male_count: number | null
   female_count: number | null
+  party_type: string | null
   checked_in: boolean
   checked_in_at: string | null
   room_number: string | null
@@ -182,6 +183,9 @@ export default function PartyCheckin() {
                     성별
                   </th>
                   <th className="px-4 py-3 text-center text-caption font-semibold uppercase tracking-wide text-[#8B95A1]">
+                    파티
+                  </th>
+                  <th className="px-4 py-3 text-center text-caption font-semibold uppercase tracking-wide text-[#8B95A1]">
                     구분
                   </th>
                 </tr>
@@ -225,6 +229,19 @@ export default function PartyCheckin() {
                         }`}
                       >
                         {formatGender(guest.male_count, guest.female_count)}
+                      </span>
+                    </td>
+
+                    {/* 파티 */}
+                    <td className="px-4 py-3.5 text-center">
+                      <span
+                        className={`text-label ${
+                          guest.checked_in
+                            ? 'text-[#3182F6]'
+                            : 'text-[#4E5968] dark:text-gray-300'
+                        }`}
+                      >
+                        {guest.party_type || '-'}
                       </span>
                     </td>
 

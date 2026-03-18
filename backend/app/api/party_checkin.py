@@ -23,6 +23,7 @@ class PartyCheckinItem(BaseModel):
     gender: Optional[str]
     male_count: Optional[int]
     female_count: Optional[int]
+    party_type: Optional[str]
     checked_in: bool
     checked_in_at: Optional[str]
     room_number: Optional[str]
@@ -107,6 +108,7 @@ async def get_party_checkin_list(
                 gender=res.gender,
                 male_count=res.male_count,
                 female_count=res.female_count,
+                party_type=res.party_type,
                 checked_in=checkin is not None and checkin.checked_in_at is not None,
                 checked_in_at=(
                     checkin.checked_in_at.isoformat() if checkin and checkin.checked_in_at else None
