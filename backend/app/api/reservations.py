@@ -603,6 +603,11 @@ async def toggle_sms_sent(
 
         sms_provider = get_sms_provider()
         try:
+            # Look up template buffer for participant_count
+            from app.db.models import MessageTemplate
+            tpl = db.query(MessageTemplate).filter(MessageTemplate.template_key == template_key).first()
+            custom_vars = {'_participant_buffer': tpl.participant_buffer or 0} if tpl else None
+
             result = await send_single_sms(
                 db=db,
                 sms_provider=sms_provider,
@@ -610,6 +615,7 @@ async def toggle_sms_sent(
                 template_key=template_key,
                 created_by=current_user.username,
                 date=date,
+                custom_vars=custom_vars,
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"SMS 발송 실패: {e}")

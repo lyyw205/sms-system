@@ -30,6 +30,12 @@ async def send_single_sms(
     """
     단건 SMS 발송 공통 함수.
     RoomAssignment 조회 + calculate_template_variables + 렌더링 + 발송.
+
+    [호출부 동기화 주의]
+    이 함수를 호출하는 곳이 3곳 있습니다. custom_vars 등 새 파라미터 추가 시 모두 확인:
+    1. template_scheduler.py → execute_schedule() (스케줄 자동 발송)
+    2. reservations.py → toggle_sms_sent() (칩 클릭 발송)
+    3. sms_sender.py → SmsSender.send_by_assignment() (프론트 대량 발송)
     발송 결과(성공/실패)를 activity log에 기록합니다.
 
     Returns: {"success": bool, "message_id": str | None, "error": str | None}
@@ -183,6 +189,7 @@ class SmsSender:
                     template_key=template_key,
                     date=date,
                     created_by="schedule",
+                    custom_vars={'_participant_buffer': template.participant_buffer or 0},
                 )
                 if result.get("success"):
                     sent_count += 1
