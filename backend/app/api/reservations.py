@@ -412,6 +412,7 @@ async def assign_room(
             from_date,
             end_date,
             assigned_by="manual",
+            created_by=current_user.username,
         )
 
     db.commit()

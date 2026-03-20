@@ -10,6 +10,7 @@ from sqlalchemy import and_, func
 import logging
 
 from app.db.models import RoomAssignment, Reservation, Room, ReservationSmsAssignment, TemplateSchedule
+from app.services.activity_logger import log_activity
 from app.templates.renderer import TemplateRenderer
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def assign_room(
     end_date: Optional[str] = None,
     assigned_by: str = "auto",
     skip_sms_sync: bool = False,
+    created_by: Optional[str] = None,
 ) -> List[RoomAssignment]:
     """
     Assign a room for date range [from_date, end_date).
@@ -140,11 +142,53 @@ def assign_room(
                     f"Room {room_number} is already occupied on {d} by reservation {existing.reservation_id}"
                 )
 
+    # Capture old room for move logging
+    old_assignments = (
+        db.query(RoomAssignment)
+        .filter(
+            RoomAssignment.reservation_id == reservation_id,
+            RoomAssignment.date.in_(dates),
+        )
+        .all()
+    )
+    old_room = old_assignments[0].room_number if old_assignments else None
+
     # Delete existing assignments for this reservation in the date range
     db.query(RoomAssignment).filter(
         RoomAssignment.reservation_id == reservation_id,
         RoomAssignment.date.in_(dates),
     ).delete(synchronize_session="fetch")
+
+    # Log room move/assignment
+    log_creator = created_by or ("system" if assigned_by == "auto" else assigned_by)
+    if old_room and old_room != room_number:
+        log_activity(
+            db, type="room_move",
+            title=f"객실 이동: {old_room} → {room_number}",
+            detail={
+                "reservation_id": reservation_id,
+                "guest_name": reservation.guest_name,
+                "old_room": old_room,
+                "new_room": room_number,
+                "dates": dates,
+                "move_type": assigned_by,
+            },
+            created_by=log_creator,
+        )
+    elif not old_room:
+        log_activity(
+            db, type="room_move",
+            title=f"객실 배정: {room_number}",
+            detail={
+                "reservation_id": reservation_id,
+                "guest_name": reservation.guest_name,
+                "old_room": None,
+                "new_room": room_number,
+                "dates": dates,
+                "move_type": assigned_by,
+            },
+            created_by=log_creator,
+        )
 
     # Create new assignments
     assignments = []
@@ -195,6 +239,32 @@ def unassign_room(
 
     if from_date:
         dates = _date_range(from_date, end_date)
+        query = query.filter(RoomAssignment.date.in_(dates))
+
+    # Capture old room for unassign logging
+    old_assignments = query.all()
+    if old_assignments:
+        old_room = old_assignments[0].room_number
+        old_assigned_by = old_assignments[0].assigned_by
+        log_activity(
+            db, type="room_move",
+            title=f"객실 해제: {old_room}",
+            detail={
+                "reservation_id": reservation_id,
+                "guest_name": reservation.guest_name,
+                "old_room": old_room,
+                "new_room": None,
+                "dates": [a.date for a in old_assignments],
+                "move_type": old_assigned_by,
+            },
+            created_by="system" if old_assigned_by == "auto" else old_assigned_by,
+        )
+
+    # Re-query since .all() consumed the query
+    query = db.query(RoomAssignment).filter(
+        RoomAssignment.reservation_id == reservation_id
+    )
+    if from_date:
         query = query.filter(RoomAssignment.date.in_(dates))
 
     count = query.delete(synchronize_session="fetch")
