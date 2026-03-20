@@ -848,19 +848,16 @@ const RoomSettings = () => {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">도미토리</Label>
-                <span className={`text-body font-medium ${form.dormitory ? 'text-[#9061F9]' : 'text-[#B0B8C1]'}`}>
-                  {form.dormitory ? '도미토리' : '일반'}
-                </span>
+              <div className="flex gap-5">
+                <span className="text-label font-medium text-gray-900 dark:text-white" style={{ minWidth: '3rem' }}>도미토리</span>
+                <span className={`text-label font-medium transition-opacity ${form.dormitory ? 'text-gray-900 dark:text-white' : 'opacity-40 text-gray-900 dark:text-white'}`}>인실 수</span>
               </div>
-              <ToggleSwitch
-                checked={form.dormitory}
-                onChange={(v) => setForm((f) => ({ ...f, dormitory: v }))}
-              />
-              {form.dormitory && (
-                <div className="space-y-1 pt-1">
-                  <Label htmlFor="dormitory-beds">인실 수</Label>
+              <div className="flex items-center gap-5">
+                <ToggleSwitch
+                  checked={form.dormitory}
+                  onChange={(v) => setForm((f) => ({ ...f, dormitory: v }))}
+                />
+                <div className={`w-24 transition-opacity ${form.dormitory ? '' : 'opacity-40'}`}>
                   <TextInput
                     id="dormitory-beds"
                     type="number"
@@ -868,9 +865,10 @@ const RoomSettings = () => {
                     max={20}
                     value={String(form.bed_capacity ?? 1)}
                     onChange={(e) => setForm((f) => ({ ...f, bed_capacity: parseInt(e.target.value) || 1 }))}
+                    disabled={!form.dormitory}
                   />
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </ModalBody>
