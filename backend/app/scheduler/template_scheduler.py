@@ -17,6 +17,7 @@ from app.services.room_assignment import get_schedule_dates
 from app.services.sms_tracking import record_sms_sent
 from app.services.activity_logger import log_activity
 from app.services.event_bus import publish as publish_event
+from app.db.tenant_context import current_tenant_id
 from app.services.sms_sender import send_single_sms
 
 logger = logging.getLogger(__name__)
@@ -359,7 +360,7 @@ class TemplateScheduleExecutor:
                     "schedule_id": schedule_id,
                     "sent_count": sent_count,
                     "failed_count": failed_count,
-                })
+                }, tenant_id=current_tenant_id.get())
 
             return {
                 "success": True,

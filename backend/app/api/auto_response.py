@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
-from app.db.models import Message, MessageDirection, MessageStatus, User, Tenant
+from app.db.models import Message, MessageDirection, MessageStatus, User, Tenant, Rule
 from app.auth.dependencies import get_current_user, require_admin_or_above
-from app.router.message_router import message_router
+from app.router.message_router import MessageRouter
 from app.factory import get_sms_provider_for_tenant
 
 router = APIRouter(prefix="/api/auto-response", tags=["auto-response"])
@@ -32,8 +32,10 @@ async def generate_auto_response(request: GenerateResponseRequest, db: Session =
     if msg.direction != MessageDirection.INBOUND:
         raise HTTPException(status_code=400, detail="수신 메시지에만 자동응답을 생성할 수 있습니다")
 
-    # Generate response
-    result = await message_router.generate_auto_response(msg.content)
+    # Generate response using tenant-scoped DB rules
+    rules = db.query(Rule).filter(Rule.is_active == True).order_by(Rule.priority.desc()).all()
+    router_instance = MessageRouter()
+    result = await router_instance.generate_auto_response(msg.content, rules=rules)
 
     # Update message with auto-response
     msg.auto_response = result["response"]
@@ -71,14 +73,15 @@ async def generate_auto_response(request: GenerateResponseRequest, db: Session =
 
 
 @router.post("/test")
-async def test_auto_response(request: GenerateResponseFromTextRequest, current_user: User = Depends(require_admin_or_above)):
+async def test_auto_response(request: GenerateResponseFromTextRequest, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(require_admin_or_above)):
     """Test auto-response generation without saving to DB"""
-    result = await message_router.generate_auto_response(request.message)
+    rules = db.query(Rule).filter(Rule.is_active == True).order_by(Rule.priority.desc()).all()
+    router_instance = MessageRouter()
+    result = await router_instance.generate_auto_response(request.message, rules=rules)
     return result
 
 
 @router.post("/reload-rules")
 async def reload_rules(current_user: User = Depends(require_admin_or_above)):
-    """Hot reload rules from YAML file"""
-    message_router.reload_rules()
+    """Rules are now DB-based and always fresh; no reload needed."""
     return {"success": True, "message": "규칙이 다시 로드되었습니다"}

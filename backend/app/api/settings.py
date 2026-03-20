@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import app.config as _config
-from app.config import get_naver_cookie, set_naver_cookie
 from app.real.reservation import RealReservationProvider
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.api.deps import get_current_tenant, get_tenant_scoped_db
@@ -86,9 +85,6 @@ async def update_naver_cookie(
     tenant.naver_cookie = cookie
     db.commit()
 
-    # Also update runtime for backward compat
-    set_naver_cookie(cookie)
-
     # Validate the new cookie
     try:
         provider = RealReservationProvider(
@@ -120,7 +116,6 @@ async def clear_naver_cookie(
     """Clear Naver cookie from Tenant table + runtime"""
     tenant.naver_cookie = None
     db.commit()
-    set_naver_cookie(None)
     return {"success": True, "message": "Cookie cleared."}
 
 

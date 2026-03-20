@@ -4,11 +4,11 @@ Webhook endpoints for SMS and external integrations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from app.api.deps import get_tenant_scoped_db
-from app.db.models import Message, MessageDirection, MessageStatus, User
+from app.api.deps import get_tenant_scoped_db, get_current_tenant
+from app.db.models import Message, MessageDirection, MessageStatus, User, Tenant, Rule
 from app.auth.dependencies import get_current_user
 from app.factory import get_sms_provider_for_tenant
-from app.router.message_router import message_router
+from app.router.message_router import MessageRouter
 from datetime import datetime, timezone
 import logging
 
@@ -23,13 +23,12 @@ class SMSReceiveRequest(BaseModel):
 
 
 @router.post("/sms/receive")
-async def receive_sms(request: SMSReceiveRequest, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user)):
+async def receive_sms(request: SMSReceiveRequest, db: Session = Depends(get_tenant_scoped_db), tenant: Tenant = Depends(get_current_tenant), current_user: User = Depends(get_current_user)):
     """
     Webhook for receiving SMS (simulated in demo mode).
     Saves inbound message, runs auto-response pipeline, and auto-sends if confident.
     """
-    # TODO: determine tenant from incoming message (currently uses None — no global fallback)
-    sms_provider = get_sms_provider_for_tenant(None)
+    sms_provider = get_sms_provider_for_tenant(tenant)
 
     # Simulate SMS reception
     result = await sms_provider.simulate_receive(
@@ -52,7 +51,9 @@ async def receive_sms(request: SMSReceiveRequest, db: Session = Depends(get_tena
     logger.info(f"SMS received and saved to DB: {msg.id}")
 
     # Auto-response pipeline
-    auto_result = await message_router.generate_auto_response(request.message)
+    rules = db.query(Rule).filter(Rule.is_active == True).order_by(Rule.priority.desc()).all()
+    msg_router = MessageRouter()
+    auto_result = await msg_router.generate_auto_response(request.message, rules=rules)
 
     # Store auto-response metadata on inbound message
     msg.auto_response = auto_result["response"]

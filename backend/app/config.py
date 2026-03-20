@@ -111,17 +111,3 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 
-
-# Runtime Naver cookie management (서버 재시작 시 초기화)
-_runtime_naver_cookie: str | None = None
-
-
-def get_naver_cookie() -> str:
-    """Get current Naver cookie (runtime override or .env)"""
-    return _runtime_naver_cookie if _runtime_naver_cookie is not None else settings.NAVER_COOKIE
-
-
-def set_naver_cookie(cookie: str | None) -> None:
-    """Set or clear runtime Naver cookie"""
-    global _runtime_naver_cookie
-    _runtime_naver_cookie = cookie

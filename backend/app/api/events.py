@@ -3,23 +3,86 @@ SSE endpoint for real-time event streaming to frontend clients.
 """
 import asyncio
 import logging
-from fastapi import APIRouter
+import jwt
+from fastapi import APIRouter, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from app.services.event_bus import subscribe, unsubscribe
+from app.auth.utils import decode_access_token
+from app.db.database import SessionLocal
+from app.db.models import User, UserRole, UserTenantRole
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
 
+def _validate_token_and_tenant(token: str, tenant_id: int) -> None:
+    """Validate JWT token and verify user has access to the given tenant.
+
+    Raises HTTPException on failure.
+    SSE/EventSource does not support custom headers, so the token is passed
+    as a query parameter.
+    """
+    try:
+        payload = decode_access_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="토큰이 만료되었습니다",
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 정보가 유효하지 않습니다",
+        )
+
+    username: str = payload.get("sub")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증 정보가 유효하지 않습니다",
+        )
+
+    db: Session = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="인증 정보가 유효하지 않습니다",
+            )
+
+        if user.role != UserRole.SUPERADMIN:
+            mapping = db.query(UserTenantRole).filter(
+                UserTenantRole.user_id == user.id,
+                UserTenantRole.tenant_id == tenant_id,
+            ).first()
+            if not mapping:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="해당 펜션에 대한 접근 권한이 없습니다",
+                )
+    finally:
+        db.close()
+
+
 @router.get("/stream")
-async def event_stream():
+async def event_stream(
+    token: str = Query(..., description="JWT access token"),
+    tenant_id: int = Query(..., description="Tenant ID to subscribe to"),
+):
     """
     Server-Sent Events stream. Clients subscribe here to receive real-time
     notifications (e.g. schedule_complete) without polling.
+
+    Authentication is done via query parameters because the EventSource API
+    does not support custom request headers.
     """
-    q = subscribe()
+    _validate_token_and_tenant(token, tenant_id)
+
+    q = subscribe(tenant_id)
 
     async def generator():
         try:
@@ -35,7 +98,7 @@ async def event_stream():
         except asyncio.CancelledError:
             pass
         finally:
-            unsubscribe(q)
+            unsubscribe(q, tenant_id)
 
     return StreamingResponse(
         generator(),
