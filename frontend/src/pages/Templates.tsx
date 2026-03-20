@@ -11,7 +11,6 @@ import {
   XCircle,
   FileText,
   Clock,
-  BarChart3,
 } from 'lucide-react';
 
 import {
@@ -39,7 +38,7 @@ import {
   Spinner,
 } from 'flowbite-react';
 
-import { templatesAPI, templateSchedulesAPI, activityLogsAPI, buildingsAPI, reservationsAPI } from '@/services/api';
+import { templatesAPI, templateSchedulesAPI, buildingsAPI, reservationsAPI } from '@/services/api';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -175,17 +174,6 @@ function formatRelativeTime(iso: string | null): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}시간 후`;
   return date.toLocaleString('ko-KR');
-}
-
-function getCampaignTemplateName(type: string): string {
-  if (type === 'room_guide') return '객실 안내 문자';
-  if (type === 'party_guide') return '파티 안내 문자';
-  if (type === 'tag_based') return '태그 발송';
-  if (type.startsWith('template_schedule_')) {
-    const name = type.replace('template_schedule_', '');
-    return name || '자동발송';
-  }
-  return type;
 }
 
 function getScheduleTypeLabel(type: string): string {
@@ -410,10 +398,6 @@ const Templates: React.FC = () => {
   const [previewTargets, setPreviewTargets] = useState<any[]>([]);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 
-  // --- campaigns state ---
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-
   // ---------------------------------------------------------------------------
   // Data fetching
   // ---------------------------------------------------------------------------
@@ -451,18 +435,6 @@ const Templates: React.FC = () => {
     }
   };
 
-  const fetchCampaigns = async () => {
-    setLoadingCampaigns(true);
-    try {
-      const res = await activityLogsAPI.getAll({ type: 'sms_campaign' });
-      setCampaigns(res.data);
-    } catch {
-      toast.error('발송 이력을 불러오지 못했습니다');
-    } finally {
-      setLoadingCampaigns(false);
-    }
-  };
-
   const fetchBuildings = async () => {
     try {
       const res = await buildingsAPI.getAll();
@@ -476,10 +448,6 @@ const Templates: React.FC = () => {
     fetchAvailableVariables();
     fetchBuildings();
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'campaigns') fetchCampaigns();
-  }, [activeTab]);
 
   // ---------------------------------------------------------------------------
   // Template CRUD
@@ -972,97 +940,6 @@ const Templates: React.FC = () => {
                     </TableRow>
                   );
                 })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  // ---------------------------------------------------------------------------
-  // Render – Tab 3: Campaign history
-  // ---------------------------------------------------------------------------
-
-  const renderCampaignsTab = () => (
-    <div className="space-y-4">
-      {/* Info banner + action */}
-      <div className="flex items-center justify-between rounded-2xl border border-[#E8F3FF] bg-[#E8F3FF] px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
-        <span className="text-label text-[#3182F6] dark:text-blue-300">
-          지금까지 발송한 메시지 이력입니다. 템플릿 스케줄 자동 발송과 수동 발송 모두 기록됩니다.
-        </span>
-        <Button size="sm" color="blue" onClick={fetchCampaigns} disabled={loadingCampaigns} className="ml-4 shrink-0">
-          {loadingCampaigns ? (
-            <Spinner size="sm" className="mr-1.5" />
-          ) : (
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          )}
-          새로고침
-        </Button>
-      </div>
-
-      {/* Table card */}
-      <div className="section-card">
-        {loadingCampaigns ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner size="lg" />
-          </div>
-        ) : campaigns.length === 0 ? (
-          <div className="empty-state">
-            <BarChart3 className="h-10 w-10" />
-            <p className="text-body font-medium">발송 이력이 없습니다</p>
-            <p className="text-label">스케줄 또는 수동 발송 후 이력이 기록됩니다</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table hoverable striped>
-              <TableHead>
-                <TableRow>
-                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
-                  <TableHeadCell className="w-1 whitespace-nowrap">발송 템플릿명</TableHeadCell>
-                  <TableHeadCell className="whitespace-nowrap">대상 태그</TableHeadCell>
-                  <TableHeadCell className="w-1 whitespace-nowrap text-center">대상 수</TableHeadCell>
-                  <TableHeadCell className="w-1 whitespace-nowrap text-center">성공</TableHeadCell>
-                  <TableHeadCell className="w-1 whitespace-nowrap text-center">실패</TableHeadCell>
-                  <TableHeadCell className="w-1 whitespace-nowrap">발송 일시</TableHeadCell>
-                </TableRow>
-              </TableHead>
-              <TableBody className="divide-y">
-                {campaigns.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <span className="tabular-nums text-gray-400 dark:text-gray-500">{c.id}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium text-gray-900 dark:text-white">{getCampaignTemplateName(c.type)}</span>
-                    </TableCell>
-                    <TableCell>
-                      {c.detail ? (
-                        <span className="font-medium text-gray-900 dark:text-white">{c.detail}</span>
-                      ) : (
-                        <span className="text-[#B0B8C1] dark:text-gray-500">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="tabular-nums font-medium text-gray-900 dark:text-white">{c.target_count ?? '-'}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="tabular-nums font-medium text-[#00C9A7]">{c.success_count}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {c.failed_count > 0 ? (
-                        <span className="tabular-nums font-medium text-[#F04452]">{c.failed_count}</span>
-                      ) : (
-                        <span className="text-caption text-gray-400 dark:text-gray-500">0</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="whitespace-nowrap text-body text-gray-500 dark:text-gray-400">
-                        {c.created_at ? new Date(c.created_at).toLocaleString('ko-KR') : '-'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
               </TableBody>
             </Table>
           </div>
@@ -1823,7 +1700,7 @@ const Templates: React.FC = () => {
         <Tabs
           variant="underline"
           onActiveTabChange={idx => {
-            const tabs = ['templates', 'schedules', 'campaigns'];
+            const tabs = ['templates', 'schedules'];
             setActiveTab(tabs[idx] ?? 'templates');
           }}
         >
@@ -1851,19 +1728,6 @@ const Templates: React.FC = () => {
           >
             <div className="px-6 pb-6">
               {renderSchedulesTab()}
-            </div>
-          </TabItem>
-          <TabItem
-            active={activeTab === 'campaigns'}
-            title={
-              <span className="flex items-center gap-1.5">
-                <BarChart3 className="h-3.5 w-3.5" />
-                발송 이력
-              </span>
-            }
-          >
-            <div className="px-6 pb-6">
-              {renderCampaignsTab()}
             </div>
           </TabItem>
         </Tabs>
