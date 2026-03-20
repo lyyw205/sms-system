@@ -1,9 +1,10 @@
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import User, UserRole, Tenant, UserTenantRole
-from app.auth.utils import verify_password, hash_password, create_access_token
-from app.auth.schemas import LoginRequest, LoginResponse, UserInfo, TenantInfo, UserCreate, UserUpdate
+from app.auth.utils import verify_password, hash_password, create_access_token, create_refresh_token, decode_refresh_token
+from app.auth.schemas import LoginRequest, LoginResponse, UserInfo, TenantInfo, UserCreate, UserUpdate, RefreshRequest, RefreshResponse
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.rate_limit import limiter
 
@@ -32,6 +33,7 @@ async def login(request: Request, login_data: LoginRequest, db: Session = Depend
         )
 
     token = create_access_token(data={"sub": user.username})
+    refresh = create_refresh_token(data={"sub": user.username})
 
     # Get accessible tenants
     if user.role == UserRole.SUPERADMIN:
@@ -46,6 +48,7 @@ async def login(request: Request, login_data: LoginRequest, db: Session = Depend
 
     return LoginResponse(
         access_token=token,
+        refresh_token=refresh,
         user=UserInfo(
             id=user.id,
             username=user.username,
@@ -55,6 +58,29 @@ async def login(request: Request, login_data: LoginRequest, db: Session = Depend
             tenants=[TenantInfo(id=t.id, slug=t.slug, name=t.name) for t in tenants],
         ),
     )
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
+    """Issue new access + refresh tokens using a valid refresh token"""
+    try:
+        payload = decode_refresh_token(req.refresh_token)
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="리프레시 토큰이 만료되었습니다. 다시 로그인해주세요")
+    except (jwt.PyJWTError, Exception):
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다")
+
+    user = db.query(User).filter(User.username == username, User.is_active == True).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="유효하지 않은 사용자입니다")
+
+    new_access = create_access_token(data={"sub": username})
+    new_refresh = create_refresh_token(data={"sub": username})
+
+    return RefreshResponse(access_token=new_access, refresh_token=new_refresh)
 
 
 @router.get("/me", response_model=UserInfo)

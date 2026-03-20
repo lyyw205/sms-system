@@ -19,8 +19,8 @@ export default function Login() {
     setLoading(true)
     try {
       const res = await authAPI.login({ username, password })
-      const { access_token, user } = res.data
-      login(access_token, user)
+      const { access_token, refresh_token, user } = res.data
+      login(access_token, refresh_token, user)
       navigate('/')
     } catch (err: any) {
       const msg = err?.response?.data?.detail
