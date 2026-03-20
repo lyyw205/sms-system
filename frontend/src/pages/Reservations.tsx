@@ -4,10 +4,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  CheckCircle,
-  Clock,
-  XCircle,
-  ShoppingBag,
   CalendarDays,
   Search,
   X,
@@ -144,7 +140,6 @@ function SourceBadge({ source }: { source?: string | null }) {
 
 export default function Reservations() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [statsReservations, setStatsReservations] = useState<Reservation[]>([]);
   const [loading, setLoading]           = useState(false);
   const [syncing, setSyncing]           = useState(false);
   const [syncFromDate, setSyncFromDate] = useState('');
@@ -176,15 +171,6 @@ export default function Reservations() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 100;
 
-  // Fetch unfiltered data for stat-cards (today's counts)
-  async function fetchStats() {
-    try {
-      const res = await reservationsAPI.getAll({ limit: 200 });
-      setStatsReservations(res.data ?? []);
-    } catch {
-      // Stats fetch failure is non-critical; silently ignore
-    }
-  }
 
   async function fetchReservations() {
     setLoading(true);
@@ -203,10 +189,6 @@ export default function Reservations() {
     }
   }
 
-  useEffect(() => {
-    fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     fetchReservations();
@@ -242,18 +224,6 @@ export default function Reservations() {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, currentPage]);
 
-  const stats = useMemo(() => {
-    const today = dayjs().format('YYYY-MM-DD');
-    const todayList = statsReservations.filter((r) => r.created_at && dayjs(r.created_at).format('YYYY-MM-DD') === today);
-    return {
-      total:     todayList.length,
-      confirmed: todayList.filter((r) => r.status === 'confirmed').length,
-      pending:   todayList.filter((r) => r.status === 'pending').length,
-      cancelled: todayList.filter((r) => r.status === 'cancelled').length,
-      naver:     todayList.filter((r) => !!r.external_id).length,
-    };
-  }, [statsReservations]);
-
   async function handleSync() {
     setSyncing(true);
     try {
@@ -262,7 +232,7 @@ export default function Reservations() {
       const updated = res.data?.updated ?? 0;
       toast.success(`네이버 동기화 완료 — ${added}건 추가, ${updated}건 갱신`);
       fetchReservations();
-      fetchStats();
+
       setSyncFromDate('');
     } catch {
       toast.error('네이버 동기화에 실패했습니다.');
@@ -351,7 +321,7 @@ export default function Reservations() {
       }
       setModalOpen(false);
       fetchReservations();
-      fetchStats();
+
     } catch {
       toast.error('저장에 실패했습니다.');
     } finally {
@@ -412,68 +382,6 @@ export default function Reservations() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="stat-icon bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-[#3182F6]">
-              <CalendarDays size={18} />
-            </div>
-            <div>
-              <p className="stat-value text-xl">{stats.total}<span className="ml-0.5 text-label font-normal text-[#B0B8C1] dark:text-gray-600">건</span></p>
-              <p className="stat-label">총 예약</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="stat-icon bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]">
-              <CheckCircle size={18} />
-            </div>
-            <div>
-              <p className="stat-value text-xl">{stats.confirmed}<span className="ml-0.5 text-label font-normal text-[#B0B8C1] dark:text-gray-600">건</span></p>
-              <p className="stat-label">확정</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="stat-icon bg-[#FFF5E6] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-[#FF9F00]">
-              <Clock size={18} />
-            </div>
-            <div>
-              <p className="stat-value text-xl">{stats.pending}<span className="ml-0.5 text-label font-normal text-[#B0B8C1] dark:text-gray-600">건</span></p>
-              <p className="stat-label">대기</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="stat-icon bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-[#F04452]">
-              <XCircle size={18} />
-            </div>
-            <div>
-              <p className="stat-value text-xl">{stats.cancelled}<span className="ml-0.5 text-label font-normal text-[#B0B8C1] dark:text-gray-600">건</span></p>
-              <p className="stat-label">취소</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="stat-icon bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]">
-              <ShoppingBag size={18} />
-            </div>
-            <div>
-              <p className="stat-value text-xl">{stats.naver}<span className="ml-0.5 text-label font-normal text-[#B0B8C1] dark:text-gray-600">건</span></p>
-              <p className="stat-label">네이버</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Filter bar + Table */}
       <div className="section-card">
 
