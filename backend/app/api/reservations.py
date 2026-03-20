@@ -346,6 +346,24 @@ async def update_reservation(
     _SMS_TAG_FIELDS = {"section", "party_type", "gender", "naver_room_type", "notes"}
     sms_fields_changed = section_changed or bool(_SMS_TAG_FIELDS & update_data.keys())
 
+    # Log section change for debugging (room_move 로그와 연계)
+    if section_changed:
+        old_section = db_reservation.section or "unassigned"
+        new_section = update_data["section"]
+        section_labels = {"room": "객실", "unassigned": "미배정", "party": "파티만"}
+        log_activity(
+            db, type="room_move",
+            title=f"섹션 이동: {section_labels.get(old_section, old_section)} → {section_labels.get(new_section, new_section)}",
+            detail={
+                "reservation_id": reservation_id,
+                "customer_name": db_reservation.customer_name,
+                "old_section": old_section,
+                "new_section": new_section,
+                "move_type": "manual",
+            },
+            created_by=current_user.username,
+        )
+
     for field, value in update_data.items():
         setattr(db_reservation, field, value)
 
