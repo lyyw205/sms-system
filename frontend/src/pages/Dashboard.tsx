@@ -13,8 +13,6 @@ import {
 } from 'flowbite-react'
 import {
   CalendarRange,
-  MessageSquareText,
-  TrendingUp,
   Send,
   Users,
   CheckCircle,
@@ -22,14 +20,7 @@ import {
   XCircle,
   Activity,
 } from 'lucide-react'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { dashboardAPI } from '@/services/api'
-
-const CHART_COLORS = {
-  rule: '#3182F6',
-  llm: '#00C9A7',
-  manual: '#FF9F00',
-}
 
 const STATUS_LABELS: Record<string, string> = {
   pending: '대기중',
@@ -81,19 +72,6 @@ function MetricCard({ title, value, subtitle, icon, iconBg }: MetricCardProps) {
       </div>
     </div>
   )
-}
-
-const CustomPieTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const entry = payload[0]
-    return (
-      <div className="rounded-xl bg-white px-3 py-2 shadow-lg dark:bg-[#2C2C34]">
-        <span className="text-label font-medium text-gray-900 dark:text-white">{entry.name}</span>
-        <span className="ml-2 text-label text-gray-500">{entry.value}건</span>
-      </div>
-    )
-  }
-  return null
 }
 
 interface GenderBarProps {
@@ -264,13 +242,6 @@ const Dashboard = () => {
     )
   }
 
-  const responseTypeData = [
-    { name: '룰 기반', value: stats.auto_response.rule_responses, color: CHART_COLORS.rule },
-    { name: 'LLM', value: stats.auto_response.llm_responses, color: CHART_COLORS.llm },
-    { name: '수동', value: stats.auto_response.manual_responses, color: CHART_COLORS.manual },
-  ].filter((d) => d.value > 0)
-
-  const autoRate = Number(stats.auto_response.auto_response_rate ?? 0)
   const campaignSent = stats.campaigns?.total_sent ?? 0
   const maleCount = stats.gender_stats?.male_count ?? 0
   const femaleCount = stats.gender_stats?.female_count ?? 0
@@ -284,27 +255,13 @@ const Dashboard = () => {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2">
         <MetricCard
           title="전체 예약"
           value={stats.totals.reservations.toLocaleString()}
           subtitle="누적 예약 건수"
           icon={<CalendarRange size={20} />}
           iconBg="bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-[#3182F6]"
-        />
-        <MetricCard
-          title="전체 메시지"
-          value={stats.totals.messages.toLocaleString()}
-          subtitle="수신 + 발신 합계"
-          icon={<MessageSquareText size={20} />}
-          iconBg="bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-[#00C9A7]"
-        />
-        <MetricCard
-          title="자동 응답률"
-          value={`${autoRate.toFixed(1)}%`}
-          subtitle="룰 + LLM 자동 처리"
-          icon={<TrendingUp size={20} />}
-          iconBg="bg-[#F3EEFF] text-[#7B61FF] dark:bg-[#7B61FF]/15 dark:text-[#7B61FF]"
         />
         <MetricCard
           title="캠페인 발송"
@@ -316,51 +273,7 @@ const Dashboard = () => {
       </div>
 
       {/* Insight cards */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Card>
-          <div className="flex items-center gap-2">
-            <Activity size={18} className="text-gray-400" />
-            <h3 className="text-body font-semibold text-[#191F28] dark:text-white">응답 유형 분포</h3>
-          </div>
-          {responseTypeData.length === 0 ? (
-            <div className="empty-state py-8">
-              <p className="text-label">데이터 없음</p>
-            </div>
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie
-                    data={responseTypeData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={48}
-                    outerRadius={72}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {responseTypeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomPieTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2 pt-2">
-                {responseTypeData.map((entry) => (
-                  <div key={entry.name} className="flex items-center justify-between text-body">
-                    <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                      {entry.name}
-                    </span>
-                    <span className="font-medium tabular-nums text-[#191F28] dark:text-white">{entry.value}건</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Card>
           <div className="flex items-center gap-2">
             <Users size={18} className="text-gray-400" />
@@ -383,119 +296,55 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Table cards */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="section-card">
-          <div className="section-header">
-            <div className="flex items-center gap-2">
-              <CalendarRange size={18} className="text-gray-400" />
-              <h3 className="text-body font-semibold text-[#191F28] dark:text-white">최근 예약</h3>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <Table hoverable striped>
-              <TableHead>
-                <TableRow>
-                  <TableHeadCell>고객명</TableHeadCell>
-                  <TableHeadCell>전화번호</TableHeadCell>
-                  <TableHeadCell>일시</TableHeadCell>
-                  <TableHeadCell>상태</TableHeadCell>
-                </TableRow>
-              </TableHead>
-              <TableBody className="divide-y">
-                {(stats.recent_reservations ?? []).length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4}>
-                      <div className="py-4 text-center text-label text-gray-400">
-                        예약 내역이 없습니다
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  (stats.recent_reservations ?? []).slice(0, 5).map((r: any, idx: number) => (
-                    <TableRow key={r.id ?? idx}>
-                      <TableCell>
-                        <span className="font-medium text-gray-900 dark:text-white">{r.customer_name ?? '—'}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="tabular-nums text-gray-500">{r.phone ?? '—'}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-gray-500">{r.check_in_date ?? ''} {r.check_in_time ?? ''}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge color={statusBadgeColor(r.status)} size="sm">
-                          {STATUS_LABELS[r.status] ?? r.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+      {/* Recent reservations */}
+      <div className="section-card">
+        <div className="section-header">
+          <div className="flex items-center gap-2">
+            <CalendarRange size={18} className="text-gray-400" />
+            <h3 className="text-body font-semibold text-[#191F28] dark:text-white">최근 예약</h3>
           </div>
         </div>
-
-        <div className="section-card">
-          <div className="section-header">
-            <div className="flex items-center gap-2">
-              <MessageSquareText size={18} className="text-gray-400" />
-              <h3 className="text-body font-semibold text-[#191F28] dark:text-white">최근 SMS</h3>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <Table hoverable striped>
-              <TableHead>
+        <div className="overflow-x-auto">
+          <Table hoverable striped>
+            <TableHead>
+              <TableRow>
+                <TableHeadCell>고객명</TableHeadCell>
+                <TableHeadCell>전화번호</TableHeadCell>
+                <TableHeadCell>일시</TableHeadCell>
+                <TableHeadCell>상태</TableHeadCell>
+              </TableRow>
+            </TableHead>
+            <TableBody className="divide-y">
+              {(stats.recent_reservations ?? []).length === 0 ? (
                 <TableRow>
-                  <TableHeadCell>방향</TableHeadCell>
-                  <TableHeadCell>발신자</TableHeadCell>
-                  <TableHeadCell>메시지</TableHeadCell>
-                  <TableHeadCell>시간</TableHeadCell>
+                  <TableCell colSpan={4}>
+                    <div className="py-4 text-center text-label text-gray-400">
+                      예약 내역이 없습니다
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody className="divide-y">
-                {(stats.recent_messages ?? []).length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4}>
-                      <div className="py-4 text-center text-label text-gray-400">
-                        메시지 내역이 없습니다
-                      </div>
+              ) : (
+                (stats.recent_reservations ?? []).slice(0, 5).map((r: any, idx: number) => (
+                  <TableRow key={r.id ?? idx}>
+                    <TableCell>
+                      <span className="font-medium text-gray-900 dark:text-white">{r.customer_name ?? '—'}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="tabular-nums text-gray-500">{r.phone ?? '—'}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-gray-500">{r.check_in_date ?? ''} {r.check_in_time ?? ''}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge color={statusBadgeColor(r.status)} size="sm">
+                        {STATUS_LABELS[r.status] ?? r.status}
+                      </Badge>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  (stats.recent_messages ?? []).slice(0, 5).map((m: any, idx: number) => (
-                    <TableRow key={m.id ?? idx}>
-                      <TableCell>
-                        <Badge color={m.direction === 'inbound' ? 'info' : 'success'} size="sm">
-                          {m.direction === 'inbound' ? '수신' : '발신'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="tabular-nums text-gray-500">{m.from_ ?? '—'}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="line-clamp-1 max-w-[200px] text-gray-600 dark:text-gray-300">
-                          {m.content ?? '—'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="whitespace-nowrap text-caption text-gray-400">
-                          {m.created_at
-                            ? new Date(m.created_at).toLocaleString('ko-KR', {
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : '—'}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
     </div>
