@@ -26,7 +26,7 @@ async def get_current_tenant_id(
     import jwt
 
     if x_tenant_id is None:
-        x_tenant_id = 1  # Default to handam during transition
+        raise HTTPException(status_code=400, detail="X-Tenant-Id 헤더가 필요합니다")
 
     tenant = db.query(Tenant).filter(
         Tenant.id == x_tenant_id,
@@ -71,7 +71,7 @@ async def get_current_tenant(
 ):
     """Get full Tenant object for endpoints that need tenant settings (e.g., Naver sync)."""
     if x_tenant_id is None:
-        x_tenant_id = 1
+        raise HTTPException(status_code=400, detail="X-Tenant-Id 헤더가 필요합니다")
 
     from app.db.models import Tenant
     tenant = db.query(Tenant).filter(

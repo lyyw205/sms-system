@@ -156,7 +156,7 @@ def init_db():
                 RoomBizItemLink.biz_item_id == room.naver_biz_item_id,
             ).first()
             if not existing_link:
-                db.add(RoomBizItemLink(room_id=room.id, biz_item_id=room.naver_biz_item_id, tenant_id=1))
+                db.add(RoomBizItemLink(room_id=room.id, biz_item_id=room.naver_biz_item_id, tenant_id=room.tenant_id))
                 migrated += 1
         if migrated:
             db.commit()
