@@ -344,6 +344,7 @@ class TemplateScheduleExecutor:
                     "template_key": schedule.template.template_key,
                     "date_filter": schedule.date_filter,
                     "targets": send_results,
+                    "message": schedule.template.content,
                 },
                 target_count=len(targets),
                 success_count=sent_count,

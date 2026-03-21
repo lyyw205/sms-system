@@ -74,13 +74,13 @@ const TYPE_LABELS: Record<ActivityType, string> = {
 }
 
 const TYPE_BADGE_COLOR: Record<ActivityType, string> = {
-  room_assign: 'blue',
-  room_move: 'blue',
-  sms_template: 'purple',
-  sms_manual: 'purple',
-  sms_send: 'purple',
-  naver_sync: 'indigo',
-  sync_status: 'indigo',
+  room_assign: 'info',
+  room_move: 'info',
+  sms_template: 'success',
+  sms_manual: 'success',
+  sms_send: 'success',
+  naver_sync: 'warning',
+  sync_status: 'gray',
 }
 
 const STATUS_LABELS: Record<ActivityStatus, string> = {
@@ -376,8 +376,28 @@ const ActivityLogs = () => {
 
                         {/* Title */}
                         <TableCell>
-                          <span className="line-clamp-1 text-body text-[#191F28] dark:text-white">
-                            {log.title}
+                          <span className="line-clamp-1 flex flex-wrap items-center gap-1 text-body">
+                            {(() => {
+                              // [TENANT] [이름] 나머지 → 색상 뱃지 + 텍스트
+                              const match = log.title.match(/^(?:\[([^\]]+)\]\s*)?(?:\[([^\]]+)\]\s*)?(.*)$/)
+                              if (!match) return <span className="text-[#191F28] dark:text-white">{log.title}</span>
+                              const [, tenant, name, rest] = match
+                              return (
+                                <>
+                                  {tenant && (
+                                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-tiny font-semibold bg-[#F3EEFF] text-[#7C3AED] dark:bg-[#7C3AED]/15 dark:text-[#A78BFA]">
+                                      {tenant}
+                                    </span>
+                                  )}
+                                  {name && (
+                                    <span className="inline-flex items-center rounded px-3 py-0.5 text-caption font-semibold bg-[#F2F4F6] text-[#191F28] dark:bg-[#2C2C34] dark:text-gray-200">
+                                      {name}
+                                    </span>
+                                  )}
+                                  <span className="text-[#191F28] dark:text-white">{rest}</span>
+                                </>
+                              )
+                            })()}
                           </span>
                           {log.target && (
                             <span className="mt-0.5 block text-caption text-[#8B95A1] dark:text-gray-500">
@@ -438,24 +458,91 @@ const ActivityLogs = () => {
                         // 단건 발송이면 message가 detail에 직접 있고, 배치면 targets[0].message
                         const messageContent = d.message ? String(d.message) : (targets.length > 0 && targets[0].message ? String(targets[0].message) : '')
 
+                        // 필드명 → 한글 설명 매핑
+                        const FIELD_LABELS: Record<string, string> = {
+                          reservation_id: '예약 ID',
+                          customer_name: '예약자명',
+                          phone: '전화번호',
+                          template_key: '템플릿',
+                          room_number: '객실',
+                          provider: '발송 경로',
+                          message_id: '메시지 ID',
+                          error: '오류',
+                          schedule_id: '스케줄 ID',
+                          date_filter: '대상 날짜',
+                          old_room: '이전 객실',
+                          new_room: '변경 객실',
+                          guest_name: '예약자명',
+                          move_type: '배정 유형',
+                          dates: '적용 일자',
+                          old_section: '이전 섹션',
+                          new_section: '변경 섹션',
+                          target_date: '대상 날짜',
+                          period_start: '시작 시간',
+                          period_end: '종료 시간',
+                          total: '전체 건수',
+                          synced: '동기화 건수',
+                          created: '생성 건수',
+                          updated: '갱신 건수',
+                          success: '성공 여부',
+                          content: '내용',
+                          to: '수신번호',
+                        }
+
                         return (
                           <TableRow>
                             <TableCell colSpan={6} className="!py-3 !px-5 bg-[#F8F9FA] dark:bg-[#1E1E24]">
                               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                 {/* Column 1: 정보 + 발송 대상자 */}
                                 <div className="space-y-2">
-                                  {/* Meta fields */}
+                                  {/* Meta fields — 세로 정렬, 한글 라벨 */}
                                   {metaKeys.length > 0 && (
-                                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-caption">
-                                      {metaKeys.map(key => {
-                                        const value = d[key]
-                                        return (
-                                          <span key={key} className="text-[#4E5968] dark:text-gray-400">
-                                            <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
-                                            {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
-                                          </span>
-                                        )
-                                      })}
+                                    <div className="rounded-lg border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#2C2C34] overflow-hidden">
+                                      <table className="w-full text-caption">
+                                        <tbody>
+                                          {(() => {
+                                            // 2컬럼으로 나누기
+                                            const half = Math.ceil(metaKeys.length / 2)
+                                            const rows = Array.from({ length: half }, (_, i) => [metaKeys[i], metaKeys[i + half]] as const)
+                                            return rows.map(([leftKey, rightKey], i) => {
+                                              const fmt = (key: string | undefined) => {
+                                                if (!key) return null
+                                                const value = d[key]
+                                                return value === null || value === undefined
+                                                  ? '-'
+                                                  : typeof value === 'object'
+                                                    ? JSON.stringify(value)
+                                                    : String(value)
+                                              }
+                                              return (
+                                                <tr key={i} className="border-b last:border-b-0 border-[#F2F4F6] dark:border-gray-800">
+                                                  <td className="px-3 py-1.5 whitespace-nowrap font-medium text-[#8B95A1] dark:text-gray-500 w-24">
+                                                    {FIELD_LABELS[leftKey] || leftKey}
+                                                  </td>
+                                                  <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200 tabular-nums">
+                                                    {fmt(leftKey)}
+                                                  </td>
+                                                  {rightKey ? (
+                                                    <>
+                                                      <td className="px-3 py-1.5 whitespace-nowrap font-medium text-[#8B95A1] dark:text-gray-500 w-24 border-l border-[#F2F4F6] dark:border-gray-800">
+                                                        {FIELD_LABELS[rightKey] || rightKey}
+                                                      </td>
+                                                      <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200 tabular-nums">
+                                                        {fmt(rightKey)}
+                                                      </td>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <td className="border-l border-[#F2F4F6] dark:border-gray-800" />
+                                                      <td />
+                                                    </>
+                                                  )}
+                                                </tr>
+                                              )
+                                            })
+                                          })()}
+                                        </tbody>
+                                      </table>
                                     </div>
                                   )}
                                   {/* Targets table */}

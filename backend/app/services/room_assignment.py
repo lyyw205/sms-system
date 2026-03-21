@@ -173,11 +173,11 @@ def assign_room(
                 title=f"[{reservation.customer_name}] 객실이동 {old_room} → {room_number}",
                 detail={
                     "reservation_id": reservation_id,
+                    "move_type": assigned_by,
                     "guest_name": reservation.customer_name,
+                    "dates": dates,
                     "old_room": old_room,
                     "new_room": room_number,
-                    "dates": dates,
-                    "move_type": assigned_by,
                 },
                 created_by=log_creator,
             )
@@ -187,11 +187,11 @@ def assign_room(
                 title=f"[{reservation.customer_name}] 객실배정 {room_number}",
                 detail={
                     "reservation_id": reservation_id,
+                    "move_type": assigned_by,
                     "guest_name": reservation.customer_name,
+                    "dates": dates,
                     "old_room": None,
                     "new_room": room_number,
-                    "dates": dates,
-                    "move_type": assigned_by,
                 },
                 created_by=log_creator,
             )
@@ -257,11 +257,11 @@ def unassign_room(
             title=f"[{reservation.customer_name}] 객실해제 {old_room}",
             detail={
                 "reservation_id": reservation_id,
+                "move_type": old_assigned_by,
                 "guest_name": reservation.customer_name,
+                "dates": [a.date for a in old_assignments],
                 "old_room": old_room,
                 "new_room": None,
-                "dates": [a.date for a in old_assignments],
-                "move_type": old_assigned_by,
             },
             created_by="system" if old_assigned_by == "auto" else old_assigned_by,
         )
