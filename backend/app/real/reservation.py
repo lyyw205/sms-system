@@ -254,11 +254,13 @@ class RealReservationProvider:
         biz_item_id = item.get('bizItemId')
         booking_count = item.get('bookingCount', 1)
 
-        # Determine people count from bookingOptionJson if available
-        people_count = booking_count
+        # Determine people count from bookingOptionJson "인원수" option
+        people_count = None
         booking_options = item.get('bookingOptionJson') or []
-        if booking_options:
-            people_count = booking_options[0].get('bookingCount', booking_count)
+        for opt in booking_options:
+            if opt.get('name') == '인원수' or opt.get('originalName') == '인원수':
+                people_count = opt.get('bookingCount')
+                break
 
         return {
             'external_id': str(item.get('bookingId', '')),

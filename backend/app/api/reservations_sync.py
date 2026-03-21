@@ -70,10 +70,11 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
         name = biz_name_map.get(bid, bid)
         res_data["room_type"] = name
         res_data["biz_item_name"] = name
-        # 인원 enrichment (네이버 API가 1 이하일 때 DB capacity로 보정)
-        if res_data.get("people_count", 1) <= 1:
+        # 인원 enrichment (None이거나 1 이하일 때 DB capacity로 보정)
+        pc = res_data.get("people_count") or 0
+        if pc <= 1:
             cap = biz_capacity_map.get(bid, 1)
-            if cap and cap > res_data.get("people_count", 1):
+            if cap and cap > pc:
                 res_data["people_count"] = cap
         # section_hint enrichment (res_data에 저장해서 _create_reservation에서 사용)
         res_data["_section_hint"] = biz_section_map.get(bid)
@@ -187,7 +188,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         status=status_enum,
         booking_source="naver",
         naver_room_type=naver_room_type,
-        party_size=res_data.get("people_count", 1),
+        party_size=res_data.get("people_count") or 1,
         male_count=male_count,
         female_count=female_count,
         check_out_date=res_data.get("end_date"),
