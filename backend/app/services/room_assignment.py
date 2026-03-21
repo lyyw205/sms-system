@@ -170,7 +170,7 @@ def assign_room(
         if old_room and old_room != room_number:
             log_activity(
                 db, type="room_move",
-                title=f"객실 이동: {old_room} → {room_number}",
+                title=f"[{reservation.customer_name}] 객실이동 {old_room} → {room_number}",
                 detail={
                     "reservation_id": reservation_id,
                     "guest_name": reservation.customer_name,
@@ -184,7 +184,7 @@ def assign_room(
         elif not old_room:
             log_activity(
                 db, type="room_move",
-                title=f"객실 배정: {room_number}",
+                title=f"[{reservation.customer_name}] 객실배정 {room_number}",
                 detail={
                     "reservation_id": reservation_id,
                     "guest_name": reservation.customer_name,
@@ -254,7 +254,7 @@ def unassign_room(
         old_assigned_by = old_assignments[0].assigned_by
         log_activity(
             db, type="room_move",
-            title=f"객실 해제: {old_room}",
+            title=f"[{reservation.customer_name}] 객실해제 {old_room}",
             detail={
                 "reservation_id": reservation_id,
                 "guest_name": reservation.customer_name,

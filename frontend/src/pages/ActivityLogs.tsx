@@ -32,10 +32,12 @@ import { activityLogsAPI } from '@/services/api'
 
 type ActivityType =
   | 'room_assign'
+  | 'room_move'
   | 'sms_template'
   | 'sms_manual'
   | 'sms_send'
   | 'naver_sync'
+  | 'sync_status'
 
 type ActivityStatus = 'success' | 'failed' | 'partial'
 
@@ -63,18 +65,22 @@ interface ActivityStats {
 
 const TYPE_LABELS: Record<ActivityType, string> = {
   room_assign: '객실 배정',
-  sms_template: 'SMS 템플릿',
-  sms_manual: '수동 SMS',
+  room_move: '객실 이동',
+  sms_template: 'SMS 발송',
+  sms_manual: 'SMS 발송',
   sms_send: 'SMS 발송',
   naver_sync: '네이버 동기화',
+  sync_status: '동기화 상태',
 }
 
 const TYPE_BADGE_COLOR: Record<ActivityType, string> = {
   room_assign: 'blue',
+  room_move: 'blue',
   sms_template: 'purple',
-  sms_manual: 'green',
-  sms_send: 'blue',
+  sms_manual: 'purple',
+  sms_send: 'purple',
   naver_sync: 'indigo',
+  sync_status: 'indigo',
 }
 
 const STATUS_LABELS: Record<ActivityStatus, string> = {
@@ -276,8 +282,8 @@ const ActivityLogs = () => {
           >
             <option value="">전체 타입</option>
             <option value="room_assign">객실 배정</option>
-            <option value="sms_template">SMS 템플릿</option>
-            <option value="sms_manual">수동 SMS</option>
+            <option value="room_move">객실 이동</option>
+            <option value="sms_send">SMS 발송</option>
             <option value="naver_sync">네이버 동기화</option>
           </Select>
 
@@ -424,61 +430,80 @@ const ActivityLogs = () => {
                         </TableCell>
                       </TableRow>
 
-                      {/* Detail row */}
-                      {isExpanded && hasDetail && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="!py-3 !px-5 bg-[#F8F9FA] dark:bg-[#1E1E24]">
-                            <div className="space-y-2">
-                              {/* Meta fields (exclude message, targets) */}
-                              <div className="flex flex-wrap gap-x-5 gap-y-1 text-caption">
-                                {Object.entries(parsedDetail!).filter(([key]) => key !== 'message' && key !== 'targets').map(([key, value]) => (
-                                  <span key={key} className="text-[#4E5968] dark:text-gray-400">
-                                    <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
-                                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
-                                  </span>
-                                ))}
-                              </div>
-                              {/* Targets list (schedule bulk send) */}
-                              {Array.isArray(parsedDetail!.targets) && parsedDetail!.targets.length > 0 && (
-                                <div className="rounded-lg border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#2C2C34] overflow-hidden">
-                                  <table className="w-full text-caption">
-                                    <thead>
-                                      <tr className="border-b border-[#E5E8EB] dark:border-gray-700 bg-[#F8F9FA] dark:bg-[#1E1E24]">
-                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">이름</th>
-                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">전화번호</th>
-                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">객실</th>
-                                        <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">결과</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {(parsedDetail!.targets as Array<{name: string; phone: string; status: string; error?: string; message_id?: string; template_detail?: string}>).map((t, i) => (
-                                        <tr key={i} className="border-b last:border-b-0 border-[#F2F4F6] dark:border-gray-800">
-                                          <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200">{t.name}</td>
-                                          <td className="px-3 py-1.5 tabular-nums text-[#4E5968] dark:text-gray-400">{t.phone}</td>
-                                          <td className="px-3 py-1.5 text-[#4E5968] dark:text-gray-400">{t.template_detail || '-'}</td>
-                                          <td className="px-3 py-1.5">
-                                            {t.status === 'success' ? (
-                                              <span className="text-[#00C9A7]">성공</span>
-                                            ) : (
-                                              <span className="text-[#F04452]">{t.error || '실패'}</span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
+                      {/* Detail row — 2-column layout */}
+                      {isExpanded && hasDetail && (() => {
+                        const d = parsedDetail!
+                        const targets = Array.isArray(d.targets) ? d.targets as Array<{name: string; phone: string; status: string; error?: string; message_id?: string; template_detail?: string; message?: string}> : []
+                        const metaKeys = Object.keys(d).filter(k => k !== 'message' && k !== 'targets')
+                        // 단건 발송이면 message가 detail에 직접 있고, 배치면 targets[0].message
+                        const messageContent = d.message ? String(d.message) : (targets.length > 0 && targets[0].message ? String(targets[0].message) : '')
+
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={6} className="!py-3 !px-5 bg-[#F8F9FA] dark:bg-[#1E1E24]">
+                              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                {/* Column 1: 정보 + 발송 대상자 */}
+                                <div className="space-y-2">
+                                  {/* Meta fields */}
+                                  {metaKeys.length > 0 && (
+                                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-caption">
+                                      {metaKeys.map(key => {
+                                        const value = d[key]
+                                        return (
+                                          <span key={key} className="text-[#4E5968] dark:text-gray-400">
+                                            <span className="font-medium text-[#8B95A1] dark:text-gray-500">{key}:</span>{' '}
+                                            {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
+                                          </span>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                  {/* Targets table */}
+                                  {targets.length > 0 && (
+                                    <div className="rounded-lg border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#2C2C34] overflow-hidden">
+                                      <table className="w-full text-caption">
+                                        <thead>
+                                          <tr className="border-b border-[#E5E8EB] dark:border-gray-700 bg-[#F8F9FA] dark:bg-[#1E1E24]">
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">이름</th>
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">전화번호</th>
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">객실</th>
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">결과</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {targets.map((t, i) => (
+                                            <tr key={i} className="border-b last:border-b-0 border-[#F2F4F6] dark:border-gray-800">
+                                              <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200">{t.name}</td>
+                                              <td className="px-3 py-1.5 tabular-nums text-[#4E5968] dark:text-gray-400">{t.phone}</td>
+                                              <td className="px-3 py-1.5 text-[#4E5968] dark:text-gray-400">{t.template_detail || '-'}</td>
+                                              <td className="px-3 py-1.5">
+                                                {t.status === 'success' ? (
+                                                  <span className="text-[#00C9A7]">성공</span>
+                                                ) : (
+                                                  <span className="text-[#F04452]">{t.error || '실패'}</span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                              {/* Full message content */}
-                              {parsedDetail!.message && (
-                                <pre className="whitespace-pre-wrap rounded-lg bg-white p-3 text-caption text-[#191F28] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:border-gray-700">
-                                  {String(parsedDetail!.message)}
-                                </pre>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                                {/* Column 2: 문자 내용 */}
+                                {messageContent && (
+                                  <div className="space-y-1">
+                                    <span className="text-caption font-medium text-[#8B95A1] dark:text-gray-500">문자 내용</span>
+                                    <pre className="whitespace-pre-wrap rounded-lg bg-white p-3 text-caption text-[#191F28] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-200 dark:border-gray-700">
+                                      {messageContent}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })()}
                     </React.Fragment>
                   )
                 })}

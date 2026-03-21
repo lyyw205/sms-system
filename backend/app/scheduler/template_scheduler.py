@@ -195,7 +195,7 @@ class TemplateScheduleExecutor:
         self.sms_provider = get_sms_provider_for_tenant(tenant)
         self.template_renderer = TemplateRenderer(db)
 
-    async def execute_schedule(self, schedule_id: int) -> Dict[str, Any]:
+    async def execute_schedule(self, schedule_id: int, manual: bool = False) -> Dict[str, Any]:
         """
         Execute a template schedule
 
@@ -304,6 +304,7 @@ class TemplateScheduleExecutor:
                             "template_detail": room_building_map.get(reservation.id, ""),
                             "status": "success",
                             "message_id": result.get("message_id"),
+                            "message": result.get("message", ""),
                         })
                     else:
                         failed_count += 1
@@ -336,8 +337,8 @@ class TemplateScheduleExecutor:
             # 활동 로그 기록 (대상자 상세 포함)
             log_activity(
                 self.db,
-                type="sms_template",
-                title=f"스케줄 발송: {schedule.schedule_name}",
+                type="sms_send",
+                title=f"SMS 발송 : {'스케줄 수동 발송' if manual else '스케줄 자동 발송'}",
                 detail={
                     "schedule_id": schedule.id,
                     "template_key": schedule.template.template_key,

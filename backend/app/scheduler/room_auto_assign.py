@@ -79,7 +79,7 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
         log_activity(
             db,
             type="room_assign",
-            title=f"객실 자동 배정 ({target_date})",
+            title=f"객실 자동 배정 : {'스케줄' if created_by == 'system' else '수동 버튼'} ({target_date})",
             detail={
                 "target_date": target_date,
                 "targets": assigned_details,

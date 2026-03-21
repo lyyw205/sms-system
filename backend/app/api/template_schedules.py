@@ -288,7 +288,7 @@ async def run_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped
 
     # Execute schedule
     executor = TemplateScheduleExecutor(db)
-    result = await executor.execute_schedule(schedule_id)
+    result = await executor.execute_schedule(schedule_id, manual=True)
 
     return result
 

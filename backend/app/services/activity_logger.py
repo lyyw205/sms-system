@@ -1,7 +1,17 @@
 """활동 로그 기록 헬퍼"""
 import json
 from sqlalchemy.orm import Session
-from app.db.models import ActivityLog
+from app.db.models import ActivityLog, Tenant
+from app.db.tenant_context import current_tenant_id
+
+
+def _get_tenant_slug(db: Session) -> str | None:
+    """현재 테넌트의 slug를 반환 (캐시 없이 간단 조회)."""
+    tid = current_tenant_id.get()
+    if tid is None:
+        return None
+    tenant = db.get(Tenant, tid)
+    return tenant.slug.upper() if tenant else None
 
 
 def log_activity(
@@ -15,6 +25,11 @@ def log_activity(
     failed_count: int = 0,
     created_by: str = "system",
 ) -> ActivityLog:
+    # title에 [TENANT] prefix가 없으면 자동 추가
+    slug = _get_tenant_slug(db)
+    if slug and not title.startswith(f"[{slug}]"):
+        title = f"[{slug}] {title}"
+
     log = ActivityLog(
         activity_type=type,
         title=title,

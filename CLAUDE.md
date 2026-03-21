@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SMS Reservation System - A demo/MVP system for automating SMS responses and managing reservations. The system uses a **hot-swap architecture** that switches between Mock (demo) and Real (production) providers via a single environment variable (`DEMO_MODE`).
+SMS Reservation System - 숙소(게스트하우스) 예약 관리 + SMS 자동 발송 시스템. 네이버 예약 연동, 객실 배정, 템플릿 기반 SMS 스케줄링, 파티 체크인 등을 지원합니다.
 
-**Key Architectural Pattern**: Provider Factory Pattern with Protocol-based abstraction allows seamless switching between mock and production implementations without code changes.
+**핵심 아키텍처 패턴**:
+1. **Provider Factory + Hot-Swap**: `DEMO_MODE` 환경변수로 Mock/Real 구현체 즉시 전환
+2. **Multi-Tenant Isolation**: ContextVar 기반 테넌트 격리 (SELECT/INSERT 자동 필터링)
+3. **Template Schedule System**: APScheduler + DB 기반 SMS 자동 발송 스케줄링
 
 ## Development Commands
 
@@ -93,285 +96,182 @@ alembic downgrade -1
 
 ## Architecture
 
-### Hot-Swap Provider System
+### Multi-Tenant System
 
-The system's core architectural pattern is the **Provider Factory** that enables instant switching between demo and production modes:
+ContextVar 기반 자동 테넌트 격리 (`app/db/tenant_context.py`):
+- **before_compile event**: 모든 SELECT에 `WHERE tenant_id = X` 자동 추가
+- **before_flush event**: 모든 INSERT에 `tenant_id` 자동 주입
+- **bypass_tenant_filter**: 스케줄러/마이그레이션 등 전역 작업 시 필터 우회
+- **X-Tenant-Id 헤더**: 프론트엔드 요청마다 테넌트 지정 (`app/api/deps.py`)
 
-1. **Protocol Interfaces** (`app/providers/base.py`): Define abstract contracts for all external integrations
-   - `SMSProvider`: SMS sending/receiving
-   - `LLMProvider`: Claude API for auto-responses
-   - `ReservationProvider`: Naver Booking sync
-   - `StorageProvider`: Google Sheets integration
+### Provider Factory (Hot-Swap)
 
-2. **Factory** (`app/factory.py`): Central decision point that returns Mock or Real implementations based on `settings.DEMO_MODE`
-   ```python
-   def get_sms_provider() -> SMSProvider:
-       if settings.DEMO_MODE:
-           return MockSMSProvider()
-       else:
-           return RealSMSProvider(api_key=settings.SMS_API_KEY)
-   ```
+`app/factory.py` — 테넌트별 provider 생성:
+- `get_sms_provider_for_tenant(tenant)`: Mock 또는 Real(Aligo API)
+- `get_reservation_provider_for_tenant(tenant)`: Mock 또는 Real(네이버 API)
+- `get_llm_provider()`: Mock(키워드 매칭) 또는 Real(Claude API, 미구현)
 
-3. **Mock Implementations** (`app/mock/`): Demo-safe versions that log to console and use local files
-4. **Real Implementations** (`app/real/`): Production versions integrating actual external APIs (stubs ready for implementation)
+### SMS Template Schedule Pipeline
 
-### Message Processing Flow
+핵심 비즈니스 로직 — 예약 기반 자동 SMS 발송:
+1. `TemplateSchedule` (DB) → APScheduler 등록 (`scheduler/schedule_manager.py`)
+2. 트리거 시점 → `TemplateScheduleExecutor.execute_schedule()` (`scheduler/template_scheduler.py`)
+3. 대상 예약 필터링 (building/room/assignment/column_match 조건)
+4. 템플릿 변수 계산 (`templates/variables.py`) → 렌더링 (`templates/renderer.py`)
+5. SMS 발송 (`services/sms_sender.py`) → ActivityLog 기록
 
-**Auto-Response Pipeline**:
-1. SMS arrives → `POST /webhooks/sms/receive` (or simulation via frontend)
-2. Message saved to database with `status=received`, `direction=inbound`
-3. `MessageRouter` (`app/router/message_router.py`) executes routing logic:
-   - **Step 1**: Try `RuleEngine` (regex pattern matching from `app/rules/rules.yaml`, confidence: 0.95)
-   - **Step 2**: If no rule matches, fallback to `LLMProvider` (Mock: keyword matching, Real: Claude API + RAG)
-   - **Step 3**: Check confidence threshold (≥0.6 = auto-send, <0.6 = human review queue)
-4. If auto-approved, `SMSProvider.send_sms()` is called
-5. Outbound message saved with `direction=outbound`, `status=sent`
+### Room Assignment System
 
-### Reservation Event System
+`services/room_assignment.py`:
+- `assign_room()`: 객실 배정 (SELECT FOR UPDATE로 중복 방지)
+- `sync_sms_tags()`: 배정 변경 시 ReservationSmsAssignment 자동 동기화
+- `scheduler/room_auto_assign.py`: 자동 배정 (도미토리 성별 잠금, 용량 체크)
 
-SQLAlchemy event listeners trigger automatic SMS notifications when reservation status changes:
+### Auto-Response Pipeline
 
-```python
-# app/notifications/service.py
-@event.listens_for(Reservation, "after_insert")
-@event.listens_for(Reservation, "after_update")
-def send_reservation_notification(mapper, connection, target):
-    # Sends SMS based on status: pending, confirmed, cancelled, completed
-```
+`router/message_router.py`: DB Rules → YAML Rules → LLM → Review Queue
+- confidence ≥ 0.6: 자동 발송
+- confidence < 0.6: 사람 검토 대기열
 
 ## Key File Locations
 
-### Configuration
-- `backend/app/config.py`: Settings with `DEMO_MODE` flag (critical for hot-swap)
-- `backend/.env`: Environment variables (copy from `.env.example`)
-- `backend/app/factory.py`: Provider factory (hot-swap implementation)
+### Configuration & Core
+- `backend/app/config.py`: Pydantic Settings (`DEMO_MODE`, DB, API keys, JWT)
+- `backend/app/factory.py`: 테넌트별 Provider Factory
+- `backend/app/main.py`: FastAPI app (CORS, rate limit, 19개 라우터 등록, startup/shutdown)
+- `backend/app/rate_limit.py`: slowapi + X-Forwarded-For 파싱
 
-### Backend API Layers
-- `backend/app/api/`: FastAPI route handlers
-  - `messages.py`: SMS message management
-  - `reservations.py`: Reservation CRUD and sync
-  - `rules.py`: Auto-response rule management
-  - `documents.py`: Knowledge base document management
-  - `campaigns.py`: Bulk SMS campaigns
-  - `webhooks.py`: SMS receive webhook
-  - `dashboard.py`: Dashboard statistics
-  - `scheduler.py`: Scheduled jobs management
-  - `auto_response.py`: Auto-response testing and rule reload
+### Database Layer
+- `backend/app/db/models.py`: 20+ SQLAlchemy 모델 (TenantMixin 적용)
+- `backend/app/db/database.py`: 엔진/세션 + init_db() 자동 마이그레이션
+- `backend/app/db/tenant_context.py`: ContextVar 기반 멀티테넌트 격리
+- `backend/app/db/seed.py`: 초기 데이터 시딩 (admin/staff 계정)
 
-### Message Routing
-- `backend/app/router/message_router.py`: Auto-response routing logic (Rule → LLM → Human)
-- `backend/app/rules/engine.py`: Regex-based rule matching engine
-- `backend/app/rules/rules.yaml`: Business rules for auto-responses
+### API Endpoints (19 routers)
+- `auth.py`: 로그인, 토큰 갱신, 사용자 CRUD
+- `reservations.py`: 예약 CRUD + 객실 배정/SMS 배정
+- `reservations_sync.py`: 네이버 예약 동기화
+- `rooms.py`: 객실 CRUD + N:M biz_item 매핑 + 캘린더
+- `buildings.py`: 건물 CRUD
+- `templates.py`: SMS 템플릿 CRUD + 변수 미리보기
+- `template_schedules.py`: 스케줄 CRUD + APScheduler 연동
+- `messages.py`: SMS 수발신 관리 + 연락처 목록
+- `webhooks.py`: SMS 수신 웹훅 + 자동응답 파이프라인
+- `auto_response.py`: 자동응답 테스트/생성
+- `rules.py`: 자동응답 규칙 CRUD
+- `dashboard.py`: 대시보드 통계 + 성별 예측
+- `activity_logs.py`: 활동 로그 조회/통계
+- `party_checkin.py`: 파티 체크인 토글
+- `events.py`: SSE 실시간 이벤트
+- `settings.py`: 테넌트 설정 (네이버 쿠키 등)
+- `tenants.py`: 테넌트 목록
+- `documents.py`: 지식 베이스 문서 관리
+- `deps.py`: FastAPI 의존성 (테넌트 스코프 DB 세션)
 
-### Database
-- `backend/app/db/models.py`: SQLAlchemy models (Message, Reservation, Rule, Document, etc.)
-- `backend/app/db/database.py`: Database session management
-- `backend/app/db/seed.py`: Sample data seeding script
+### Services
+- `services/sms_sender.py`: SMS 발송 (단건 + 배치) + ActivityLog
+- `services/room_assignment.py`: 객실 배정 + SMS 태그 동기화
+- `services/activity_logger.py`: 감사 로그 생성
+- `services/event_bus.py`: SSE 브로드캐스트 (테넌트별 격리)
+- `services/sms_tracking.py`: ReservationSmsAssignment 추적
 
-### Provider Implementations
-- `backend/app/providers/base.py`: Protocol definitions
-- `backend/app/mock/`: Mock implementations (sms.py, llm.py, reservation.py, storage.py)
-- `backend/app/real/`: Real implementations (stubs ready for production)
+### Scheduler
+- `scheduler/jobs.py`: APScheduler 설정 + 네이버 동기화/상태 로그 작업
+- `scheduler/template_scheduler.py`: 템플릿 스케줄 실행기 (필터링/발송)
+- `scheduler/schedule_manager.py`: 스케줄 ↔ APScheduler 트리거 관리
+- `scheduler/room_auto_assign.py`: 자동 객실 배정 (도미토리 성별 잠금)
 
-### Frontend Structure
-- `frontend/src/App.tsx`: Main app with React Router setup
-- `frontend/src/pages/`: Page components
-  - `Dashboard.tsx`: Statistics and charts
-  - `Messages.tsx`: SMS inbox with simulator
-  - `Reservations.tsx`: Reservation management
-  - `Rules.tsx`: Auto-response rule editor
-  - `Documents.tsx`: Knowledge base uploader
-  - `RoomAssignment.tsx`: Room assignment with password generation
-  - `Campaigns.tsx`: Bulk SMS campaign manager
-  - `Scheduler.tsx`: Scheduled job configuration
-  - `AutoResponse.tsx`: Auto-response testing interface
-- `frontend/src/components/`: Reusable components
-- `frontend/src/services/`: API client using Axios
-- `frontend/vite.config.ts`: Vite configuration with proxy setup
+### Templates
+- `templates/renderer.py`: `{{변수}}` 치환 + 객실 비밀번호 생성
+- `templates/variables.py`: 템플릿 변수 계산 (ParticipantSnapshot 캐시)
 
-### Additional Modules
-- `backend/app/notifications/`: SMS notification service with event listeners
-- `backend/app/scheduler/`: APScheduler jobs for automated tasks
-- `backend/app/campaigns/`: Bulk SMS campaign logic
-- `backend/app/analytics/`: Gender and demographic analysis
-- `backend/app/templates/`: SMS template rendering with Jinja2
+### Auth
+- `auth/utils.py`: bcrypt 해싱 + JWT 생성/검증
+- `auth/dependencies.py`: FastAPI 인증 의존성 (역할 기반 접근 제어)
+
+### Providers
+- `providers/base.py`: Protocol 정의 (SMSProvider, ReservationProvider, LLMProvider)
+- `mock/sms.py`, `mock/llm.py`: 데모용 Mock 구현
+- `real/sms.py`: Aligo SMS API (SMS/LMS 자동 감지, 500건 배치)
+- `real/reservation.py`: 네이버 스마트플레이스 API (쿠키 인증, 성별/연령 조회)
+- `real/llm.py`: Claude API (미구현 stub)
+
+### Frontend
+- `src/App.tsx`: React Router (역할별 라우트 보호)
+- `src/pages/`: 12개 페이지 (Dashboard, Reservations, RoomAssignment, RoomSettings, Templates, Messages, AutoResponse, ActivityLogs, PartyCheckin, Settings, Login, UserManagement)
+- `src/services/api.ts`: Axios 클라이언트 (자동 토큰 갱신, X-Tenant-Id 헤더)
+- `src/stores/`: Zustand (auth-store, tenant-store)
+- `src/components/Layout.tsx`: 사이드바 + 역할별 네비게이션
 
 ## Database Schema
 
-### Core Tables
-- **messages**: SMS history with auto-response metadata
-  - `auto_response`: Generated response text
-  - `auto_response_confidence`: Confidence score (0-1)
-  - `needs_review`: Human review flag
-  - `response_source`: 'rule', 'llm', or 'manual'
+### Core Models (all TenantMixin except User, Tenant)
 
-- **reservations**: Extended schema with Naver Booking integration
-  - `naver_booking_id`: Naver Booking ID
-  - `room_number`, `room_password`: Room assignment
-  - `gender`, `age_group`: Demographics
-  - `tags`: Comma-separated tags (e.g., "객후,1초,2차만")
-  - `room_sms_sent`, `party_sms_sent`: SMS tracking flags
+| 모델 | 용도 | 핵심 필드 |
+|------|------|-----------|
+| `User` | 인증 | username, hashed_password, role (SUPERADMIN/ADMIN/STAFF) |
+| `Tenant` | 멀티테넌트 | slug, name, naver_business_id, naver_cookie, aligo_sender |
+| `Reservation` | 예약 | customer_name, phone, check_in/out_date, section (room/party/unassigned), male_count, female_count |
+| `Message` | SMS 이력 | direction, from_, to, content, auto_response, confidence, needs_review, response_source |
+| `Room` | 객실 | room_number, room_type, is_dormitory, base/max_capacity, building_id |
+| `Building` | 건물 | name, sort_order, is_active |
+| `RoomAssignment` | 일자별 배정 | reservation_id, date, room_number, room_password, assigned_by |
+| `RoomBizItemLink` | N:M 매핑 | room_id, biz_item_id, male/female_priority |
+| `NaverBizItem` | 네이버 상품 | biz_item_id, name, is_exposed |
+| `MessageTemplate` | SMS 템플릿 | template_key, content, variables (JSON), category, participant_buffer |
+| `TemplateSchedule` | 발송 스케줄 | template_id, schedule_type, hour, minute, filters (JSON), target_mode |
+| `ReservationSmsAssignment` | SMS 추적 | reservation_id, template_key, date, assigned_by, sent_at |
+| `Rule` | 자동응답 규칙 | pattern (regex), response, priority, is_active |
+| `ActivityLog` | 감사 로그 | activity_type, title, detail (JSON), target/success/failed_count |
+| `PartyCheckin` | 파티 출석 | reservation_id, date, checked_in_at |
+| `ReservationDailyInfo` | 일자별 오버라이드 | reservation_id, date, party_type |
+| `ParticipantSnapshot` | 성별 캐시 | date, male_count, female_count |
+| `GenderStat` | 인구통계 | date, male_count, female_count |
 
-- **rules**: Auto-response rules
-  - `pattern`: Regex pattern for matching
-  - `response`: Response template (supports Jinja2)
-  - `priority`: Higher priority rules matched first
-  - `active`: Enable/disable flag
-
-- **documents**: Knowledge base for RAG
-  - `content`: Document text
-  - `indexed`: ChromaDB indexing status
-
-- **message_templates**: Reusable SMS templates
-- **campaign_logs**: Bulk SMS campaign history
-- **gender_stats**: Demographics analysis results
+### Enums
+- `UserRole`: SUPERADMIN, ADMIN, STAFF
+- `MessageDirection`: INBOUND, OUTBOUND
+- `MessageStatus`: PENDING, SENT, FAILED, RECEIVED
+- `ReservationStatus`: PENDING, CONFIRMED, CANCELLED, COMPLETED
 
 ## Environment Variables
 
-Critical settings in `backend/.env`:
+`backend/.env` 주요 설정:
 
-- `DEMO_MODE`: `true` (mock) or `false` (production) - **THE hot-swap switch**
-- `DATABASE_URL`: Database connection string
-  - Demo: `sqlite:///./sms.db`
-  - Production: `postgresql://smsuser:smspass@localhost:5432/smsdb`
-- `REDIS_URL`: Redis connection for caching/queues (optional in demo mode)
-- `CHROMADB_URL`: Vector database for RAG (optional in demo mode)
+- `DEMO_MODE`: `true` (mock) / `false` (production) — **핵심 스위치**
+- `DATABASE_URL`: `sqlite:///./sms.db` (데모) / `postgresql://...` (운영)
+- `JWT_SECRET_KEY`: 데모 모드에서 자동 생성
+- `ADMIN_DEFAULT_PASSWORD`, `STAFF_DEFAULT_PASSWORD`: 데모 모드에서 자동 생성
 
-Production-only (required when `DEMO_MODE=false`):
-- `SMS_API_KEY`, `SMS_API_SECRET`: NHN Cloud SMS API
+운영 전용 (`DEMO_MODE=false`):
+- `ALIGO_API_KEY`, `ALIGO_USER_ID`, `ALIGO_SENDER`: Aligo SMS API
 - `CLAUDE_API_KEY`: Anthropic Claude API
-- `GOOGLE_SHEETS_CREDENTIALS`: Service account JSON path
-- `NAVER_RESERVATION_EMAIL`, `NAVER_RESERVATION_PASSWORD`: Naver Booking credentials
+- 네이버 쿠키: DB Tenant 레코드에 저장 (런타임 업데이트 가능)
 
-## Demo Mode vs Production Mode
+## Scheduler Jobs
 
-**Current State**: System runs in `DEMO_MODE=true` by default
-
-### Demo Mode (`DEMO_MODE=true`)
-- All external API calls are mocked
-- SMS sends print to console with `[MOCK SMS SENT]` logs
-- LLM uses keyword matching instead of Claude API
-- Naver sync reads from `backend/app/mock/data/naver_reservations.json`
-- Google Sheets writes to `backend/app/mock/data/reservations.csv`
-- Zero external costs, safe for demos
-
-### Production Mode (`DEMO_MODE=false`)
-- Real API integrations activate
-- Requires all API keys in `.env`
-- Real implementations in `app/real/` are used
-- Estimated transition time: 9 hours (implement Real providers + integration testing)
-
-## Testing & Debugging
-
-### API Testing
-Use Swagger UI at http://localhost:8000/docs to test all endpoints interactively.
-
-### SMS Simulation (Demo Mode)
-Frontend includes SMS Simulator component on Messages page:
-1. Enter phone number and message
-2. Click "수신 시뮬레이션"
-3. Check terminal logs for `[MOCK SMS RECEIVED]` and `[MOCK SMS SENT]`
-4. Message appears in database and frontend table
-
-### Rule Testing
-```bash
-# Test auto-response without saving to DB
-POST /api/auto-response/test
-Body: {"message": "영업시간이 어떻게 되나요?"}
-```
-
-### Hot-Reload Rules
-```bash
-# Reload rules.yaml without restarting server
-POST /api/auto-response/reload-rules
-```
-
-### Background Tasks
-The scheduler runs automated tasks:
-- Naver reservation sync (configurable interval)
-- Party guide SMS sending (scheduled time)
-- Gender statistics extraction (daily)
+| Job | 주기 | 설명 |
+|-----|------|------|
+| `sync_naver_reservations_job` | 5분 | 네이버 예약 동기화 (전 테넌트) |
+| `sync_status_log_job` | 6시간 (00,06,12,18) | 동기화 상태 로그 기록 |
+| `daily_room_assign_job` | 매일 | 미래 날짜 자동 객실 배정 |
+| `TemplateSchedule` 기반 | DB 설정 | 템플릿별 SMS 자동 발송 |
 
 ## Common Development Patterns
 
-### Adding a New Provider Type
+### API 엔드포인트 추가
+1. `app/api/[domain].py`에 라우터 작성
+2. `get_tenant_scoped_db()` 의존성으로 테넌트 격리 DB 세션 획득
+3. `app/main.py`에 라우터 등록
 
-1. Define Protocol in `app/providers/base.py`:
-   ```python
-   class NewProvider(Protocol):
-       async def some_method(self, param: str) -> Dict[str, Any]: ...
-   ```
+### SMS 템플릿 변수
+`{{customer_name}}`, `{{room_num}}`, `{{building}}`, `{{room_password}}`, `{{participant_count}}`, `{{male_count}}`, `{{female_count}}` 등 — `templates/variables.py`의 `calculate_template_variables()` 참조
 
-2. Create Mock in `app/mock/new_provider.py`:
-   ```python
-   class MockNewProvider:
-       async def some_method(self, param: str) -> Dict[str, Any]:
-           logger.info(f"[MOCK NEW PROVIDER] Called with {param}")
-           return {"result": "mocked"}
-   ```
-
-3. Create Real stub in `app/real/new_provider.py`
-
-4. Add factory function in `app/factory.py`:
-   ```python
-   def get_new_provider() -> NewProvider:
-       if settings.DEMO_MODE:
-           return MockNewProvider()
-       else:
-           return RealNewProvider()
-   ```
-
-### Adding Auto-Response Rules
-
-Edit `backend/app/rules/rules.yaml`:
-```yaml
-- name: "New Rule"
-  pattern: "keyword|phrase"  # Regex pattern
-  response: "Response template with {customer_name}"
-  priority: 10
-  active: true
-```
-
-Reload without restart: `POST /api/auto-response/reload-rules`
-
-### Adding API Endpoints
-
-1. Create handler in `app/api/[domain].py`
-2. Use factory functions to get providers: `sms_provider = get_sms_provider()`
-3. Register router in `app/main.py`
-
-## Common Issues and Solutions
-
-### Port Already in Use
-```bash
-# Find process using port
-lsof -i :8000  # or netstat -tlnp | grep 8000
-
-# Kill process
-kill <PID>
-
-# Or use different port
-uvicorn app.main:app --reload --port 8001
-```
-
-### Database Schema Mismatch
-```bash
-# Delete old database and reseed
-cd backend
-rm -f sms.db
-python -m app.db.seed
-```
-
-### Dependency Version Conflicts
-If `anthropic` version conflicts occur, the package should be `>=0.16.0` to satisfy `langchain-anthropic` requirements.
-
-### Frontend Proxy Issues
-The frontend uses Vite proxy to avoid CORS issues. Proxy configuration in `frontend/vite.config.ts`:
-```typescript
-proxy: {
-  '/api': { target: 'http://localhost:8000' },
-  '/webhooks': { target: 'http://localhost:8000' }
-}
+### ActivityLog 기록
+```python
+from app.services.activity_logger import log_activity
+log_activity(db, type="sms_send", title="...", detail={...},
+             target_count=1, success_count=1, created_by="system")
 ```
 
 ## Frontend Design Guidelines
@@ -527,10 +427,14 @@ proxy: {
 
 ## Notes
 
-- The system uses SQLAlchemy ORM with both SQLite (demo) and PostgreSQL (production) support
-- All datetime fields use UTC (`datetime.utcnow`)
-- Frontend uses Flowbite React + Toss Invest design system (NOT Ant Design)
-- Korean language is used in UI and sample data
-- The `app/router/message_router.py` implements the core auto-response intelligence
-- ChromaDB is prepared for RAG but only used when `DEMO_MODE=false`
-- The scheduler uses APScheduler for automated tasks (Naver sync, SMS campaigns, analytics)
+- SQLAlchemy ORM: SQLite (데모) + PostgreSQL (운영) 지원
+- 타임존: Asia/Seoul (KST) 사용
+- 프론트엔드: Flowbite React + Toss Invest 디자인 시스템 (NOT Ant Design)
+- UI/샘플 데이터: 한국어
+- 인증: JWT (access 1h + refresh 7d), bcrypt 해싱
+- 역할: SUPERADMIN → ADMIN → STAFF (파티 체크인만 접근 가능)
+- 실시간: SSE 이벤트 버스 (`services/event_bus.py`)
+- Aligo SMS: SMS(≤90바이트)/LMS(>90바이트) 자동 감지, 500건 배치
+- 네이버 API: 쿠키 기반 인증, Semaphore(10) 동시성 제한
+- CampaignLog: 레거시 (읽기 전용), 신규 활동은 ActivityLog 사용
+- `_future/` 디렉토리: 미래 구현 예정 모듈

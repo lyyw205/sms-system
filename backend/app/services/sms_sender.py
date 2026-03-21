@@ -78,7 +78,7 @@ async def send_single_sms(
         log_activity(
             db,
             type="sms_send",
-            title=f"SMS → {reservation.customer_name} ({reservation.phone})",
+            title="SMS 발송 : 칩",
             detail={
                 "reservation_id": reservation.id,
                 "customer_name": reservation.customer_name,
@@ -100,9 +100,9 @@ async def send_single_sms(
         db.commit()
 
     if success:
-        return {"success": True, "message_id": result.get("message_id"), "error": None}
+        return {"success": True, "message_id": result.get("message_id"), "error": None, "message": message_content}
     else:
-        return {"success": False, "message_id": None, "error": result.get("error", "SMS 발송 실패")}
+        return {"success": False, "message_id": None, "error": result.get("error", "SMS 발송 실패"), "message": message_content}
 
 
 class SmsSender:
@@ -161,8 +161,8 @@ class SmsSender:
 
         activity_log = log_activity(
             self.db,
-            type="sms_template",
-            title=f"SMS 발송 ({template_key})",
+            type="sms_send",
+            title="SMS 발송 : 템플릿 일괄 발송",
             target_count=len(assignments),
             success_count=0,
             failed_count=0,

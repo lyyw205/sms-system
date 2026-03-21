@@ -121,8 +121,8 @@ async def sync_status_log_job():
     def _log_status(db, tenant):
         log_activity(
             db,
-            type="sync_status",
-            title=f"네이버 동기화 정상 운영 ({period_start}~{period_end})",
+            type="naver_sync",
+            title=f"네이버 예약 동기화 : 자동 실행 ({period_start}~{period_end})",
             detail={"period_start": period_start, "period_end": period_end},
             created_by="scheduler",
         )

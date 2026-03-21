@@ -353,7 +353,7 @@ async def update_reservation(
         section_labels = {"room": "객실", "unassigned": "미배정", "party": "파티만"}
         log_activity(
             db, type="room_move",
-            title=f"섹션 이동: {section_labels.get(old_section, old_section)} → {section_labels.get(new_section, new_section)}",
+            title=f"[{db_reservation.customer_name}] 섹션이동 {section_labels.get(old_section, old_section)} → {section_labels.get(new_section, new_section)}",
             detail={
                 "reservation_id": reservation_id,
                 "customer_name": db_reservation.customer_name,
@@ -503,7 +503,7 @@ async def sync_from_naver(request: Request, from_date: Optional[str] = None, db:
     log_activity(
         db,
         type="naver_sync",
-        title="네이버 예약 동기화",
+        title=f"네이버 예약 동기화 : 수동 실행{f' ({from_date}~)' if from_date else ''}",
         detail=result,
         target_count=result.get("total", 0),
         success_count=result.get("synced", 0),
@@ -683,15 +683,6 @@ async def send_sms_by_tag(
     if result["target_count"] == 0:
         return {"success": True, "sent_count": 0, "message": "No unsent targets found"}
 
-    log_activity(
-        db,
-        type="sms_manual",
-        title=f"수동 SMS 발송 ({sms_data.template_key})",
-        target_count=result["target_count"],
-        success_count=result.get("sent_count", 0),
-        failed_count=result.get("failed_count", 0),
-        created_by=current_user.username,
-    )
     db.commit()
 
     return {"success": True, **result}
