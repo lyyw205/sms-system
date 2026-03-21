@@ -84,6 +84,10 @@ class RealReservationProvider:
                        fetches from that date to now in monthly chunks.
                        Default: last 1 day.
         """
+        if not self.cookie:
+            logger.info("[Naver] No cookie configured — skipping sync")
+            return []
+
         now = datetime.now()
 
         if from_date:
@@ -202,6 +206,10 @@ class RealReservationProvider:
         Args:
             target_date: 'YYYY-MM-DD' 형식의 체크인 날짜
         """
+        if not self.cookie:
+            logger.info("[Naver] No cookie configured — skipping fetch_by_checkin_date")
+            return []
+
         dt = datetime.strptime(target_date, "%Y-%m-%d")
         logger.info(f"Fetching reservations by check-in date: {target_date}")
 

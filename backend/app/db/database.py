@@ -69,7 +69,7 @@ def init_db():
         if "tenants" in inspector.get_table_names():
             existing_cols = [c["name"] for c in inspector.get_columns("tenants")]
             if "aligo_testmode" not in existing_cols:
-                conn.execute(text("ALTER TABLE tenants ADD COLUMN aligo_testmode BOOLEAN DEFAULT FALSE"))
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN aligo_testmode BOOLEAN DEFAULT TRUE"))
                 print("AUTO-MIGRATE: Added aligo_testmode column to tenants table")
 
         # naver_biz_items.default_capacity + section_hint

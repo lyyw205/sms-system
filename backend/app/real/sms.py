@@ -43,7 +43,7 @@ class RealSMSProvider:
         self.api_key = api_key or settings.ALIGO_API_KEY
         self.user_id = user_id or settings.ALIGO_USER_ID
         self.sender = sender or settings.ALIGO_SENDER
-        self.testmode = testmode if testmode is not None else settings.ALIGO_TESTMODE
+        self.testmode = testmode if testmode is not None else True
         testmode_label = "testmode=Y (실제 미발송)" if self.testmode else "testmode=N (실제 발송)"
         logger.info(f"[RealSMSProvider] 초기화 완료 — sender={self.sender}, {testmode_label}")
 

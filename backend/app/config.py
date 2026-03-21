@@ -13,8 +13,11 @@ _auto_generated = {"jwt_key": False, "admin_pw": False, "staff_pw": False}
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
-    # Demo mode flag - CRITICAL for hot-swapping providers
+    # Demo mode flag — LLM mock/real, JWT/password auto-gen, CORS relaxation
     DEMO_MODE: bool = True
+
+    # Swagger UI — None이면 DEMO_MODE 따라감
+    ENABLE_SWAGGER: bool | None = None
 
     # Database (SQLite for demo, PostgreSQL for production)
     DATABASE_URL: str = "sqlite:///./sms_demo.db"
@@ -25,11 +28,10 @@ class Settings(BaseSettings):
     # ChromaDB
     CHROMADB_URL: str = "http://localhost:8001"
 
-    # Aligo SMS API (only needed when DEMO_MODE=false)
+    # Aligo SMS API (실제 발송 여부는 tenant.aligo_testmode로 제어)
     ALIGO_API_KEY: str = ""
     ALIGO_USER_ID: str = ""
     ALIGO_SENDER: str = ""
-    ALIGO_TESTMODE: bool = True  # True = 실제 발송 안함 (테스트), False = 실제 발송
 
     # SMS Webhook (optional)
     SMS_WEBHOOK_URL: str = ""
@@ -101,6 +103,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # .env에 남아있는 ALIGO_TESTMODE 등 미사용 변수 무시
 
 
 @lru_cache()

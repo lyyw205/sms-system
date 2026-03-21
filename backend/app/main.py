@@ -21,13 +21,13 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-# Task 1.4: Swagger UI 프로덕션 비활성화
+# Swagger UI — ENABLE_SWAGGER 설정 우선, 미설정 시 DEMO_MODE 따라감
+_enable_swagger = app_settings.ENABLE_SWAGGER if app_settings.ENABLE_SWAGGER is not None else app_settings.DEMO_MODE
 app = FastAPI(
     title="SMS Reservation System API",
-    description="Demo/MVP version with mock providers",
     version="1.0.0",
-    docs_url="/docs" if app_settings.DEMO_MODE else None,
-    redoc_url="/redoc" if app_settings.DEMO_MODE else None,
+    docs_url="/docs" if _enable_swagger else None,
+    redoc_url="/redoc" if _enable_swagger else None,
 )
 
 # Task 1.2: CORS 도메인 화이트리스트
