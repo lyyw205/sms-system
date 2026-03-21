@@ -27,7 +27,7 @@ from app.db.tenant_context import current_tenant_id
 logger = logging.getLogger(__name__)
 
 
-def auto_assign_rooms(db: Session, target_date: str = None):
+def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "system"):
     """
     Auto-assign rooms for target_date (defaults to today).
     Uses a unified biz_item_id mapping for all room types.
@@ -62,15 +62,32 @@ def auto_assign_rooms(db: Session, target_date: str = None):
     # Get all unassigned confirmed reservations for target_date
     unassigned = _get_unassigned_reservations(db, target_date)
 
-    assigned_reservation_ids = _assign_all_rooms(db, unassigned, biz_to_rooms, target_date)
+    assigned_details = _assign_all_rooms(db, unassigned, biz_to_rooms, target_date)
 
-    assigned_count = len(assigned_reservation_ids)
+    assigned_count = len(assigned_details)
+    assigned_reservation_ids = [d["reservation_id"] for d in assigned_details]
 
     # Flush then sync SMS tags in bulk
     db.flush()
     schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
     for res_id in assigned_reservation_ids:
         room_assignment.sync_sms_tags(db, res_id, schedules=schedules)
+
+    # Summary activity log (like template scheduler)
+    if assigned_count > 0:
+        from app.services.activity_logger import log_activity
+        log_activity(
+            db,
+            type="room_assign",
+            title=f"객실 자동 배정 ({target_date})",
+            detail={
+                "target_date": target_date,
+                "targets": assigned_details,
+            },
+            target_count=len(unassigned),
+            success_count=assigned_count,
+            created_by=created_by,
+        )
 
     db.commit()
 
@@ -136,14 +153,16 @@ def _assign_all_rooms(
     candidates: List[Reservation],
     biz_to_rooms: Dict[str, List[Room]],
     target_date: str,
-) -> List[int]:
+) -> List[dict]:
     """
     Assign rooms based on biz_item_id mapping.
     For dormitory rooms: respects bed_capacity and gender lock.
     For regular rooms: one reservation per room.
     Gender lock: if a dormitory room already has occupants, only same-gender guests can be added.
+
+    Returns list of dicts: [{"reservation_id": int, "guest_name": str, "room_number": str}, ...]
     """
-    assigned_ids = []
+    assigned_results = []
 
     # Sort candidates: females first, then males, then unknown gender
     candidates = sorted(candidates, key=_gender_sort_key)
@@ -193,10 +212,10 @@ def _assign_all_rooms(
                 # Assign
                 room_assignment.assign_room(
                     db, res.id, room.room_number, target_date, res.check_out_date,
-                    assigned_by="auto", skip_sms_sync=True,
+                    assigned_by="auto", skip_sms_sync=True, skip_logging=True,
                 )
                 db.flush()
-                assigned_ids.append(res.id)
+                assigned_results.append({"reservation_id": res.id, "guest_name": res.customer_name, "room_number": room.room_number})
                 break
             else:
                 # Regular room: one per room
@@ -206,13 +225,13 @@ def _assign_all_rooms(
                 ):
                     room_assignment.assign_room(
                         db, res.id, room.room_number, target_date, res.check_out_date,
-                        assigned_by="auto", skip_sms_sync=True,
+                        assigned_by="auto", skip_sms_sync=True, skip_logging=True,
                     )
                     db.flush()
-                    assigned_ids.append(res.id)
+                    assigned_results.append({"reservation_id": res.id, "guest_name": res.customer_name, "room_number": room.room_number})
                     break
 
-    return assigned_ids
+    return assigned_results
 
 
 def daily_assign_rooms(db: Session):
@@ -227,10 +246,12 @@ def daily_assign_rooms(db: Session):
     logger.info(f"Running daily room assignment for {today} and {tomorrow}")
 
     # Clear existing auto assignments before re-assigning
+    tid = current_tenant_id.get()
     for target_date in [today, tomorrow]:
         deleted = db.query(RoomAssignment).filter(
             RoomAssignment.date == target_date,
             RoomAssignment.assigned_by == "auto",
+            RoomAssignment.tenant_id == tid,
         ).delete(synchronize_session="fetch")
         if deleted:
             logger.info(f"Cleared {deleted} auto-assignments for {target_date}")

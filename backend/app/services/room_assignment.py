@@ -106,6 +106,7 @@ def assign_room(
     assigned_by: str = "auto",
     skip_sms_sync: bool = False,
     created_by: Optional[str] = None,
+    skip_logging: bool = False,
 ) -> List[RoomAssignment]:
     """
     Assign a room for date range [from_date, end_date).
@@ -159,36 +160,37 @@ def assign_room(
         RoomAssignment.date.in_(dates),
     ).delete(synchronize_session="fetch")
 
-    # Log room move/assignment
-    log_creator = created_by or ("system" if assigned_by == "auto" else assigned_by)
-    if old_room and old_room != room_number:
-        log_activity(
-            db, type="room_move",
-            title=f"객실 이동: {old_room} → {room_number}",
-            detail={
-                "reservation_id": reservation_id,
-                "guest_name": reservation.customer_name,
-                "old_room": old_room,
-                "new_room": room_number,
-                "dates": dates,
-                "move_type": assigned_by,
-            },
-            created_by=log_creator,
-        )
-    elif not old_room:
-        log_activity(
-            db, type="room_move",
-            title=f"객실 배정: {room_number}",
-            detail={
-                "reservation_id": reservation_id,
-                "guest_name": reservation.customer_name,
-                "old_room": None,
-                "new_room": room_number,
-                "dates": dates,
-                "move_type": assigned_by,
-            },
-            created_by=log_creator,
-        )
+    # Log room move/assignment (skip when caller will log in bulk)
+    if not skip_logging:
+        log_creator = created_by or ("system" if assigned_by == "auto" else assigned_by)
+        if old_room and old_room != room_number:
+            log_activity(
+                db, type="room_move",
+                title=f"객실 이동: {old_room} → {room_number}",
+                detail={
+                    "reservation_id": reservation_id,
+                    "guest_name": reservation.customer_name,
+                    "old_room": old_room,
+                    "new_room": room_number,
+                    "dates": dates,
+                    "move_type": assigned_by,
+                },
+                created_by=log_creator,
+            )
+        elif not old_room:
+            log_activity(
+                db, type="room_move",
+                title=f"객실 배정: {room_number}",
+                detail={
+                    "reservation_id": reservation_id,
+                    "guest_name": reservation.customer_name,
+                    "old_room": None,
+                    "new_room": room_number,
+                    "dates": dates,
+                    "move_type": assigned_by,
+                },
+                created_by=log_creator,
+            )
 
     # Create new assignments
     assignments = []

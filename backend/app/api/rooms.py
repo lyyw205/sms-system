@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 import logging
 
 from app.scheduler.room_auto_assign import auto_assign_rooms
-from app.services.activity_logger import log_activity
 from app.api.shared_schemas import ActionResponse
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
@@ -389,20 +388,8 @@ async def trigger_auto_assign(
 
     today = date
 
-    # 미배정자만 추가 배정 (기존 배정 유지)
-    result_today = auto_assign_rooms(db, today)
-
-    total_assigned = result_today.get("assigned", 0)
-    log_activity(
-        db,
-        type="room_assign",
-        title=f"객실 자동 배정 ({today})",
-        detail={"today": result_today},
-        target_count=total_assigned,
-        success_count=total_assigned,
-        created_by=current_user.username,
-    )
-    db.commit()
+    # 미배정자만 추가 배정 (기존 배정 유지, 로그는 auto_assign_rooms 내부에서 생성)
+    result_today = auto_assign_rooms(db, today, created_by=current_user.username)
 
     return {
         "success": True,
