@@ -66,6 +66,10 @@ def _apply_tenant_filter_on_select(query):
     import logging
     _logger = logging.getLogger(__name__)
 
+    # Prevent infinite recursion: .filter() creates a new query that triggers before_compile again
+    if query._execution_options.get("_tenant_filtered", False):
+        return query
+
     tid = current_tenant_id.get()
     if tid is None:
         # Warn if querying tenant models without context (fail-open but detectable)
@@ -79,6 +83,9 @@ def _apply_tenant_filter_on_select(query):
                     )
                     break
         return query
+
+    # Mark query as processed to prevent re-entrance from .filter() calls
+    query = query.execution_options(_tenant_filtered=True)
 
     # Track which models have already been filtered to avoid duplicates
     filtered_models = set()
