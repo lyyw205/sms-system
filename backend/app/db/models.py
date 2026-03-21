@@ -340,6 +340,7 @@ class NaverBizItem(TenantMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     biz_item_id = Column(String(50), nullable=False, index=True)  # Naver bizItemId
     name = Column(String(200), nullable=False)  # Product name from Naver
+    display_name = Column(String(200), nullable=True)  # 관리자 지정 표시명 (동기화 시 유지)
     biz_item_type = Column(String(50), nullable=True)  # STANDARD etc.
     is_exposed = Column(Boolean, default=True)  # 네이버 노출 상태
     is_active = Column(Boolean, default=True)

@@ -83,6 +83,9 @@ def init_db():
                 print("AUTO-MIGRATE: Added section_hint column to naver_biz_items table")
                 # Backfill section_hint for existing '파티만' products
                 conn.execute(text("UPDATE naver_biz_items SET section_hint = 'party' WHERE name LIKE '%파티만%' AND section_hint IS NULL"))
+            if "display_name" not in existing_cols:
+                conn.execute(text("ALTER TABLE naver_biz_items ADD COLUMN display_name VARCHAR(200)"))
+                print("AUTO-MIGRATE: Added display_name column to naver_biz_items table")
 
         # template_schedules.filters
         if "template_schedules" in inspector.get_table_names():

@@ -1,5 +1,5 @@
-import { useEffect, useState, DragEvent } from 'react';
-import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ArrowUpDown } from 'lucide-react';
+import { useEffect, useState, useCallback, DragEvent } from 'react';
+import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ArrowUpDown, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { roomsAPI, buildingsAPI } from '@/services/api';
 
@@ -145,6 +145,20 @@ const RoomSettings = () => {
   const [priorityData, setPriorityData] = useState<Record<string, Record<number, { male_priority: number; female_priority: number }>>>({});
   const [savingPriority, setSavingPriority] = useState(false);
 
+  // ── Biz item settings modal state ──
+  const [bizItemModalOpen, setBizItemModalOpen] = useState(false);
+  const [bizItemSettingsList, setBizItemSettingsList] = useState<Array<{
+    biz_item_id: string;
+    name: string;
+    display_name: string;
+    default_capacity: number;
+    section_hint: string;
+    is_active: boolean;
+  }>>([]);
+  const [bizItemEdits, setBizItemEdits] = useState<Record<string, {display_name?: string; default_capacity?: number; section_hint?: string}>>({});
+  const [bizItemSaving, setBizItemSaving] = useState(false);
+  const [bizItemSyncing, setBizItemSyncing] = useState(false);
+
   // ── Init ──
   useEffect(() => {
     loadRooms();
@@ -198,6 +212,62 @@ const RoomSettings = () => {
       toast.error('상품 동기화 실패');
     } finally {
       setSyncingBizItems(false);
+    }
+  };
+
+  // ── Biz item settings modal ──
+  const loadBizItemSettings = useCallback(async () => {
+    try {
+      const res = await roomsAPI.getBizItems();
+      setBizItemSettingsList(res.data || []);
+      setBizItemEdits({});
+    } catch {
+      toast.error('상품 목록을 불러오지 못했습니다.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (bizItemModalOpen) loadBizItemSettings();
+  }, [bizItemModalOpen, loadBizItemSettings]);
+
+  const handleBizItemEdit = (bizItemId: string, field: string, value: string | number) => {
+    setBizItemEdits(prev => ({
+      ...prev,
+      [bizItemId]: { ...prev[bizItemId], [field]: value }
+    }));
+  };
+
+  const handleBizItemSave = async () => {
+    const changes = Object.entries(bizItemEdits).map(([biz_item_id, edits]) => ({
+      biz_item_id,
+      ...edits,
+    }));
+    if (changes.length === 0) {
+      setBizItemModalOpen(false);
+      return;
+    }
+    setBizItemSaving(true);
+    try {
+      await roomsAPI.updateBizItems(changes);
+      toast.success('상품 설정이 저장되었습니다.');
+      await loadBizItemSettings();
+    } catch {
+      toast.error('상품 설정 저장에 실패했습니다.');
+    } finally {
+      setBizItemSaving(false);
+    }
+  };
+
+  const handleBizItemSync = async () => {
+    setBizItemSyncing(true);
+    try {
+      await roomsAPI.syncBizItems();
+      toast.success('네이버 상품 동기화 완료');
+      await loadBizItemSettings();
+    } catch {
+      toast.error('네이버 상품 동기화에 실패했습니다.');
+    } finally {
+      setBizItemSyncing(false);
     }
   };
 
@@ -565,13 +635,9 @@ const RoomSettings = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button color="light" size="sm" onClick={handleSyncBizItems} disabled={syncingBizItems}>
-              {syncingBizItems ? (
-                <Spinner size="sm" className="mr-1.5" />
-              ) : (
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              상품 동기화
+            <Button color="light" size="sm" onClick={() => setBizItemModalOpen(true)}>
+              <Settings className="mr-1.5 h-3.5 w-3.5" />
+              상품 설정
             </Button>
             <Button color="light" size="sm" onClick={openPriorityModal}>
               <ArrowUpDown className="mr-1.5 h-3.5 w-3.5" />
@@ -1083,6 +1149,96 @@ const RoomSettings = () => {
             )}
           </Button>
           <Button color="light" onClick={() => setPriorityOpen(false)}>취소</Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* ── Biz item settings modal ── */}
+      <Modal size="lg" show={bizItemModalOpen} onClose={() => setBizItemModalOpen(false)}>
+        <ModalHeader>네이버 상품 설정</ModalHeader>
+        <ModalBody>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-label text-[#8B95A1]">네이버에서 상품 목록을 가져옵니다.</p>
+              <Button color="light" size="sm" onClick={handleBizItemSync} disabled={bizItemSyncing}>
+                {bizItemSyncing ? (
+                  <><Spinner size="sm" className="mr-1.5" />동기화 중...</>
+                ) : (
+                  <><RefreshCw className="h-3.5 w-3.5 mr-1.5" />상품 동기화</>
+                )}
+              </Button>
+            </div>
+
+            {bizItemSettingsList.length > 0 ? (
+              <div className="rounded-lg border border-[#E5E8EB] dark:border-gray-700 overflow-hidden">
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeadCell className="text-caption">상품명 (네이버)</TableHeadCell>
+                      <TableHeadCell className="text-caption">표시명</TableHeadCell>
+                      <TableHeadCell className="text-caption w-24">기준인원</TableHeadCell>
+                      <TableHeadCell className="text-caption w-28">섹션</TableHeadCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {bizItemSettingsList.map(item => {
+                      const edits = bizItemEdits[item.biz_item_id] || {};
+                      return (
+                        <TableRow key={item.biz_item_id}>
+                          <TableCell>
+                            <span className="text-caption text-[#8B95A1]">{item.name}</span>
+                          </TableCell>
+                          <TableCell>
+                            <TextInput
+                              sizing="sm"
+                              placeholder={item.name}
+                              value={edits.display_name ?? item.display_name ?? ''}
+                              onChange={e => handleBizItemEdit(item.biz_item_id, 'display_name', e.target.value)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextInput
+                              sizing="sm"
+                              type="number"
+                              min={1}
+                              max={20}
+                              value={edits.default_capacity ?? item.default_capacity ?? 1}
+                              onChange={e => handleBizItemEdit(item.biz_item_id, 'default_capacity', parseInt(e.target.value) || 1)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              sizing="sm"
+                              value={edits.section_hint ?? item.section_hint ?? ''}
+                              onChange={e => handleBizItemEdit(item.biz_item_id, 'section_hint', e.target.value)}
+                            >
+                              <option value="">미배정</option>
+                              <option value="party">파티만</option>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p className="text-label text-[#8B95A1]">동기화된 상품이 없습니다. 상품 동기화를 먼저 진행해주세요.</p>
+              </div>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <div className="flex w-full justify-end gap-2">
+            <Button color="light" onClick={() => setBizItemModalOpen(false)}>닫기</Button>
+            <Button color="blue" onClick={handleBizItemSave} disabled={bizItemSaving || Object.keys(bizItemEdits).length === 0}>
+              {bizItemSaving ? (
+                <><Spinner size="sm" className="mr-2" />저장 중...</>
+              ) : (
+                '저장'
+              )}
+            </Button>
+          </div>
         </ModalFooter>
       </Modal>
     </div>

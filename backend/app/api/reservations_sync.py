@@ -40,7 +40,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
 
     # Build lookup maps from DB (NaverBizItem + Room)
     biz_items = db.query(NaverBizItem).all()
-    biz_name_map = {b.biz_item_id: b.name for b in biz_items}
+    biz_name_map = {b.biz_item_id: (b.display_name or b.name) for b in biz_items}
     biz_section_map = {b.biz_item_id: b.section_hint for b in biz_items}
     biz_capacity_map = {b.biz_item_id: b.default_capacity for b in biz_items if b.default_capacity}
 

@@ -121,6 +121,8 @@ export const roomsAPI = {
   delete: (id: number) => api.delete(`/api/rooms/${id}`),
   getBizItems: () => api.get('/api/rooms/naver/biz-items'),
   syncBizItems: () => api.post('/api/rooms/naver/biz-items/sync'),
+  updateBizItems: (items: Array<{biz_item_id: string; display_name?: string | null; default_capacity?: number | null; section_hint?: string | null}>) =>
+    api.patch('/api/rooms/naver/biz-items', items),
   autoAssign: (date?: string) => api.post('/api/rooms/auto-assign', null, { params: date ? { date } : undefined }),
 };
 

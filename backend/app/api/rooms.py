@@ -90,6 +90,9 @@ class NaverBizItemResponse(BaseModel):
     id: int
     biz_item_id: str
     name: str
+    display_name: Optional[str] = None
+    default_capacity: Optional[int] = None
+    section_hint: Optional[str] = None
     biz_item_type: Optional[str] = None
     exposed: bool = True
     active: bool
@@ -195,6 +198,9 @@ def _biz_item_to_response(item: NaverBizItem) -> NaverBizItemResponse:
         id=item.id,
         biz_item_id=item.biz_item_id,
         name=item.name,
+        display_name=item.display_name,
+        default_capacity=item.default_capacity,
+        section_hint=item.section_hint,
         biz_item_type=item.biz_item_type,
         exposed=item.is_exposed,
         active=item.is_active,
@@ -208,6 +214,39 @@ async def get_naver_biz_items(db: Session = Depends(get_tenant_scoped_db), curre
     """Get stored Naver biz items"""
     items = db.query(NaverBizItem).filter(NaverBizItem.is_active == True).order_by(NaverBizItem.name).all()
     return [_biz_item_to_response(i) for i in items]
+
+
+class BizItemUpdateRequest(BaseModel):
+    biz_item_id: str
+    display_name: Optional[str] = None
+    default_capacity: Optional[int] = None
+    section_hint: Optional[str] = None
+
+
+@router.patch("/naver/biz-items")
+def update_biz_items(
+    items: List[BizItemUpdateRequest],
+    db: Session = Depends(get_tenant_scoped_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Batch update NaverBizItem settings (display_name, default_capacity, section_hint)"""
+    updated = []
+    for item_data in items:
+        biz_item = db.query(NaverBizItem).filter(
+            NaverBizItem.biz_item_id == item_data.biz_item_id
+        ).first()
+        if not biz_item:
+            continue
+        if item_data.display_name is not None:
+            biz_item.display_name = item_data.display_name or None  # empty string → None
+        if item_data.default_capacity is not None:
+            biz_item.default_capacity = item_data.default_capacity
+        if item_data.section_hint is not None:
+            biz_item.section_hint = item_data.section_hint or None  # empty string → None
+        updated.append(biz_item)
+
+    db.commit()
+    return [_biz_item_to_response(item) for item in updated]
 
 
 @router.post("/naver/biz-items/sync")
