@@ -68,10 +68,29 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
 
 
 def get_schedule_dates(schedule, reservation) -> List[str]:
-    """Get target dates for a schedule+reservation pair based on target_mode and date_mode."""
+    """Get target dates for a schedule+reservation pair based on target_mode and date_target/date_mode."""
+    date_target = getattr(schedule, 'date_target', None)
     date_mode = getattr(schedule, 'date_mode', 'checkin')
 
-    # daily mode always uses full date range (ignores date_mode)
+    # last_day mode: only create chip for last-in-group reservation
+    if getattr(schedule, 'target_mode', 'once') == 'last_day':
+        if not reservation.check_out_date:
+            return []
+        if reservation.stay_group_id:
+            if getattr(reservation, 'is_last_in_group', False):
+                from datetime import datetime, timedelta
+                last_day = (datetime.strptime(reservation.check_out_date, "%Y-%m-%d")
+                            - timedelta(days=1)).strftime("%Y-%m-%d")
+                return [last_day]
+            else:
+                return []  # Not last in group — no chip
+        else:
+            from datetime import datetime, timedelta
+            last_day = (datetime.strptime(reservation.check_out_date, "%Y-%m-%d")
+                        - timedelta(days=1)).strftime("%Y-%m-%d")
+            return [last_day]
+
+    # daily mode always uses full date range
     if (
         getattr(schedule, 'target_mode', 'once') == 'daily'
         and reservation.check_out_date
@@ -79,7 +98,11 @@ def get_schedule_dates(schedule, reservation) -> List[str]:
     ):
         return _date_range(reservation.check_in_date, reservation.check_out_date)
 
-    # For checkout mode, use check_out_date
+    # NEW: date_target checkout modes
+    if date_target and date_target.endswith('_checkout'):
+        return [reservation.check_out_date or reservation.check_in_date or '']
+
+    # OLD: date_mode checkout fallback
     if date_mode == 'checkout':
         return [reservation.check_out_date or reservation.check_in_date or '']
     return [reservation.check_in_date or '']

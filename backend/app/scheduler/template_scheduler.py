@@ -242,7 +242,11 @@ class TemplateScheduleExecutor:
             failed_count = 0
             send_results = []
 
-            target_date = self._parse_date_filter(schedule.date_filter) if schedule.date_filter else None
+            date_target_val = getattr(schedule, 'date_target', None)
+            if date_target_val:
+                target_date = self._resolve_date_target(date_target_val)
+            else:
+                target_date = self._parse_date_filter(schedule.date_filter) if schedule.date_filter else None
 
             # Build reservation_id -> building+room display map for log
             # Use RoomAssignment for target_date (not denormalized field)
@@ -400,10 +404,16 @@ class TemplateScheduleExecutor:
         )
 
         date_mode = getattr(schedule, 'date_mode', 'checkin')
+        date_target_val = getattr(schedule, 'date_target', None)
 
         # Safety guard: never send to reservations more than 1 day out
         max_date = (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
-        if date_mode == 'checkout':
+        if date_target_val and date_target_val.endswith('_checkout'):
+            query = query.filter(
+                Reservation.check_out_date.isnot(None),
+                Reservation.check_out_date <= max_date,
+            )
+        elif date_mode == 'checkout':
             query = query.filter(
                 Reservation.check_out_date.isnot(None),
                 Reservation.check_out_date <= max_date,
@@ -411,21 +421,42 @@ class TemplateScheduleExecutor:
         else:
             query = query.filter(Reservation.check_in_date <= max_date)
 
-        # Apply date filter
+        # Apply date filter — date_target takes precedence over date_mode + date_filter
         target_date = None
-        if schedule.date_filter:
-            target_date = self._parse_date_filter(schedule.date_filter)
-            if target_date:
-                if schedule.target_mode == 'daily':
-                    # daily mode always uses check_in/check_out range (ignore date_mode)
+        if date_target_val:
+            target_date = self._resolve_date_target(date_target_val)
+            if date_target_val.endswith('_checkout'):
+                query = query.filter(
+                    Reservation.check_out_date.isnot(None),
+                    Reservation.check_out_date == target_date,
+                )
+            else:
+                if schedule.target_mode in ('daily', 'last_day'):
                     query = query.filter(
                         or_(
-                            # 연박: 체크인 <= 오늘 < 체크아웃
                             and_(
                                 Reservation.check_in_date <= target_date,
                                 Reservation.check_out_date > target_date,
                             ),
-                            # 1박(check_out 없음): 체크인 당일만
+                            and_(
+                                Reservation.check_in_date == target_date,
+                                Reservation.check_out_date.is_(None),
+                            ),
+                        )
+                    )
+                else:
+                    query = query.filter(Reservation.check_in_date == target_date)
+        elif schedule.date_filter:
+            # Fallback to old date_mode + date_filter
+            target_date = self._parse_date_filter(schedule.date_filter)
+            if target_date:
+                if schedule.target_mode in ('daily', 'last_day'):
+                    query = query.filter(
+                        or_(
+                            and_(
+                                Reservation.check_in_date <= target_date,
+                                Reservation.check_out_date > target_date,
+                            ),
                             and_(
                                 Reservation.check_in_date == target_date,
                                 Reservation.check_out_date.is_(None),
@@ -492,6 +523,10 @@ class TemplateScheduleExecutor:
 
         results = query.all()
 
+        # last_day: keep only reservations on their group's last calendar day
+        if schedule.target_mode == 'last_day' and results and target_date:
+            results = self._filter_last_day(results, target_date)
+
         # once_per_stay: 연박 그룹 내 가장 빠른 체크인 예약에만 발송
         if schedule.once_per_stay and results:
             from sqlalchemy import exists as sa_exists
@@ -521,43 +556,46 @@ class TemplateScheduleExecutor:
                 filtered.append(res)
             results = filtered
 
-        # consecutive_stay_filter: 연박자 필터 (stay_group_id 유무)
-        csf = getattr(schedule, 'consecutive_stay_filter', None)
-        if csf and results:
-            if csf == 'exclude':
+        # Stay filter: NEW (exclusive) vs OLD
+        sf = getattr(schedule, 'stay_filter', None)
+
+        if sf:
+            # NEW: stay_filter REPLACES old csf + nsf entirely
+            if sf == 'exclude':
                 results = [r for r in results if not r.stay_group_id]
-            elif csf == 'only':
-                results = [r for r in results if r.stay_group_id]
+        else:
+            # OLD: consecutive_stay_filter + next_stay_filter (backward compat)
+            csf = getattr(schedule, 'consecutive_stay_filter', None)
+            if csf and results:
+                if csf == 'exclude':
+                    results = [r for r in results if not r.stay_group_id]
+                elif csf == 'only':
+                    results = [r for r in results if r.stay_group_id]
 
-        # next_stay_filter: 다음 예약 존재 여부 필터
-        nsf = getattr(schedule, 'next_stay_filter', None)
-        if nsf and results:
-            # Collect stay_group_ids from results that have one
-            group_res = [(r.id, r.stay_group_id, r.check_out_date) for r in results if r.stay_group_id and r.check_out_date]
+            nsf = getattr(schedule, 'next_stay_filter', None)
+            if nsf and results:
+                group_res = [(r.id, r.stay_group_id, r.check_out_date) for r in results if r.stay_group_id and r.check_out_date]
 
-            has_next_ids = set()
-            if group_res:
-                group_ids = {sg for _, sg, _ in group_res}
-                # Single batch query: find all reservations that are "next" in a stay group
-                next_checkins = self.db.query(Reservation.stay_group_id, Reservation.check_in_date).filter(
-                    Reservation.stay_group_id.in_(group_ids),
-                    Reservation.tenant_id == schedule.tenant_id,
-                ).all()
+                has_next_ids = set()
+                if group_res:
+                    group_ids = {sg for _, sg, _ in group_res}
+                    next_checkins = self.db.query(Reservation.stay_group_id, Reservation.check_in_date).filter(
+                        Reservation.stay_group_id.in_(group_ids),
+                        Reservation.tenant_id == schedule.tenant_id,
+                    ).all()
 
-                # Build lookup: stay_group_id -> set of check_in_dates
-                next_lookup = {}
-                for sg, ci in next_checkins:
-                    next_lookup.setdefault(sg, set()).add(ci)
+                    next_lookup = {}
+                    for sg, ci in next_checkins:
+                        next_lookup.setdefault(sg, set()).add(ci)
 
-                # Check each result: does the group have a reservation checking in on this one's checkout?
-                for rid, sg, co in group_res:
-                    if co in next_lookup.get(sg, set()):
-                        has_next_ids.add(rid)
+                    for rid, sg, co in group_res:
+                        if co in next_lookup.get(sg, set()):
+                            has_next_ids.add(rid)
 
-            if nsf == 'exclude':
-                results = [r for r in results if r.id not in has_next_ids]
-            elif nsf == 'only':
-                results = [r for r in results if r.id in has_next_ids]
+                if nsf == 'exclude':
+                    results = [r for r in results if r.id not in has_next_ids]
+                elif nsf == 'only':
+                    results = [r for r in results if r.id in has_next_ids]
 
         return results
 
@@ -614,7 +652,11 @@ class TemplateScheduleExecutor:
         targets = self.get_targets(schedule)
 
         # Batch lookup room assignments from RoomAssignment table (source of truth)
-        target_date = self._parse_date_filter(schedule.date_filter or "today")
+        date_target_val = getattr(schedule, 'date_target', None)
+        if date_target_val:
+            target_date = self._resolve_date_target(date_target_val)
+        else:
+            target_date = self._parse_date_filter(schedule.date_filter or "today")
         res_ids = [r.id for r in targets]
         room_map: dict[int, str] = {}
         if res_ids and target_date:
@@ -635,6 +677,62 @@ class TemplateScheduleExecutor:
             }
             for r in targets
         ]
+
+    @staticmethod
+    def _resolve_date_target(date_target_val: str) -> str:
+        """Convert a date_target enum value to a concrete YYYY-MM-DD date string.
+
+        Args:
+            date_target_val: One of 'today', 'tomorrow', 'today_checkout', 'tomorrow_checkout'
+
+        Returns:
+            Date string for today or tomorrow, regardless of checkout suffix.
+        """
+        if date_target_val.startswith('tomorrow'):
+            return (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+        return date.today().strftime('%Y-%m-%d')
+
+    def _filter_last_day(self, results: List[Reservation], target_date: str) -> List[Reservation]:
+        """Keep only reservations whose stay group's last checkout date - 1 == target_date.
+        For standalone guests: checkout_date - 1 == target_date.
+        Reservations with NULL check_out_date are excluded.
+        """
+        from datetime import datetime as dt
+
+        target_dt = dt.strptime(target_date, "%Y-%m-%d").date()
+        filtered = []
+
+        # Batch-query max checkout per group
+        group_ids = {r.stay_group_id for r in results if r.stay_group_id}
+        group_max_checkout: dict[str, str] = {}
+
+        if group_ids:
+            rows = self.db.query(
+                Reservation.stay_group_id,
+                func.max(Reservation.check_out_date)
+            ).filter(
+                Reservation.stay_group_id.in_(group_ids),
+                Reservation.check_out_date.isnot(None),
+            ).group_by(Reservation.stay_group_id).all()
+            group_max_checkout = {gid: max_co for gid, max_co in rows}
+
+        for res in results:
+            if res.check_out_date is None:
+                continue  # NULL checkout → exclude
+
+            if res.stay_group_id:
+                max_co = group_max_checkout.get(res.stay_group_id)
+                if not max_co:
+                    continue
+                last_day = dt.strptime(max_co, "%Y-%m-%d").date() - timedelta(days=1)
+            else:
+                # Standalone: use own checkout
+                last_day = dt.strptime(res.check_out_date, "%Y-%m-%d").date() - timedelta(days=1)
+
+            if last_day == target_dt:
+                filtered.append(res)
+
+        return filtered
 
     def _parse_date_filter(self, date_filter: str) -> str:
         """

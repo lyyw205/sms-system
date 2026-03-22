@@ -85,6 +85,8 @@ interface TemplateSchedule {
   date_mode: string | null;
   consecutive_stay_filter: string | null;
   next_stay_filter: string | null;
+  date_target: string | null;
+  stay_filter: string | null;
   exclude_sent: boolean;
   active: boolean;
   created_at: string;
@@ -231,6 +233,22 @@ function parseFilters(raw: unknown): ScheduleFilter[] {
   return [];
 }
 
+function getScheduleDateLabel(record: TemplateSchedule): string {
+  // v4: prefer date_target
+  if (record.date_target) {
+    switch (record.date_target) {
+      case 'today': return '오늘';
+      case 'tomorrow': return '내일';
+      case 'today_checkout': return '오늘 체크아웃';
+      case 'tomorrow_checkout': return '내일 체크아웃';
+    }
+  }
+  // Fallback to old fields
+  const dateBase = record.date_filter === 'tomorrow' ? '내일' : '오늘';
+  const mode = record.date_mode === 'checkout' ? ' 체크아웃' : '';
+  return dateBase + mode;
+}
+
 function getDateFilterLabel(dateFilter: string | null): string | null {
   if (!dateFilter) return null;
   if (dateFilter === 'today') return '오늘';
@@ -241,7 +259,7 @@ function getDateFilterLabel(dateFilter: string | null): string | null {
 
 function getTargetLabel(record: TemplateSchedule, buildingList?: Building[]): string {
   const parts: string[] = [];
-  const dateLabel = getDateFilterLabel(record.date_filter);
+  const dateLabel = getScheduleDateLabel(record);
   if (dateLabel) parts.push(dateLabel);
   const filters = parseFilters(record.filters);
   if (filters.length > 0) parts.push(filters.map(f => getFilterLabel(f, buildingList)).join(' + '));
@@ -250,7 +268,7 @@ function getTargetLabel(record: TemplateSchedule, buildingList?: Building[]): st
 
 function getTargetSummary(record: TemplateSchedule, buildingList?: Building[]): React.ReactNode {
   const filters = parseFilters(record.filters);
-  const dateLabel = getDateFilterLabel(record.date_filter) || '오늘';
+  const dateLabel = getScheduleDateLabel(record);
 
   const buildingFilters = filters.filter(f => f.type === 'building');
   const assignmentFilters = filters.filter(f => f.type === 'assignment');
@@ -397,10 +415,12 @@ const Templates: React.FC = () => {
 
   const [sFilters, setSFilters] = useState<ScheduleFilter[]>([]);
   const [sDateFilter, setSDateFilter] = useState('today');
-  const [sTargetMode, setSTargetMode] = useState<'once' | 'daily'>('once');
+  const [sTargetMode, setSTargetMode] = useState<'once' | 'daily' | 'last_day'>('once');
   const [sDateMode, setSDateMode] = useState<'checkin' | 'checkout'>('checkin');
   const [sConsecutiveStayFilter, setSConsecutiveStayFilter] = useState<string>('');
   const [sNextStayFilter, setSNextStayFilter] = useState<string>('');
+  const [sDateTarget, setSDateTarget] = useState<string>('today');
+  const [sStayFilter, setSStayFilter] = useState<string>('');
   const sExcludeSent = true; // 항상 발송 완료 대상 제외
   const [cmColumn, setCmColumn] = useState('party_type');
   const [cmText, setCmText] = useState('');
@@ -609,6 +629,8 @@ const Templates: React.FC = () => {
     setSDateMode('checkin');
     setSConsecutiveStayFilter('');
     setSNextStayFilter('');
+    setSDateTarget('today');
+    setSStayFilter('');
     setCmColumn('party_type');
     setCmText('');
     setCmOperator('contains');
@@ -634,10 +656,43 @@ const Templates: React.FC = () => {
     setSActiveEndHour(s.active_end_hour != null ? String(s.active_end_hour) : '');
     setSFilters(parseFilters(s.filters));
     setSDateFilter(s.date_filter || 'today');
-    setSTargetMode((s.target_mode === 'daily' ? 'daily' : 'once'));
+    setSTargetMode(s.target_mode === 'daily' ? 'daily' : s.target_mode === 'last_day' ? 'last_day' : 'once');
     setSDateMode(s.date_mode === 'checkout' ? 'checkout' : 'checkin');
     setSConsecutiveStayFilter(s.consecutive_stay_filter || '');
     setSNextStayFilter(s.next_stay_filter || '');
+
+    // v4: date_target — prefer new field, derive from old if absent
+    if (s.date_target) {
+      setSDateTarget(s.date_target);
+    } else {
+      const dateBase = s.date_filter || 'today';
+      const mode = s.date_mode || 'checkin';
+      if (mode === 'checkout') {
+        setSDateTarget(dateBase === 'tomorrow' ? 'tomorrow_checkout' : 'today_checkout');
+      } else {
+        setSDateTarget(dateBase);
+      }
+    }
+
+    // v4: stay_filter — derive with 'only' guard
+    if (s.stay_filter !== null && s.stay_filter !== undefined) {
+      setSStayFilter(s.stay_filter);
+    } else if (s.consecutive_stay_filter === 'only' || s.next_stay_filter === 'only') {
+      setSStayFilter('');
+      toast.warning(
+        `이 스케줄은 "${s.consecutive_stay_filter === 'only' ? '연박만' : '연장자만'}" 필터를 사용합니다. ` +
+        '새 연박 필터에는 해당 옵션이 없어 저장 시 기존 설정이 유지됩니다.'
+      );
+    } else {
+      if (s.consecutive_stay_filter === 'exclude') {
+        setSStayFilter('exclude');
+      } else if (s.next_stay_filter === 'exclude') {
+        setSStayFilter('');
+        setSTargetMode('last_day');
+      } else {
+        setSStayFilter('');
+      }
+    }
     // sExcludeSent는 항상 true 고정
     setSActive(s.active);
     setScheduleDialogOpen(true);
@@ -646,6 +701,17 @@ const Templates: React.FC = () => {
   const buildSchedulePayload = () => {
     const hasActiveHours = (sType === 'hourly' || sType === 'interval')
       && sActiveStartHour !== '' && sActiveEndHour !== '';
+
+    // Derive consistent old fields from date_target
+    const derivedDateMode = sDateTarget?.endsWith('_checkout') ? 'checkout' : 'checkin';
+    const derivedDateFilter = sDateTarget?.startsWith('tomorrow') ? 'tomorrow' : 'today';
+
+    // Check if existing schedule uses 'only' values that can't map to stay_filter
+    const hasOnlyFilter = editingSchedule && (
+      editingSchedule.consecutive_stay_filter === 'only' ||
+      editingSchedule.next_stay_filter === 'only'
+    );
+
     return {
       schedule_name: sName,
       template_id: Number(sTemplateId),
@@ -658,11 +724,21 @@ const Templates: React.FC = () => {
       active_end_hour: hasActiveHours ? Number(sActiveEndHour) : null,
       timezone: 'Asia/Seoul',
       filters: sFilters.length > 0 ? sFilters : undefined,
-      date_filter: sDateFilter || 'today',
+      // v5: new fields
+      date_target: sDateTarget || null,
+      stay_filter: (hasOnlyFilter && !sStayFilter) ? null : (sStayFilter || null),
       target_mode: sTargetMode,
-      date_mode: sDateMode,
-      consecutive_stay_filter: sConsecutiveStayFilter || null,
-      next_stay_filter: sNextStayFilter || null,
+      // v5: once_per_stay derived from target_mode selection
+      once_per_stay: sTargetMode === 'once',
+      // Old fields: derive consistent values for backward compat
+      date_filter: derivedDateFilter,
+      date_mode: derivedDateMode,
+      consecutive_stay_filter: (hasOnlyFilter && !sStayFilter)
+        ? editingSchedule.consecutive_stay_filter
+        : null,
+      next_stay_filter: (hasOnlyFilter && !sStayFilter)
+        ? editingSchedule.next_stay_filter
+        : null,
       exclude_sent: sExcludeSent,
       active: sActive,
     };
@@ -974,11 +1050,17 @@ const Templates: React.FC = () => {
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-1">
                           {getTargetSummary(s, buildings)}
-                          {s.date_mode === 'checkout' && <Badge color="purple" size="sm">체크아웃</Badge>}
-                          {s.consecutive_stay_filter === 'exclude' && <Badge color="warning" size="sm">연박제외</Badge>}
-                          {s.consecutive_stay_filter === 'only' && <Badge color="info" size="sm">연박만</Badge>}
-                          {s.next_stay_filter === 'exclude' && <Badge color="warning" size="sm">연장자제외</Badge>}
-                          {s.next_stay_filter === 'only' && <Badge color="info" size="sm">연장자만</Badge>}
+                          {/* v4: date_target checkout badge */}
+                          {s.date_target?.includes('checkout') && <Badge color="purple" size="sm">체크아웃</Badge>}
+                          {!s.date_target && s.date_mode === 'checkout' && <Badge color="purple" size="sm">체크아웃</Badge>}
+                          {/* v4: stay_filter badges */}
+                          {s.stay_filter === 'exclude' && <Badge color="warning" size="sm">연박제외</Badge>}
+                          {s.target_mode === 'last_day' && <Badge color="info" size="sm">마지막날만</Badge>}
+                          {/* Old badges as fallback */}
+                          {!s.stay_filter && s.consecutive_stay_filter === 'exclude' && <Badge color="warning" size="sm">연박제외</Badge>}
+                          {!s.stay_filter && s.consecutive_stay_filter === 'only' && <Badge color="info" size="sm">연박만</Badge>}
+                          {!s.stay_filter && s.next_stay_filter === 'exclude' && <Badge color="warning" size="sm">연장자제외</Badge>}
+                          {!s.stay_filter && s.next_stay_filter === 'only' && <Badge color="info" size="sm">연장자만</Badge>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1375,7 +1457,7 @@ const Templates: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const renderScheduleDialog = () => (
-    <Modal show={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} size="2xl">
+    <Modal show={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} size="3xl">
       <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">
         {editingSchedule ? '스케줄 수정' : '새 발송 스케줄 만들기'}
       </ModalHeader>
@@ -1521,31 +1603,31 @@ const Templates: React.FC = () => {
           <div className="space-y-3">
             <Label>발송 대상 필터</Label>
 
-            {/* Row 1: Building */}
-            {buildings.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">건물</div>
-                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
-                  {[...buildings].reverse().map(b => {
-                    const isActive = isFilterActive('building', String(b.id));
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => toggleScheduleFilter('building', String(b.id))}
-                        className={`w-24 px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                          ${isActive
-                            ? 'bg-[#3182F6] text-white'
-                            : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                          }`}
-                      >
-                        {b.name}
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* Row 1: 대상 (v4 unified date_target) */}
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">대상</div>
+              <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+                {[
+                  { value: 'today', label: '오늘' },
+                  { value: 'tomorrow', label: '내일' },
+                  { value: 'today_checkout', label: '오늘 체크아웃' },
+                  { value: 'tomorrow_checkout', label: '내일 체크아웃' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSDateTarget(opt.value)}
+                    className={`px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                      ${sDateTarget === opt.value
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* Row 2: Assignment status */}
             <div className="space-y-1.5">
@@ -1575,7 +1657,33 @@ const Templates: React.FC = () => {
               </div>
             </div>
 
-            {/* Row 3: Column match */}
+            {/* Row 3: Building */}
+            {buildings.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">건물</div>
+                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+                  {[...buildings].reverse().map(b => {
+                    const isActive = isFilterActive('building', String(b.id));
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => toggleScheduleFilter('building', String(b.id))}
+                        className={`w-24 px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                          ${isActive
+                            ? 'bg-[#3182F6] text-white'
+                            : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                          }`}
+                      >
+                        {b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Row 4: Column match */}
             <div className="space-y-1.5">
               <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">컬럼 조건</div>
               <div className="flex items-center gap-2">
@@ -1676,108 +1784,16 @@ const Templates: React.FC = () => {
               )}
             </div>
 
-            {/* Row 4: Date mode (checkin / checkout) */}
-            <div>
-              <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1.5 block">날짜 기준</label>
-              <div className="flex gap-1.5">
-                {[
-                  { value: 'checkin', label: '체크인' },
-                  { value: 'checkout', label: '체크아웃' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSDateMode(opt.value as 'checkin' | 'checkout')}
-                    className={`rounded-lg px-3 py-1.5 text-caption font-medium transition-colors ${
-                      sDateMode === opt.value
-                        ? 'bg-[#3182F6] text-white'
-                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-300 dark:hover:bg-[#35353E]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Row 5: Date */}
-            <div className="space-y-1.5">
-              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">날짜</div>
-              <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
-                {[
-                  { value: 'today', label: '오늘' },
-                  { value: 'tomorrow', label: '내일' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSDateFilter(opt.value)}
-                    className={`w-24 px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                      ${sDateFilter === opt.value
-                        ? 'bg-[#3182F6] text-white'
-                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                      }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Row 6: Consecutive stay filter */}
-            <div>
-              <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1.5 block">연박자</label>
-              <div className="flex gap-1.5">
-                {[
-                  { value: '', label: '전체' },
-                  { value: 'exclude', label: '연박 제외' },
-                  { value: 'only', label: '연박만' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSConsecutiveStayFilter(opt.value)}
-                    className={`rounded-lg px-3 py-1.5 text-caption font-medium transition-colors ${
-                      sConsecutiveStayFilter === opt.value
-                        ? 'bg-[#3182F6] text-white'
-                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-300 dark:hover:bg-[#35353E]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Row 7: Next stay filter */}
-            <div>
-              <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1.5 block">연장 여부</label>
-              <div className="flex gap-1.5">
-                {[
-                  { value: '', label: '전체' },
-                  { value: 'exclude', label: '연장자 제외' },
-                  { value: 'only', label: '연장자만' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSNextStayFilter(opt.value)}
-                    className={`rounded-lg px-3 py-1.5 text-caption font-medium transition-colors ${
-                      sNextStayFilter === opt.value
-                        ? 'bg-[#3182F6] text-white'
-                        : 'bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] dark:bg-[#2C2C34] dark:text-gray-300 dark:hover:bg-[#35353E]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Summary text — {{건물}}의 {{배정 상태}} 상태의 {{날짜}} 예약자에게 발송됩니다 */}
+            {/* Summary text */}
             {(() => {
-              const dateLabel = sDateFilter === 'tomorrow' ? '내일' : '오늘';
-              const dateModeLabel = sDateMode === 'checkout' ? '체크아웃 기준 ' : '';
+              const dateLabel = (() => {
+                switch (sDateTarget) {
+                  case 'today_checkout': return '오늘 체크아웃';
+                  case 'tomorrow_checkout': return '내일 체크아웃';
+                  case 'tomorrow': return '내일';
+                  default: return '오늘';
+                }
+              })();
               const buildingFilters = sFilters.filter(f => f.type === 'building');
               const assignmentFilters = sFilters.filter(f => f.type === 'assignment');
               const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
@@ -1799,16 +1815,14 @@ const Templates: React.FC = () => {
                 : '';
 
               const suffixParts: string[] = [];
-              if (sConsecutiveStayFilter === 'exclude') suffixParts.push('연박 제외');
-              else if (sConsecutiveStayFilter === 'only') suffixParts.push('연박만');
-              if (sNextStayFilter === 'exclude') suffixParts.push('연장자 제외');
-              else if (sNextStayFilter === 'only') suffixParts.push('연장자만');
+              if (sStayFilter === 'exclude') suffixParts.push('연박 제외');
+              if (sTargetMode === 'last_day') suffixParts.push('마지막날만');
               const suffixText = suffixParts.length > 0 ? ` (${suffixParts.join(', ')})` : '';
 
               if (!buildingText && !assignmentText && columnMatchFilters.length === 0) {
                 return (
                   <p className="text-caption text-[#B0B8C1] dark:text-gray-600">
-                    {dateModeLabel}{dateLabel} 전체 예약자에게 발송됩니다{suffixText}
+                    {dateLabel} 전체 예약자에게 발송됩니다{suffixText}
                   </p>
                 );
               }
@@ -1831,7 +1845,7 @@ const Templates: React.FC = () => {
 
               return (
                 <p className="text-caption text-[#3182F6]">
-                  {dateModeLabel}{parts.join('의 ')}의 {dateLabel} 예약자에게 발송됩니다{suffixText}
+                  {parts.join('의 ')}의 {dateLabel} 예약자에게 발송됩니다{suffixText}
                 </p>
               );
             })()}
@@ -1839,35 +1853,64 @@ const Templates: React.FC = () => {
 
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
-          {/* Target mode — 연박자 발송 설정 */}
-          <div className="space-y-2">
+          {/* 연박자 발송 설정 */}
+          <div className="space-y-3">
             <Label>연박자 발송 설정</Label>
+
+            {/* 포함 / 제외 라디오 */}
             <div className="flex gap-2">
-              {([
-                { value: 'once' as const, label: '한번만', desc: '연박자에게 첫날에만 발송합니다' },
-                { value: 'daily' as const, label: '매일', desc: '연박자에게 매일 발송합니다' },
-              ] as const).map(opt => (
+              {[
+                { value: '', label: '포함', desc: '연박자에게도 발송합니다' },
+                { value: 'exclude', label: '제외', desc: '연박자에게는 발송하지 않습니다' },
+              ].map(opt => (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setSTargetMode(opt.value)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer
-                    ${sTargetMode === opt.value
+                  onClick={() => setSStayFilter(opt.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer flex-1
+                    ${sStayFilter === opt.value
                       ? 'border-[#3182F6] bg-[#E8F3FF] dark:bg-[#3182F6]/15 dark:border-[#3182F6]'
                       : 'border-[#E5E8EB] bg-white hover:bg-[#F8F9FA] dark:border-gray-700 dark:bg-[#1E1E24] dark:hover:bg-[#2C2C34]'
                     }`}
                 >
                   <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                    ${sTargetMode === opt.value ? 'border-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
-                    {sTargetMode === opt.value && <div className="w-2 h-2 rounded-full bg-[#3182F6]" />}
+                    ${sStayFilter === opt.value ? 'border-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
+                    {sStayFilter === opt.value && <div className="w-2 h-2 rounded-full bg-[#3182F6]" />}
                   </div>
                   <div>
-                    <p className={`text-body font-medium ${sTargetMode === opt.value ? 'text-[#3182F6]' : 'text-[#191F28] dark:text-white'}`}>{opt.label}</p>
+                    <p className={`text-body font-medium ${sStayFilter === opt.value ? 'text-[#3182F6]' : 'text-[#191F28] dark:text-white'}`}>{opt.label}</p>
                     <p className="text-caption text-[#8B95A1] dark:text-gray-500">{opt.desc}</p>
                   </div>
                 </button>
               ))}
             </div>
+
+            {/* 빈도 옵션 — 포함일 때만 표시 */}
+            {sStayFilter !== 'exclude' && (
+              <div className="space-y-1.5 ml-2">
+                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">발송 빈도</div>
+                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+                  {[
+                    { value: 'once' as const, label: '한번만' },
+                    { value: 'daily' as const, label: '매일' },
+                    { value: 'last_day' as const, label: '마지막날만' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSTargetMode(opt.value)}
+                      className={`px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                        ${sTargetMode === opt.value
+                          ? 'bg-[#3182F6] text-white'
+                          : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />

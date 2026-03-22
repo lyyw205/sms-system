@@ -120,6 +120,7 @@ class Reservation(TenantMixin, Base):
     # Consecutive stay (연박) linking
     stay_group_id = Column(String(36), nullable=True, index=True)   # UUID — same value for all reservations in a consecutive stay group
     stay_group_order = Column(Integer, nullable=True)                # Order within group (0, 1, 2...)
+    is_last_in_group = Column(Boolean, nullable=True)                # True: last reservation in consecutive stay group
 
     # Extended Naver booking data
     check_out_date = Column("end_date", String(20), nullable=True)  # checkout date YYYY-MM-DD  # TODO: PostgreSQL 전환 시 Date 타입으로 변경
@@ -398,11 +399,15 @@ class TemplateSchedule(TenantMixin, Base):
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
 
-    target_mode = Column(String(20), default='once')  # 'once' (체크인 당일만) or 'daily' (매일, 연박 포함)
+    target_mode = Column(String(20), default='once')  # 'once' | 'daily' | 'last_day' (체크아웃 전날만)
     once_per_stay = Column("is_once_per_stay", Boolean, default=False)  # True: 연박 그룹 내 최초 체크인에만 발송
     date_mode = Column(String(20), default='checkin')             # 'checkin' | 'checkout' — 대상 필터링 기준 날짜
     consecutive_stay_filter = Column(String(20), nullable=True)   # null(전체) | 'exclude'(연박제외) | 'only'(연박만)
     next_stay_filter = Column(String(20), nullable=True)          # null(전체) | 'exclude'(연장자제외) | 'only'(연장자만)
+
+    # v4: unified filters (take precedence over date_mode+date_filter and csf+nsf when set)
+    date_target = Column(String(30), nullable=True)   # 'today' | 'tomorrow' | 'today_checkout' | 'tomorrow_checkout'
+    stay_filter = Column(String(20), nullable=True)    # null(include) | 'exclude'(no consecutive)
 
     # Relationship
     template = relationship("MessageTemplate", backref="schedules")

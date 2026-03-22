@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from datetime import datetime, timezone
 
 from app.api.deps import get_tenant_scoped_db
@@ -52,6 +52,8 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "date_mode": schedule.date_mode or "checkin",
         "consecutive_stay_filter": schedule.consecutive_stay_filter,
         "next_stay_filter": schedule.next_stay_filter,
+        "date_target": schedule.date_target,
+        "stay_filter": schedule.stay_filter,
         "created_at": schedule.created_at,
         "updated_at": schedule.updated_at,
         "last_run": schedule.last_run_at,
@@ -73,13 +75,21 @@ class TemplateScheduleCreate(BaseModel):
     timezone: str = "Asia/Seoul"
     filters: Optional[List[dict]] = None  # [{"type": "tag", "value": "객후"}, ...]
     date_filter: Optional[str] = None
-    target_mode: Optional[str] = "once"  # 'once' or 'daily'
+    target_mode: Optional[Literal['once', 'daily', 'last_day']] = "once"
     exclude_sent: bool = True
     active: bool = True
     once_per_stay: Optional[bool] = False
     date_mode: Optional[Literal['checkin', 'checkout']] = "checkin"
     consecutive_stay_filter: Optional[Literal['exclude', 'only']] = None
     next_stay_filter: Optional[Literal['exclude', 'only']] = None
+    date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
+    stay_filter: Optional[Literal['exclude']] = None
+
+    @model_validator(mode='after')
+    def validate_stay_filter_exclusivity(self):
+        if self.stay_filter and (self.consecutive_stay_filter or self.next_stay_filter):
+            raise ValueError("stay_filter cannot be used together with consecutive_stay_filter or next_stay_filter")
+        return self
 
 
 class TemplateScheduleUpdate(BaseModel):
@@ -95,13 +105,21 @@ class TemplateScheduleUpdate(BaseModel):
     timezone: Optional[str] = None
     filters: Optional[List[dict]] = None
     date_filter: Optional[str] = None
-    target_mode: Optional[str] = None  # 'once' or 'daily'
+    target_mode: Optional[Literal['once', 'daily', 'last_day']] = None
     exclude_sent: Optional[bool] = None
     active: Optional[bool] = None
     once_per_stay: Optional[bool] = None
     date_mode: Optional[Literal['checkin', 'checkout']] = None
     consecutive_stay_filter: Optional[Literal['exclude', 'only']] = None
     next_stay_filter: Optional[Literal['exclude', 'only']] = None
+    date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
+    stay_filter: Optional[Literal['exclude']] = None
+
+    @model_validator(mode='after')
+    def validate_stay_filter_exclusivity(self):
+        if self.stay_filter and (self.consecutive_stay_filter or self.next_stay_filter):
+            raise ValueError("stay_filter cannot be used together with consecutive_stay_filter or next_stay_filter")
+        return self
 
 
 class TemplateScheduleResponse(BaseModel):
@@ -127,6 +145,8 @@ class TemplateScheduleResponse(BaseModel):
     date_mode: Optional[str] = "checkin"
     consecutive_stay_filter: Optional[str] = None
     next_stay_filter: Optional[str] = None
+    date_target: Optional[str] = None
+    stay_filter: Optional[str] = None  # Optional[str] for backward compat with pre-migration 'last_only' values
     created_at: datetime
     updated_at: datetime
     last_run: Optional[datetime] = None
@@ -225,6 +245,8 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         date_mode=schedule.date_mode or "checkin",
         consecutive_stay_filter=schedule.consecutive_stay_filter,
         next_stay_filter=schedule.next_stay_filter,
+        date_target=schedule.date_target,
+        stay_filter=schedule.stay_filter,
     )
 
     db.add(db_schedule)

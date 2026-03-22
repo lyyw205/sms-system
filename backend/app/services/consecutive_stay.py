@@ -136,9 +136,11 @@ def detect_and_link_consecutive_stays(db: Session) -> dict:
 
             for order, res in enumerate(chain):
                 should_be_grouped.add(res.id)
-                if res.stay_group_id != group_id or res.stay_group_order != order:
+                is_last = (order == len(chain) - 1)
+                if res.stay_group_id != group_id or res.stay_group_order != order or res.is_last_in_group != is_last:
                     res.stay_group_id = group_id
                     res.stay_group_order = order
+                    res.is_last_in_group = is_last
                     linked_count += 1
 
     # Unlink reservations that are no longer consecutive
@@ -146,6 +148,7 @@ def detect_and_link_consecutive_stays(db: Session) -> dict:
         if res.stay_group_id and res.id not in should_be_grouped:
             res.stay_group_id = None
             res.stay_group_order = None
+            res.is_last_in_group = None
             unlinked_count += 1
 
     if linked_count > 0 or unlinked_count > 0:
@@ -171,6 +174,7 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
     group_id = res.stay_group_id
     res.stay_group_id = None
     res.stay_group_order = None
+    res.is_last_in_group = None
 
     # Re-order remaining members
     remaining = (
@@ -188,9 +192,11 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
         for r in remaining:
             r.stay_group_id = None
             r.stay_group_order = None
+            r.is_last_in_group = None
     else:
         for i, r in enumerate(remaining):
             r.stay_group_order = i
+            r.is_last_in_group = (i == len(remaining) - 1)
 
     db.flush()
     return True
@@ -224,6 +230,7 @@ def link_reservations(db: Session, reservation_ids: List[int]) -> Optional[str]:
     for order, res in enumerate(reservations):
         res.stay_group_id = group_id
         res.stay_group_order = order
+        res.is_last_in_group = (order == len(reservations) - 1)
 
     db.flush()
     return group_id

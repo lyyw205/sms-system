@@ -199,6 +199,49 @@ def init_db():
             if "next_stay_filter" not in cols:
                 conn.execute(text("ALTER TABLE template_schedules ADD COLUMN next_stay_filter VARCHAR(20)"))
                 print("AUTO-MIGRATE: Added next_stay_filter column to template_schedules table")
+            # v4: unified filters
+            if "date_target" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN date_target VARCHAR(30)"))
+                print("AUTO-MIGRATE: Added date_target column to template_schedules table")
+            if "stay_filter" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN stay_filter VARCHAR(20)"))
+                print("AUTO-MIGRATE: Added stay_filter column to template_schedules table")
+
+        # reservations: is_last_in_group
+        if "reservations" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("reservations")]
+            if "is_last_in_group" not in cols:
+                conn.execute(text("ALTER TABLE reservations ADD COLUMN is_last_in_group BOOLEAN"))
+                print("AUTO-MIGRATE: Added is_last_in_group column to reservations table")
+
+        # Backfill is_last_in_group for existing stay groups (idempotent — only touches NULL rows)
+        if "reservations" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("reservations")]
+            if "is_last_in_group" in cols:
+                result = conn.execute(text("""
+                    UPDATE reservations
+                    SET is_last_in_group = (
+                        stay_group_order = (
+                            SELECT MAX(r2.stay_group_order)
+                            FROM reservations r2
+                            WHERE r2.stay_group_id = reservations.stay_group_id
+                        )
+                    )
+                    WHERE stay_group_id IS NOT NULL
+                      AND is_last_in_group IS NULL
+                """))
+                if result.rowcount > 0:
+                    print(f"AUTO-MIGRATE: Backfilled is_last_in_group for {result.rowcount} reservations")
+
+        # v5: migrate stay_filter='last_only' → target_mode='last_day' + stay_filter=NULL
+        if "template_schedules" in inspector.get_table_names():
+            result = conn.execute(text("""
+                UPDATE template_schedules
+                SET target_mode = 'last_day', stay_filter = NULL
+                WHERE stay_filter = 'last_only'
+            """))
+            if result.rowcount > 0:
+                print(f"AUTO-MIGRATE: Migrated {result.rowcount} schedules from stay_filter='last_only' to target_mode='last_day'")
 
     # Task 1.5: admin 기본 비밀번호 환경변수화
     db = SessionLocal()
