@@ -195,6 +195,7 @@ class SmsSender:
                         '_female_buffer': template.female_buffer or 0,
                         '_gender_ratio_buffers': template.gender_ratio_buffers,
                         '_round_unit': template.round_unit or 0,
+                        '_round_mode': template.round_mode or 'ceil',
                     },
                 )
                 if result.get("success"):

@@ -60,9 +60,6 @@ AVAILABLE_VARIABLES = {
         "example": "12",
         "category": "party"
     },
-    "today_male_count": {"description": "오늘 남성 인원", "example": "13", "category": "party"},
-    "today_female_count": {"description": "오늘 여성 인원", "example": "12", "category": "party"},
-    "today_total_count": {"description": "오늘 총 인원", "example": "25", "category": "party"},
     "tomorrow_male_count": {"description": "내일 남성 인원", "example": "15", "category": "party"},
     "tomorrow_female_count": {"description": "내일 여성 인원", "example": "14", "category": "party"},
     "tomorrow_total_count": {"description": "내일 총 인원", "example": "29", "category": "party"},
@@ -77,17 +74,17 @@ def _apply_buffers(male: int, female: int, custom_vars: dict) -> tuple:
 
     우선순위: gender_ratio_buffers > male/female_buffer > participant_buffer
     성비 동점(남 == 여) 시 female_high 적용.
-    round_unit은 total에만 적용.
+    round_unit은 total에만 적용. round_mode: ceil(올림), round(반올림), floor(내림).
     """
     _participant_buffer = int(custom_vars.get('_participant_buffer', 0))
     _male_buffer = int(custom_vars.get('_male_buffer', 0))
     _female_buffer = int(custom_vars.get('_female_buffer', 0))
     _grb_raw = custom_vars.get('_gender_ratio_buffers')
     _round_unit = int(custom_vars.get('_round_unit', 0))
+    _round_mode = custom_vars.get('_round_mode', 'ceil')
 
     eff_male = male
     eff_female = female
-    p_buffer = _participant_buffer
 
     if _grb_raw:
         try:
@@ -98,18 +95,21 @@ def _apply_buffers(male: int, female: int, custom_vars: dict) -> tuple:
                 cfg = grb.get('male_high', {})
             eff_male = male + int(cfg.get('m', 0))
             eff_female = female + int(cfg.get('f', 0))
-            p_buffer = 0
         except (ValueError, TypeError, AttributeError, _json.JSONDecodeError):
             pass  # 파싱 실패 → fallback
     elif _male_buffer or _female_buffer:
         eff_male = male + _male_buffer
         eff_female = female + _female_buffer
-        p_buffer = 0
 
-    total = eff_male + eff_female + p_buffer
+    total = eff_male + eff_female + _participant_buffer
 
     if _round_unit > 0:
-        total = math.ceil(total / _round_unit) * _round_unit
+        if _round_mode == 'floor':
+            total = math.floor(total / _round_unit) * _round_unit
+        elif _round_mode == 'round':
+            total = round(total / _round_unit) * _round_unit
+        else:  # ceil (default)
+            total = math.ceil(total / _round_unit) * _round_unit
 
     return eff_male, eff_female, total
 
@@ -218,7 +218,7 @@ def calculate_template_variables(
     except (ValueError, TypeError):
         _base_date = date.today()
 
-    for _prefix, _delta in [('today', 0), ('tomorrow', 1), ('yesterday', -1)]:
+    for _prefix, _delta in [('tomorrow', 1), ('yesterday', -1)]:
         _d = (_base_date + _td(days=_delta)).strftime('%Y-%m-%d')
         _snap = get_or_create_snapshot(db, _d)
         _pm, _pf, _pt = _apply_buffers(_snap.male_count, _snap.female_count, custom_vars or {})

@@ -277,6 +277,7 @@ class TemplateScheduleExecutor:
                 '_female_buffer': schedule.template.female_buffer or 0,
                 '_gender_ratio_buffers': schedule.template.gender_ratio_buffers,
                 '_round_unit': schedule.template.round_unit or 0,
+                '_round_mode': schedule.template.round_mode or 'ceil',
             }
 
             for reservation in targets:

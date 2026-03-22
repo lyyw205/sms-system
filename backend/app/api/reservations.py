@@ -642,6 +642,7 @@ async def toggle_sms_sent(
                 '_female_buffer': tpl.female_buffer or 0,
                 '_gender_ratio_buffers': tpl.gender_ratio_buffers,
                 '_round_unit': tpl.round_unit or 0,
+                '_round_mode': tpl.round_mode or 'ceil',
             } if tpl else None
 
             result = await send_single_sms(

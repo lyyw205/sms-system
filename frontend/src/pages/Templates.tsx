@@ -63,6 +63,7 @@ interface Template {
   female_buffer: number;
   gender_ratio_buffers: string | null;
   round_unit: number;
+  round_mode: string;
 }
 
 interface TemplateSchedule {
@@ -389,8 +390,10 @@ const Templates: React.FC = () => {
     male_high: { m: number; f: number };
     female_high: { m: number; f: number };
   }>({ male_high: { m: 0, f: 0 }, female_high: { m: 0, f: 0 } });
-  const [tRoundUnit, setTRoundUnit] = useState(0);
+  const [tRoundUnit, setTRoundUnit] = useState(10);
+  const [tRoundMode, setTRoundMode] = useState<'ceil' | 'round' | 'floor'>('ceil');
   const [participantSettingsOpen, setParticipantSettingsOpen] = useState(false);
+  const [varsOpen, setVarsOpen] = useState(false);
 
   // delete template
   const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<Template | null>(null);
@@ -422,9 +425,7 @@ const Templates: React.FC = () => {
   const [sDateTarget, setSDateTarget] = useState<string>('today');
   const [sStayFilter, setSStayFilter] = useState<string>('');
   const sExcludeSent = true; // 항상 발송 완료 대상 제외
-  const [cmColumn, setCmColumn] = useState('party_type');
-  const [cmText, setCmText] = useState('');
-  const [cmOperator, setCmOperator] = useState<'contains' | 'not_contains' | 'is_empty' | 'is_not_empty'>('contains');
+  const [cmRows, setCmRows] = useState<{ column: string; operator: '' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty'; text: string }[]>([{ column: 'party_type', operator: '', text: '' }]);
   const [sActive, setSActive] = useState(true);
 
   // (filter picker state removed — replaced by toggle button UI)
@@ -515,7 +516,6 @@ const Templates: React.FC = () => {
   };
 
   const PARTICIPANT_VARS = ['participant_count', 'male_count', 'female_count',
-    'today_male_count', 'today_female_count', 'today_total_count',
     'tomorrow_male_count', 'tomorrow_female_count', 'tomorrow_total_count',
     'yesterday_male_count', 'yesterday_female_count', 'yesterday_total_count'];
 
@@ -528,7 +528,8 @@ const Templates: React.FC = () => {
     setTFemaleBuffer(0);
     setTGenderRatioEnabled(false);
     setTGenderRatioBuffers({ male_high: { m: 0, f: 0 }, female_high: { m: 0, f: 0 } });
-    setTRoundUnit(0);
+    setTRoundUnit(10);
+    setTRoundMode('ceil');
     setParticipantSettingsOpen(false);
     setDetectedVars({ valid: [], invalid: [] });
     loadSampleExamples();
@@ -544,6 +545,7 @@ const Templates: React.FC = () => {
     setTMaleBuffer(t.male_buffer || 0);
     setTFemaleBuffer(t.female_buffer || 0);
     setTRoundUnit(t.round_unit || 0);
+    setTRoundMode((t.round_mode as 'ceil' | 'round' | 'floor') || 'ceil');
     if (t.gender_ratio_buffers) {
       try {
         setTGenderRatioBuffers(JSON.parse(t.gender_ratio_buffers));
@@ -587,6 +589,7 @@ const Templates: React.FC = () => {
         female_buffer: tFemaleBuffer,
         gender_ratio_buffers: tGenderRatioEnabled ? JSON.stringify(tGenderRatioBuffers) : null,
         round_unit: tRoundUnit,
+        round_mode: tRoundMode,
       };
       if (editingTemplate) {
         await templatesAPI.update(editingTemplate.id, data);
@@ -631,9 +634,7 @@ const Templates: React.FC = () => {
     setSNextStayFilter('');
     setSDateTarget('today');
     setSStayFilter('');
-    setCmColumn('party_type');
-    setCmText('');
-    setCmOperator('contains');
+    setCmRows([{ column: 'party_type', operator: '', text: '' }]);
     setSActive(true);
   };
 
@@ -654,7 +655,12 @@ const Templates: React.FC = () => {
     setSIntervalMinutes(String(s.interval_minutes ?? 10));
     setSActiveStartHour(s.active_start_hour != null ? String(s.active_start_hour) : '');
     setSActiveEndHour(s.active_end_hour != null ? String(s.active_end_hour) : '');
-    setSFilters(parseFilters(s.filters));
+    const parsedFilters = parseFilters(s.filters);
+    setSFilters(parsedFilters);
+    setCmRows(parsedFilters.filter(f => f.type === 'column_match').map(f => {
+      const parsed = parseColumnMatchValue(f.value);
+      return parsed ? { column: parsed.column, operator: parsed.operator as any, text: parsed.text } : { column: 'party_type', operator: 'contains' as const, text: '' };
+    }));
     setSDateFilter(s.date_filter || 'today');
     setSTargetMode(s.target_mode === 'daily' ? 'daily' : s.target_mode === 'last_day' ? 'last_day' : 'once');
     setSDateMode(s.date_mode === 'checkout' ? 'checkout' : 'checkin');
@@ -840,6 +846,41 @@ const Templates: React.FC = () => {
 
   const isFilterAllActive = (type: string) =>
     !sFilters.some(f => f.type === type);
+
+  // Sync cmRows → sFilters (column_match entries)
+  const syncCmRowsToFilters = (rows: typeof cmRows) => {
+    const validFilters = rows
+      .filter(r => {
+        if (!r.operator) return false;
+        if (r.operator === 'is_empty' || r.operator === 'is_not_empty') return true;
+        return r.text.trim() !== '';
+      })
+      .map(r => ({
+        type: 'column_match',
+        value: `${r.column}:${r.operator}:${r.operator === 'is_empty' || r.operator === 'is_not_empty' ? '' : r.text.trim()}`,
+      }));
+    setSFilters(prev => [...prev.filter(f => f.type !== 'column_match'), ...validFilters]);
+  };
+
+  const updateCmRow = (index: number, updates: Partial<typeof cmRows[0]>) => {
+    setCmRows(prev => {
+      const next = prev.map((r, i) => i === index ? { ...r, ...updates } : r);
+      syncCmRowsToFilters(next);
+      return next;
+    });
+  };
+
+  const addCmRow = () => {
+    setCmRows(prev => [...prev, { column: 'party_type', operator: '', text: '' }]);
+  };
+
+  const removeCmRow = (index: number) => {
+    setCmRows(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      syncCmRowsToFilters(next);
+      return next;
+    });
+  };
 
   const clearFilterType = (type: string) =>
     setSFilters(prev => prev.filter(f => f.type !== type));
@@ -1104,124 +1145,70 @@ const Templates: React.FC = () => {
 
   const renderTemplateDialog = () => (
     <Modal show={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} size="5xl">
-      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">
-        {editingTemplate ? '템플릿 수정' : '새 템플릿 만들기'}
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800 [&>h3]:flex-1">
+        <div className="flex items-center justify-between w-full pr-4">
+          <span>{editingTemplate ? '템플릿 수정' : '새 템플릿 만들기'}</span>
+          {editingTemplate && (
+            <div className="flex items-center gap-2">
+              <span className={`text-caption font-medium ${tActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
+                {tActive ? '활성' : '비활성'}
+              </span>
+              <ToggleSwitch id="t-active-header" checked={tActive} onChange={setTActive} label="" />
+            </div>
+          )}
+        </div>
       </ModalHeader>
 
-      <ModalBody>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <ModalBody className="!p-0">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 p-6 h-[75vh]">
           {/* Left column: settings */}
-          <div className="space-y-5">
+          <div className="space-y-5 overflow-y-auto pr-2">
             {/* Key */}
-            <div className="space-y-2">
+            <div>
               <Label htmlFor="t-key">
                 템플릿 키 <span className="text-[#F04452] dark:text-red-400">*</span>
               </Label>
               <TextInput
                 id="t-key"
-                placeholder="예: welcome_message"
+                placeholder="영문 소문자와 _ (예: welcome_msg)"
                 value={tKey}
                 onChange={e => { setTKey(e.target.value); setTKeyError(''); }}
                 disabled={!!editingTemplate}
                 color={tKeyError ? 'failure' : undefined}
+                className="mt-1"
               />
-              {tKeyError ? (
-                <p className="text-caption text-[#F04452] dark:text-red-400">{tKeyError}</p>
-              ) : (
-                <p className="text-caption text-gray-400 dark:text-gray-500">시스템 고유 식별자. 영문 소문자와 _ 만 허용됩니다.</p>
+              {tKeyError && (
+                <p className="text-caption text-[#F04452] dark:text-red-400 mt-1">{tKeyError}</p>
               )}
             </div>
 
             {/* Name */}
-            <div className="space-y-2">
+            <div>
               <Label htmlFor="t-name">
                 템플릿 이름 <span className="text-[#F04452] dark:text-red-400">*</span>
               </Label>
               <TextInput
                 id="t-name"
-                placeholder="예: 환영 메시지"
+                placeholder="관리자용 이름 (예: 환영 메시지)"
                 value={tName}
                 onChange={e => setTName(e.target.value)}
+                className="mt-1"
               />
-              <p className="text-caption text-gray-400 dark:text-gray-500">관리자가 보는 이름입니다. 한글로 작성하세요.</p>
             </div>
 
             {/* Short label */}
-            <div className="space-y-2">
+            <div>
               <Label htmlFor="t-short-label">축약명</Label>
               <TextInput
                 id="t-short-label"
-                placeholder="예: 객안"
+                placeholder="배정 페이지 칩 표시용 (예: 객안)"
                 value={tShortLabel}
                 onChange={e => setTShortLabel(e.target.value)}
                 maxLength={10}
+                className="mt-1"
               />
-              <p className="text-caption text-gray-400 dark:text-gray-500">
-                객실배정 페이지에서 칩으로 표시될 짧은 이름입니다.
-              </p>
             </div>
 
-            {/* Available variables reference (always open) */}
-            {availableVariables && (() => {
-              const CATEGORY_META: Record<string, { label: string; color: string; darkColor: string; bgColor: string; darkBgColor: string }> = {
-                reservation: { label: '예약', color: '#3182F6', darkColor: '#60a5fa', bgColor: '#E8F3FF', darkBgColor: 'rgba(49,130,246,0.15)' },
-                room:        { label: '객실', color: '#00C9A7', darkColor: '#34d399', bgColor: '#E6FAF7', darkBgColor: 'rgba(0,201,167,0.15)' },
-                party:       { label: '파티', color: '#FF9F00', darkColor: '#fbbf24', bgColor: '#FFF6E5', darkBgColor: 'rgba(255,159,0,0.15)' },
-              };
-
-              // Group variables by category, preserving insertion order
-              const grouped: Record<string, Array<[string, any]>> = {};
-              for (const [varName, v] of Object.entries(availableVariables.variables ?? {})) {
-                const cat = (v as any).category ?? 'other';
-                if (!grouped[cat]) grouped[cat] = [];
-                grouped[cat].push([varName, v]);
-              }
-
-              const handleCopy = (varName: string) => {
-                navigator.clipboard.writeText(`{{${varName}}}`).then(() => {
-                  toast.success(`{{${varName}}} 복사됨`);
-                });
-              };
-
-              return (
-                <div className="rounded-2xl border border-[#E5E8EB] dark:border-gray-800 overflow-hidden">
-                  {/* Header */}
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#E5E8EB] dark:border-gray-800 bg-[#F8F9FA] dark:bg-[#1E1E24]">
-                    <span className="text-overline font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-gray-500">사용 가능한 변수</span>
-                    <span className="text-tiny text-[#B0B8C1] dark:text-gray-600">· 클릭하여 복사</span>
-                  </div>
-
-                  {/* Column headers */}
-                  <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#F2F4F6] dark:border-gray-800 bg-[#F8F9FA] dark:bg-[#1E1E24]">
-                    <span className="text-tiny font-medium text-[#B0B8C1] dark:text-gray-600 w-36 shrink-0">변수명</span>
-                    <span className="text-tiny font-medium text-[#B0B8C1] dark:text-gray-600 flex-1">설명</span>
-                    <span className="text-tiny font-medium text-[#B0B8C1] dark:text-gray-600 shrink-0">예시</span>
-                  </div>
-
-                  {/* Variable rows — flat list */}
-                  <div className="divide-y divide-[#F2F4F6] dark:divide-gray-800">
-                    {Object.entries(availableVariables.variables ?? {}).map(([varName, v]: [string, any]) => (
-                      <button
-                        key={varName}
-                        type="button"
-                        onClick={() => handleCopy(varName)}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
-                      >
-                        <code className="font-mono text-caption text-[#3182F6] dark:text-blue-400 w-36 shrink-0">
-                          {`{{${varName}}}`}
-                        </code>
-                        <span className="text-caption text-[#4E5968] dark:text-gray-300 flex-1 min-w-0 truncate">
-                          {v.description}
-                        </span>
-                        <span className="text-tiny text-[#B0B8C1] dark:text-gray-600 shrink-0 font-mono">
-                          {sampleExamples[varName] || v.example}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* 인원 표시 설정 */}
             <div className="space-y-3">
@@ -1235,53 +1222,85 @@ const Templates: React.FC = () => {
               </button>
               {participantSettingsOpen && (
                 <div className="space-y-4 rounded-xl border border-[#E5E8EB] dark:border-gray-700 p-4">
-                  {/* 총합 추가 (기존 participant_buffer) */}
+                  {/* 총 인원 추가 (기존 participant_buffer) + 반올림 모드 */}
                   <div>
-                    <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1 block">총합 추가</label>
+                    <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1 block">총 인원 추가</label>
                     <div className="flex items-center gap-2">
-                      <span className="text-label text-[#4E5968] dark:text-gray-300">{'{{participant_count}}'} +</span>
+                      <span className="text-label text-[#4E5968] dark:text-gray-300">총 인원 +</span>
                       <TextInput
                         type="number"
                         min={0}
-                        value={tParticipantBuffer}
+                        value={tParticipantBuffer || ''}
+                        placeholder="0"
                         onChange={(e) => setTParticipantBuffer(Number(e.target.value) || 0)}
-                        className="w-20"
+                        className="w-14 [&_input]:!py-1"
                         sizing="sm"
                       />
                       <span className="text-label text-[#8B95A1]">명</span>
+                      <span className="text-label text-[#B0B8C1] dark:text-gray-600">|</span>
+                      <span className="text-label text-[#8B95A1]">10명 단위</span>
+                      <select
+                        value={tRoundMode}
+                        onChange={(e) => setTRoundMode(e.target.value as 'ceil' | 'round' | 'floor')}
+                        className="rounded-lg border border-[#E5E8EB] bg-white px-2.5 py-1.5 text-body text-gray-900 dark:border-gray-600 dark:bg-[#1E1E24] dark:text-white"
+                      >
+                        <option value="ceil">올림</option>
+                        <option value="round">반올림</option>
+                        <option value="floor">내림</option>
+                      </select>
                     </div>
+                    {(() => {
+                      const example = 71;
+                      const added = example + tParticipantBuffer;
+                      const modeLabel = tRoundMode === 'ceil' ? '올림' : tRoundMode === 'round' ? '반올림' : '내림';
+                      const rounded = tRoundMode === 'ceil'
+                        ? Math.ceil(added / 10) * 10
+                        : tRoundMode === 'round'
+                          ? Math.round(added / 10) * 10
+                          : Math.floor(added / 10) * 10;
+                      return (
+                        <p className="mt-1.5 text-tiny text-[#8B95A1] dark:text-gray-500">
+                          예시) 총 인원이 {example}명이면 {example} + {tParticipantBuffer} + {modeLabel} 적용해서 <span className="font-semibold text-[#3182F6]">{rounded}명</span>으로 문자가 발송됩니다.
+                        </p>
+                      );
+                    })()}
                   </div>
 
-                  {/* 성별 버퍼 */}
-                  <div>
-                    <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1 block">성별 버퍼</label>
+                  {/* 성별 인원 추가 */}
+                  <div className={tGenderRatioEnabled ? 'opacity-40 pointer-events-none' : ''}>
+                    <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1 flex items-center gap-1.5">
+                      성별 인원 추가
+                      {tGenderRatioEnabled && <span className="text-tiny text-[#B0B8C1]">(조건부 추가 사용 중)</span>}
+                    </label>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <span className="text-label text-[#4E5968] dark:text-gray-300">남 +</span>
+                        <span className="text-label text-[#4E5968] dark:text-gray-300">남자 +</span>
                         <TextInput
                           type="number"
                           min={0}
                           value={tMaleBuffer}
                           onChange={(e) => setTMaleBuffer(Number(e.target.value) || 0)}
-                          className="w-20"
+                          className="w-14 [&_input]:!py-1"
                           sizing="sm"
+                          disabled={tGenderRatioEnabled}
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-label text-[#4E5968] dark:text-gray-300">여 +</span>
+                        <span className="text-label text-[#4E5968] dark:text-gray-300">여자 +</span>
                         <TextInput
                           type="number"
                           min={0}
                           value={tFemaleBuffer}
                           onChange={(e) => setTFemaleBuffer(Number(e.target.value) || 0)}
-                          className="w-20"
+                          className="w-14 [&_input]:!py-1"
                           sizing="sm"
+                          disabled={tGenderRatioEnabled}
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* 성비 자동 조정 */}
+                  {/* 성별 인원 조건부 추가 */}
                   <div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -1290,23 +1309,23 @@ const Templates: React.FC = () => {
                         onChange={(e) => setTGenderRatioEnabled(e.target.checked)}
                         className="rounded border-gray-300 text-blue-600"
                       />
-                      <span className="text-label text-[#4E5968] dark:text-gray-300">성비 자동 조정</span>
+                      <span className="text-label text-[#4E5968] dark:text-gray-300">성별 인원 조건부 추가</span>
                     </label>
                     {tGenderRatioEnabled && (
-                      <div className="mt-2 ml-6 space-y-2">
+                      <div className="mt-2 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-caption text-[#8B95A1] w-24">여 &ge; 남일 때</span>
-                          <span className="text-label text-[#4E5968] dark:text-gray-300">남+</span>
+                          <span className="text-caption text-[#8B95A1] w-[5.5rem] pl-[3px]">여자 &ge; 남자일 때</span>
+                          <span className="text-label text-[#4E5968] dark:text-gray-300">남자 +</span>
                           <TextInput
-                            type="number" min={0} className="w-16" sizing="sm"
+                            type="number" min={0} className="w-14 [&_input]:!py-1" sizing="sm"
                             value={tGenderRatioBuffers.female_high.m}
                             onChange={(e) => setTGenderRatioBuffers(prev => ({
                               ...prev, female_high: { ...prev.female_high, m: Number(e.target.value) || 0 }
                             }))}
                           />
-                          <span className="text-label text-[#4E5968] dark:text-gray-300">여+</span>
+                          <span className="text-label text-[#4E5968] dark:text-gray-300">여자 +</span>
                           <TextInput
-                            type="number" min={0} className="w-16" sizing="sm"
+                            type="number" min={0} className="w-14 [&_input]:!py-1" sizing="sm"
                             value={tGenderRatioBuffers.female_high.f}
                             onChange={(e) => setTGenderRatioBuffers(prev => ({
                               ...prev, female_high: { ...prev.female_high, f: Number(e.target.value) || 0 }
@@ -1314,18 +1333,18 @@ const Templates: React.FC = () => {
                           />
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-caption text-[#8B95A1] w-24">남 &gt; 여일 때</span>
-                          <span className="text-label text-[#4E5968] dark:text-gray-300">남+</span>
+                          <span className="text-caption text-[#8B95A1] w-[5.5rem] pl-[3px]">남자 &gt; 여자일 때</span>
+                          <span className="text-label text-[#4E5968] dark:text-gray-300">남자 +</span>
                           <TextInput
-                            type="number" min={0} className="w-16" sizing="sm"
+                            type="number" min={0} className="w-14 [&_input]:!py-1" sizing="sm"
                             value={tGenderRatioBuffers.male_high.m}
                             onChange={(e) => setTGenderRatioBuffers(prev => ({
                               ...prev, male_high: { ...prev.male_high, m: Number(e.target.value) || 0 }
                             }))}
                           />
-                          <span className="text-label text-[#4E5968] dark:text-gray-300">여+</span>
+                          <span className="text-label text-[#4E5968] dark:text-gray-300">여자 +</span>
                           <TextInput
-                            type="number" min={0} className="w-16" sizing="sm"
+                            type="number" min={0} className="w-14 [&_input]:!py-1" sizing="sm"
                             value={tGenderRatioBuffers.male_high.f}
                             onChange={(e) => setTGenderRatioBuffers(prev => ({
                               ...prev, male_high: { ...prev.male_high, f: Number(e.target.value) || 0 }
@@ -1336,58 +1355,67 @@ const Templates: React.FC = () => {
                     )}
                   </div>
 
-                  {/* 반올림 */}
-                  <div>
-                    <label className="text-caption text-[#8B95A1] dark:text-gray-500 mb-1 block">반올림</label>
-                    <div className="flex items-center gap-2">
-                      <TextInput
-                        type="number"
-                        min={0}
-                        value={tRoundUnit}
-                        onChange={(e) => setTRoundUnit(Number(e.target.value) || 0)}
-                        className="w-20"
-                        sizing="sm"
-                      />
-                      <span className="text-label text-[#8B95A1]">명 단위 올림 (0=미사용)</span>
-                    </div>
-                  </div>
 
                   {/* 우선순위 안내 */}
                   <p className="text-tiny text-[#B0B8C1] dark:text-gray-600">
-                    ⓘ 우선순위: 성비 자동 &gt; 성별 버퍼 &gt; 총합 추가
+                    ⓘ 성별: 조건부 추가 &gt; 인원 추가 (둘 중 하나만 적용) / 총 인원 추가는 항상 적용
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Active */}
-            <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
-              <div>
-                <p className="text-body font-medium text-gray-900 dark:text-white">활성 상태</p>
-                <p className="text-caption text-gray-400 dark:text-gray-500">비활성화하면 이 템플릿을 사용할 수 없습니다</p>
+            {/* 사용 가능한 변수 — 접이식 칩 */}
+            {availableVariables && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setVarsOpen(!varsOpen)}
+                  className="flex items-center gap-2 text-label font-medium text-[#4E5968] dark:text-gray-300"
+                >
+                  {varsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  사용 가능한 변수
+                  <span className="text-tiny text-[#B0B8C1] dark:text-gray-600">· 클릭하여 복사</span>
+                </button>
+                {varsOpen && (
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(availableVariables.variables ?? {}).map(([varName, v]: [string, any]) => (
+                      <button
+                        key={varName}
+                        type="button"
+                        title={`${v.description} (예: ${sampleExamples[varName] || v.example})`}
+                        onClick={() => {
+                          navigator.clipboard.writeText(`{{${varName}}}`).then(() => {
+                            toast.success(`{{${varName}}} 복사됨`);
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#E5E8EB] dark:border-gray-700 px-1.5 py-0.5 text-caption font-medium text-[#3182F6] dark:text-blue-400 transition-colors hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/15 cursor-pointer"
+                      >
+                        <code className="font-mono">{varName}</code>
+                        <span className="text-[#B0B8C1] dark:text-gray-600">{v.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <ToggleSwitch id="t-active" checked={tActive} onChange={setTActive} label="" />
-            </div>
+            )}
+
           </div>
 
           {/* Right column: content */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 min-h-0">
             {/* Content */}
-            <div className="flex flex-col flex-1 space-y-2">
+            <div className="flex flex-col flex-1 space-y-2 min-h-0">
               <Label htmlFor="t-content">
                 메시지 내용 <span className="text-[#F04452] dark:text-red-400">*</span>
               </Label>
+
               <Textarea
                 id="t-content"
                 placeholder={`예시:\n안녕하세요 {{customer_name}}님!\n금일 객실은 {{building}}동 {{room_num}}호입니다.\n비밀번호: {{room_password}}`}
                 value={tContent}
                 onChange={e => handleContentChange(e.target.value)}
-                className="font-mono text-body flex-1 min-h-[300px]"
+                className="font-mono text-body flex-1 min-h-0 [&_textarea]:!h-full"
               />
-              <p className="text-caption text-gray-400 dark:text-gray-500">
-                <code className="rounded bg-[#F2F4F6] px-1 py-0.5 font-mono text-[#3182F6] dark:bg-gray-700 dark:text-blue-400">{'{{변수명}}'}</code>{' '}
-                형식으로 변수를 삽입하세요
-              </p>
             </div>
 
             {/* Detected variables */}
@@ -1458,8 +1486,18 @@ const Templates: React.FC = () => {
 
   const renderScheduleDialog = () => (
     <Modal show={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} size="3xl">
-      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800">
-        {editingSchedule ? '스케줄 수정' : '새 발송 스케줄 만들기'}
+      <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800 [&>h3]:flex-1">
+        <div className="flex items-center justify-between w-full pr-4">
+          <span>{editingSchedule ? '스케줄 수정' : '새 발송 스케줄 만들기'}</span>
+          {editingSchedule && (
+            <div className="flex items-center gap-2">
+              <span className={`text-caption font-medium ${sActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
+                {sActive ? '활성' : '비활성'}
+              </span>
+              <ToggleSwitch id="s-active-header" checked={sActive} onChange={setSActive} label="" />
+            </div>
+          )}
+        </div>
       </ModalHeader>
 
       <ModalBody>
@@ -1685,108 +1723,74 @@ const Templates: React.FC = () => {
 
             {/* Row 4: Column match */}
             <div className="space-y-1.5">
-              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">컬럼 조건</div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={cmColumn}
-                  onChange={e => setCmColumn(e.target.value)}
-                  className="rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-body text-gray-900 dark:border-gray-600 dark:bg-[#1E1E24] dark:text-white"
-                >
-                  {COLUMN_MATCH_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
-                  {([
-                    { value: 'contains' as const, label: '포함' },
-                    { value: 'not_contains' as const, label: '미포함' },
-                    { value: 'is_empty' as const, label: '비어있음' },
-                    { value: 'is_not_empty' as const, label: '값 있음' },
-                  ]).map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setCmOperator(opt.value)}
-                      className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                        ${cmOperator === opt.value
-                          ? 'bg-[#3182F6] text-white'
-                          : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                        }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                {(cmOperator === 'contains' || cmOperator === 'not_contains') && (
-                  <>
-                    <span className="text-body text-[#8B95A1]">에</span>
-                    <input
-                      type="text"
-                      value={cmText}
-                      onChange={e => setCmText(e.target.value)}
-                      placeholder="검색 텍스트"
-                      className="w-32 rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-body text-gray-900 placeholder-[#B0B8C1] dark:border-gray-600 dark:bg-[#1E1E24] dark:text-white dark:placeholder-gray-500"
-                    />
-                  </>
-                )}
+              <div className="flex items-center justify-between">
+                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">컬럼 조건</div>
                 <button
                   type="button"
-                  disabled={(cmOperator === 'contains' || cmOperator === 'not_contains') && !cmText.trim()}
-                  onClick={() => {
-                    const isEmptyOp = cmOperator === 'is_empty' || cmOperator === 'is_not_empty';
-                    const filterValue = isEmptyOp
-                      ? `${cmColumn}:${cmOperator}:`
-                      : `${cmColumn}:${cmOperator}:${cmText.trim()}`;
-                    setSFilters(prev => {
-                      if (prev.some(pf => pf.type === 'column_match' && pf.value === filterValue)) return prev;
-                      return [...prev, { type: 'column_match', value: filterValue }];
-                    });
-                    if (!isEmptyOp) setCmText('');
-                  }}
-                  className={`rounded-lg px-3 py-2 text-body font-medium transition-colors
-                    ${(cmOperator === 'is_empty' || cmOperator === 'is_not_empty' || cmText.trim())
-                      ? 'bg-[#3182F6] text-white hover:bg-[#1B64DA] cursor-pointer'
-                      : 'bg-[#F2F4F6] text-[#B0B8C1] cursor-not-allowed dark:bg-[#2C2C34] dark:text-gray-600'
-                    }`}
+                  onClick={addCmRow}
+                  className="text-caption font-medium text-[#3182F6] hover:text-[#1B64DA] cursor-pointer dark:text-blue-400"
                 >
                   + 추가
                 </button>
               </div>
-              {/* Show added column_match filters as badges */}
-              {sFilters.filter(f => f.type === 'column_match').length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {sFilters.filter(f => f.type === 'column_match').map((f, i) => {
-                    const parsed = parseColumnMatchValue(f.value);
-                    if (!parsed) return null;
-                    const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
-                    const badgeText = parsed.operator === 'is_empty'
-                      ? `${colLabel} 비어있음`
-                      : parsed.operator === 'is_not_empty'
-                        ? `${colLabel} 값 있음`
-                        : `${colLabel}에 '${parsed.text}' ${parsed.operator === 'not_contains' ? '미포함' : '포함'}`;
-                    return (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 rounded-lg bg-[#E8F3FF] px-2.5 py-1 text-caption font-medium text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-blue-300"
+              {cmRows.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={row.column}
+                    onChange={e => updateCmRow(i, { column: e.target.value })}
+                    className="rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-body text-gray-900 dark:border-gray-600 dark:bg-[#1E1E24] dark:text-white"
+                  >
+                    {COLUMN_MATCH_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={row.text}
+                    onChange={e => updateCmRow(i, { text: e.target.value })}
+                    placeholder="검색 텍스트"
+                    disabled={!row.operator || row.operator === 'is_empty' || row.operator === 'is_not_empty'}
+                    className={`w-28 rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-body text-gray-900 placeholder-[#B0B8C1] dark:border-gray-600 dark:bg-[#1E1E24] dark:text-white dark:placeholder-gray-500 ${
+                      (!row.operator || row.operator === 'is_empty' || row.operator === 'is_not_empty') ? 'opacity-40 pointer-events-none' : ''
+                    }`}
+                  />
+                  <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+                    {([
+                      { value: 'contains' as const, label: '포함' },
+                      { value: 'not_contains' as const, label: '미포함' },
+                      { value: 'is_empty' as const, label: '비어있음' },
+                      { value: 'is_not_empty' as const, label: '값 있음' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => updateCmRow(i, { operator: opt.value })}
+                        className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                          ${row.operator === opt.value
+                            ? 'bg-[#3182F6] text-white'
+                            : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                          }`}
                       >
-                        {badgeText}
-                        <button
-                          type="button"
-                          onClick={() => setSFilters(prev => prev.filter(pf => !(pf.type === f.type && pf.value === f.value)))}
-                          className="ml-0.5 text-[#3182F6]/60 hover:text-[#3182F6] dark:text-blue-300/60 dark:hover:text-blue-300 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {i > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => removeCmRow(i)}
+                      className="text-[#B0B8C1] hover:text-[#F04452] cursor-pointer dark:text-gray-500 dark:hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
 
             {/* Summary text */}
             {(() => {
-              const dateLabel = (() => {
+              const dateValue = (() => {
                 switch (sDateTarget) {
                   case 'today_checkout': return '오늘 체크아웃';
                   case 'tomorrow_checkout': return '내일 체크아웃';
@@ -1794,59 +1798,70 @@ const Templates: React.FC = () => {
                   default: return '오늘';
                 }
               })();
+
               const buildingFilters = sFilters.filter(f => f.type === 'building');
               const assignmentFilters = sFilters.filter(f => f.type === 'assignment');
               const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
 
-              const buildingText = buildingFilters.length > 0
+              const buildingValue = buildingFilters.length > 0
                 ? buildingFilters.map(f => {
                     const b = buildings.find(b => String(b.id) === f.value);
                     return b?.name || f.value;
-                  }).join(' 또는 ')
+                  }).join(', ')
                 : '';
 
-              const assignmentText = assignmentFilters.length > 0
+              const assignmentValue = assignmentFilters.length > 0
                 ? assignmentFilters.map(f => {
                     if (f.value === 'room') return '객실배정';
                     if (f.value === 'party') return '파티만';
                     if (f.value === 'unassigned') return '미배정';
                     return f.value;
-                  }).join(' 또는 ')
+                  }).join(', ')
                 : '';
 
-              const suffixParts: string[] = [];
-              if (sStayFilter === 'exclude') suffixParts.push('연박 제외');
-              if (sTargetMode === 'last_day') suffixParts.push('마지막날만');
-              const suffixText = suffixParts.length > 0 ? ` (${suffixParts.join(', ')})` : '';
+              const cmValue = columnMatchFilters.map(f => {
+                const parsed = parseColumnMatchValue(f.value);
+                if (!parsed) return '';
+                const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
+                if (parsed.operator === 'is_empty') return `${colLabel} 비어있음`;
+                if (parsed.operator === 'is_not_empty') return `${colLabel} 값 있음`;
+                const opLabel = parsed.operator === 'not_contains' ? '미포함' : '포함';
+                return `${colLabel} '${parsed.text}' ${opLabel}`;
+              }).filter(Boolean).join(', ');
 
-              if (!buildingText && !assignmentText && columnMatchFilters.length === 0) {
-                return (
-                  <p className="text-caption text-[#B0B8C1] dark:text-gray-600">
-                    {dateLabel} 전체 예약자에게 발송됩니다{suffixText}
-                  </p>
-                );
-              }
+              const chips: { value: string; color: string }[] = [
+                { value: dateValue, color: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-blue-300' },
+              ];
+              if (assignmentValue) chips.push({ value: assignmentValue, color: 'bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-green-300' });
+              if (buildingValue) chips.push({ value: buildingValue, color: 'bg-[#F3E8FF] text-[#8B5CF6] dark:bg-[#8B5CF6]/15 dark:text-purple-300' });
+              if (cmValue) chips.push({ value: cmValue, color: 'bg-[#FFF4E8] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-yellow-300' });
 
-              const parts: string[] = [];
-              if (buildingText) parts.push(buildingText);
-              if (assignmentText) parts.push(`${assignmentText} 상태`);
-              if (columnMatchFilters.length > 0) {
-                const cmTexts = columnMatchFilters.map(f => {
-                  const parsed = parseColumnMatchValue(f.value);
-                  if (!parsed) return '';
-                  const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
-                  if (parsed.operator === 'is_empty') return `${colLabel} 비어있음`;
-                  if (parsed.operator === 'is_not_empty') return `${colLabel} 값 있음`;
-                  const opLabel = parsed.operator === 'not_contains' ? '미포함' : '포함';
-                  return `${colLabel} '${parsed.text}' ${opLabel}`;
-                }).filter(Boolean);
-                if (cmTexts.length > 0) parts.push(cmTexts.join(', '));
-              }
+              const stayChipColor = 'bg-[#F2F4F6] text-[#4E5968] dark:bg-gray-700 dark:text-gray-300';
 
               return (
-                <p className="text-caption text-[#3182F6]">
-                  {parts.join('의 ')}의 {dateLabel} 예약자에게 발송됩니다{suffixText}
-                </p>
+                <div className="flex items-center gap-1.5 flex-wrap text-caption">
+                  {chips.map((c, i) => (
+                    <span key={i} className="flex items-center gap-1.5">
+                      {i > 0 && <span className="text-[#B0B8C1] dark:text-gray-600">+</span>}
+                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${c.color}`}>{c.value}</span>
+                    </span>
+                  ))}
+                  <span className="text-[#8B95A1] dark:text-gray-500">예약자에게 발송.</span>
+                  {sStayFilter === 'exclude' ? (
+                    <>
+                      <span className="text-[#8B95A1] dark:text-gray-500">연박자</span>
+                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-red-300`}>제외</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[#8B95A1] dark:text-gray-500">연박일 경우,</span>
+                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${stayChipColor}`}>
+                        {sTargetMode === 'once' ? '체크인 일에만' : sTargetMode === 'daily' ? '매일' : '체크아웃 일에만'}
+                      </span>
+                      <span className="text-[#8B95A1] dark:text-gray-500">발송</span>
+                    </>
+                  )}
+                </div>
               );
             })()}
           </div>
@@ -1885,15 +1900,14 @@ const Templates: React.FC = () => {
               ))}
             </div>
 
-            {/* 빈도 옵션 — 포함일 때만 표시 */}
-            {sStayFilter !== 'exclude' && (
-              <div className="space-y-1.5 ml-2">
-                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">발송 빈도</div>
+            {/* 발송 시점 — 제외 시 비활성화 */}
+              <div className={`space-y-1.5 ml-2 ${sStayFilter === 'exclude' ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">발송 시점</div>
                 <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
                   {[
-                    { value: 'once' as const, label: '한번만' },
+                    { value: 'once' as const, label: '체크인' },
                     { value: 'daily' as const, label: '매일' },
-                    { value: 'last_day' as const, label: '마지막날만' },
+                    { value: 'last_day' as const, label: '체크아웃' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -1910,19 +1924,10 @@ const Templates: React.FC = () => {
                   ))}
                 </div>
               </div>
-            )}
           </div>
 
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
-          {/* Active */}
-          <div className="flex items-center justify-between rounded-2xl border border-[#F2F4F6] px-4 py-3 dark:border-gray-800">
-            <div>
-              <p className="text-body font-medium text-gray-900 dark:text-white">활성 상태</p>
-              <p className="text-caption text-gray-400 dark:text-gray-500">비활성화하면 자동 발송이 중단됩니다</p>
-            </div>
-            <ToggleSwitch id="s-active" checked={sActive} onChange={setSActive} label="" />
-          </div>
         </div>
       </ModalBody>
 

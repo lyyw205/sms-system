@@ -31,6 +31,7 @@ class TemplateCreate(BaseModel):
     female_buffer: Optional[int] = 0
     gender_ratio_buffers: Optional[str] = None
     round_unit: Optional[int] = 0
+    round_mode: Optional[str] = 'ceil'
 
 
 class TemplateUpdate(BaseModel):
@@ -46,6 +47,7 @@ class TemplateUpdate(BaseModel):
     female_buffer: Optional[int] = None
     gender_ratio_buffers: Optional[str] = None
     round_unit: Optional[int] = None
+    round_mode: Optional[str] = None
 
 
 class TemplateResponse(BaseModel):
@@ -65,6 +67,7 @@ class TemplateResponse(BaseModel):
     female_buffer: Optional[int] = 0
     gender_ratio_buffers: Optional[str] = None
     round_unit: Optional[int] = 0
+    round_mode: Optional[str] = 'ceil'
 
     class Config:
         from_attributes = True
@@ -116,6 +119,7 @@ def get_templates(
             "female_buffer": template.female_buffer or 0,
             "gender_ratio_buffers": template.gender_ratio_buffers,
             "round_unit": template.round_unit or 0,
+            "round_mode": template.round_mode or 'ceil',
         }
         result.append(template_dict)
 
@@ -169,6 +173,7 @@ def get_template(template_id: int, db: Session = Depends(get_tenant_scoped_db), 
         "female_buffer": template.female_buffer or 0,
         "gender_ratio_buffers": template.gender_ratio_buffers,
         "round_unit": template.round_unit or 0,
+        "round_mode": template.round_mode or 'ceil',
     }
 
 
@@ -194,6 +199,7 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
         female_buffer=template.female_buffer or 0,
         gender_ratio_buffers=template.gender_ratio_buffers,
         round_unit=template.round_unit or 0,
+        round_mode=template.round_mode or 'ceil',
     )
 
     db.add(db_template)
@@ -217,6 +223,7 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
         "female_buffer": db_template.female_buffer or 0,
         "gender_ratio_buffers": db_template.gender_ratio_buffers,
         "round_unit": db_template.round_unit or 0,
+        "round_mode": db_template.round_mode or 'ceil',
     }
 
 
@@ -263,6 +270,7 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         "female_buffer": db_template.female_buffer or 0,
         "gender_ratio_buffers": db_template.gender_ratio_buffers,
         "round_unit": db_template.round_unit or 0,
+        "round_mode": db_template.round_mode or 'ceil',
     }
 
 
