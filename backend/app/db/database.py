@@ -186,6 +186,9 @@ def init_db():
             if "round_unit" not in cols:
                 conn.execute(text("ALTER TABLE message_templates ADD COLUMN round_unit INTEGER DEFAULT 0"))
                 print("AUTO-MIGRATE: Added round_unit column to message_templates table")
+            if "round_mode" not in cols:
+                conn.execute(text("ALTER TABLE message_templates ADD COLUMN round_mode VARCHAR(10) DEFAULT 'ceil'"))
+                print("AUTO-MIGRATE: Added round_mode column to message_templates table")
 
         # template_schedules: date_mode, consecutive_stay_filter, next_stay_filter
         if "template_schedules" in inspector.get_table_names():
