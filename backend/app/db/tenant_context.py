@@ -14,25 +14,6 @@ current_tenant_id: ContextVar[Optional[int]] = ContextVar("current_tenant_id", d
 bypass_tenant_filter: ContextVar[bool] = ContextVar("bypass_tenant_filter", default=False)
 
 
-def tenant_filter(db: Session, model, base_query=None):
-    """
-    Apply tenant filter to an existing query or create filtered query.
-    For use with aggregate queries like db.query(func.count()).select_from(Model).
-
-    Usage:
-        # Aggregate:
-        q = db.query(func.count()).select_from(Reservation)
-        q = tenant_filter(db, Reservation, q)
-    """
-    tid = current_tenant_id.get()
-    if tid is None:
-        if bypass_tenant_filter.get():
-            return base_query if base_query else db.query(model)
-        raise RuntimeError(f"tenant_filter: tenant context not set")
-    if base_query is not None:
-        return base_query.filter(model.tenant_id == tid)
-    return db.query(model).filter(model.tenant_id == tid)
-
 
 # Auto-inject tenant_id on INSERT
 @event.listens_for(Session, "before_flush")

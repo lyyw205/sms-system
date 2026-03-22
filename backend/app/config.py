@@ -22,31 +22,13 @@ class Settings(BaseSettings):
     # Database (SQLite for demo, PostgreSQL for production)
     DATABASE_URL: str = "sqlite:///./sms_demo.db"
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379"
-
-    # ChromaDB
-    CHROMADB_URL: str = "http://localhost:8001"
-
     # Aligo SMS API (실제 발송 여부는 tenant.aligo_testmode로 제어)
     ALIGO_API_KEY: str = ""
     ALIGO_USER_ID: str = ""
     ALIGO_SENDER: str = ""
 
-    # SMS Webhook (optional)
-    SMS_WEBHOOK_URL: str = ""
-
     # Claude API (only needed when DEMO_MODE=false)
     CLAUDE_API_KEY: str = ""
-
-    # Google Sheets (only needed when DEMO_MODE=false)
-    GOOGLE_SHEETS_CREDENTIALS: str = ""
-
-    # Naver Reservation (only needed when DEMO_MODE=false)
-    NAVER_RESERVATION_EMAIL: str = ""
-    NAVER_RESERVATION_PASSWORD: str = ""
-    NAVER_BUSINESS_ID: str = "819409"
-    NAVER_COOKIE: str = ""
 
     # JWT Authentication
     JWT_SECRET_KEY: str = ""
