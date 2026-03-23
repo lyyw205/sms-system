@@ -139,7 +139,18 @@ def get_or_create_snapshot(db: Session, target_date: str) -> 'ParticipantSnapsho
         female_count=int(result.total_female),
     )
     db.add(snapshot)
-    db.flush()
+    try:
+        db.flush()
+    except Exception:
+        # UniqueViolation 등 — rollback 후 기존 레코드 재조회
+        db.rollback()
+        existing = db.query(ParticipantSnapshot).filter(
+            ParticipantSnapshot.date == target_date
+        ).first()
+        if existing:
+            return existing
+        # 여전히 없으면 빈 스냅샷 반환 (발송 중단 방지)
+        return ParticipantSnapshot(date=target_date, male_count=0, female_count=0)
     return snapshot
 
 

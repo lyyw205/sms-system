@@ -118,15 +118,3 @@ async def clear_naver_cookie(
     return {"success": True, "message": "Cookie cleared."}
 
 
-@router.get("/naver/bookmarklet")
-async def get_bookmarklet(current_user: User = Depends(require_admin_or_above)):
-    """Return the bookmarklet JavaScript code for one-click cookie update (DEPRECATED)"""
-    return {
-        "deprecated": True,
-        "message": "Bookmarklet 방식은 보안상 더 이상 지원되지 않습니다. 프론트엔드 설정 페이지에서 쿠키를 수동 입력해주세요.",
-        "code": "javascript:void(fetch('{SERVER_URL}/api/settings/naver/cookie',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:document.cookie})}).then(r=>r.json()).then(d=>alert(d.message)).catch(e=>alert('Error: '+e)))",
-        "instructions": [
-            "⚠️ DEPRECATED: 이 방식은 인증 토큰 없이 동작하지 않습니다.",
-            "프론트엔드 설정 페이지에서 네이버 쿠키를 직접 붙여넣기 해주세요.",
-        ],
-    }

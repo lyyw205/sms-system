@@ -181,7 +181,8 @@ function formatRelativeTime(iso: string | null): string {
   const date = new Date(normalized);
   const diff = date.getTime() - Date.now();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 0) return date.toLocaleString('ko-KR');
+  if (minutes < -5) return '대기 중';
+  if (minutes < 0) return '발송 중…';
   if (minutes < 60) return `${minutes}분 후`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}시간 후`;
@@ -1788,82 +1789,6 @@ const Templates: React.FC = () => {
               ))}
             </div>
 
-            {/* Summary text */}
-            {(() => {
-              const dateValue = (() => {
-                switch (sDateTarget) {
-                  case 'today_checkout': return '오늘 체크아웃';
-                  case 'tomorrow_checkout': return '내일 체크아웃';
-                  case 'tomorrow': return '내일';
-                  default: return '오늘';
-                }
-              })();
-
-              const buildingFilters = sFilters.filter(f => f.type === 'building');
-              const assignmentFilters = sFilters.filter(f => f.type === 'assignment');
-              const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
-
-              const buildingValue = buildingFilters.length > 0
-                ? buildingFilters.map(f => {
-                    const b = buildings.find(b => String(b.id) === f.value);
-                    return b?.name || f.value;
-                  }).join(', ')
-                : '';
-
-              const assignmentValue = assignmentFilters.length > 0
-                ? assignmentFilters.map(f => {
-                    if (f.value === 'room') return '객실배정';
-                    if (f.value === 'party') return '파티만';
-                    if (f.value === 'unassigned') return '미배정';
-                    return f.value;
-                  }).join(', ')
-                : '';
-
-              const cmValue = columnMatchFilters.map(f => {
-                const parsed = parseColumnMatchValue(f.value);
-                if (!parsed) return '';
-                const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
-                if (parsed.operator === 'is_empty') return `${colLabel} 비어있음`;
-                if (parsed.operator === 'is_not_empty') return `${colLabel} 값 있음`;
-                const opLabel = parsed.operator === 'not_contains' ? '미포함' : '포함';
-                return `${colLabel} '${parsed.text}' ${opLabel}`;
-              }).filter(Boolean).join(', ');
-
-              const chips: { value: string; color: string }[] = [
-                { value: dateValue, color: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-blue-300' },
-              ];
-              if (assignmentValue) chips.push({ value: assignmentValue, color: 'bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-green-300' });
-              if (buildingValue) chips.push({ value: buildingValue, color: 'bg-[#F3E8FF] text-[#8B5CF6] dark:bg-[#8B5CF6]/15 dark:text-purple-300' });
-              if (cmValue) chips.push({ value: cmValue, color: 'bg-[#FFF4E8] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-yellow-300' });
-
-              const stayChipColor = 'bg-[#F2F4F6] text-[#4E5968] dark:bg-gray-700 dark:text-gray-300';
-
-              return (
-                <div className="flex items-center gap-1.5 flex-wrap text-caption">
-                  {chips.map((c, i) => (
-                    <span key={i} className="flex items-center gap-1.5">
-                      {i > 0 && <span className="text-[#B0B8C1] dark:text-gray-600">+</span>}
-                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${c.color}`}>{c.value}</span>
-                    </span>
-                  ))}
-                  <span className="text-[#8B95A1] dark:text-gray-500">예약자에게 발송.</span>
-                  {sStayFilter === 'exclude' ? (
-                    <>
-                      <span className="text-[#8B95A1] dark:text-gray-500">연박자</span>
-                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-red-300`}>제외</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[#8B95A1] dark:text-gray-500">연박일 경우,</span>
-                      <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${stayChipColor}`}>
-                        {sTargetMode === 'once' ? '체크인 일에만' : sTargetMode === 'daily' ? '매일' : '체크아웃 일에만'}
-                      </span>
-                      <span className="text-[#8B95A1] dark:text-gray-500">발송</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
           </div>
 
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
@@ -1931,11 +1856,91 @@ const Templates: React.FC = () => {
         </div>
       </ModalBody>
 
-      <ModalFooter className="flex justify-end gap-2 border-t border-[#F2F4F6] dark:border-gray-800">
-        <Button color="blue" size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
-          {savingSchedule ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
-        </Button>
-        <Button color="light" size="sm" onClick={() => setScheduleDialogOpen(false)}>취소</Button>
+      <ModalFooter className="border-t border-[#F2F4F6] dark:border-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+          {(() => {
+            const dateValue = (() => {
+              switch (sDateTarget) {
+                case 'today_checkout': return '오늘 체크아웃';
+                case 'tomorrow_checkout': return '내일 체크아웃';
+                case 'tomorrow': return '내일';
+                default: return '오늘';
+              }
+            })();
+
+            const buildingFilters = sFilters.filter(f => f.type === 'building');
+            const assignmentFilters = sFilters.filter(f => f.type === 'assignment');
+            const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
+
+            const buildingValue = buildingFilters.length > 0
+              ? buildingFilters.map(f => {
+                  const b = buildings.find(b => String(b.id) === f.value);
+                  return b?.name || f.value;
+                }).join(', ')
+              : '';
+
+            const assignmentValue = assignmentFilters.length > 0
+              ? assignmentFilters.map(f => {
+                  if (f.value === 'room') return '객실배정';
+                  if (f.value === 'party') return '파티만';
+                  if (f.value === 'unassigned') return '미배정';
+                  return f.value;
+                }).join(', ')
+              : '';
+
+            const cmValue = columnMatchFilters.map(f => {
+              const parsed = parseColumnMatchValue(f.value);
+              if (!parsed) return '';
+              const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
+              if (parsed.operator === 'is_empty') return `${colLabel} 비어있음`;
+              if (parsed.operator === 'is_not_empty') return `${colLabel} 값 있음`;
+              const opLabel = parsed.operator === 'not_contains' ? '미포함' : '포함';
+              return `${colLabel} '${parsed.text}' ${opLabel}`;
+            }).filter(Boolean).join(', ');
+
+            const chips: { value: string; color: string }[] = [
+              { value: dateValue, color: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-blue-300' },
+            ];
+            if (assignmentValue) chips.push({ value: assignmentValue, color: 'bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-green-300' });
+            if (buildingValue) chips.push({ value: buildingValue, color: 'bg-[#F3E8FF] text-[#8B5CF6] dark:bg-[#8B5CF6]/15 dark:text-purple-300' });
+            if (cmValue) chips.push({ value: cmValue, color: 'bg-[#FFF4E8] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-yellow-300' });
+
+            const stayChipColor = 'bg-[#F2F4F6] text-[#4E5968] dark:bg-gray-700 dark:text-gray-300';
+
+            return (
+              <div className="flex items-center gap-1.5 flex-wrap text-caption flex-1 min-w-0">
+                {chips.map((c, i) => (
+                  <span key={i} className="flex items-center gap-1.5">
+                    {i > 0 && <span className="text-[#B0B8C1] dark:text-gray-600">+</span>}
+                    <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${c.color}`}>{c.value}</span>
+                  </span>
+                ))}
+                <span className="text-[#8B95A1] dark:text-gray-500">예약자에게 발송</span>
+                <span className="mx-1 h-3 w-px bg-[#8B95A1] dark:bg-gray-400 inline-block" />
+                {sStayFilter === 'exclude' ? (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[#8B95A1] dark:text-gray-500">연박자</span>
+                    <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-red-300`}>제외</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-[#8B95A1] dark:text-gray-500">연박일 경우,</span>
+                    <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${stayChipColor}`}>
+                      {sTargetMode === 'once' ? '체크인 일에만' : sTargetMode === 'daily' ? '매일' : '체크아웃 일에만'}
+                    </span>
+                    <span className="text-[#8B95A1] dark:text-gray-500">발송</span>
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button color="light" size="sm" onClick={() => setScheduleDialogOpen(false)}>취소</Button>
+            <Button color="blue" size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
+              {savingSchedule ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
+            </Button>
+          </div>
+        </div>
       </ModalFooter>
     </Modal>
   );

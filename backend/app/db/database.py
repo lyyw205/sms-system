@@ -236,6 +236,16 @@ def init_db():
                 if result.rowcount > 0:
                     print(f"AUTO-MIGRATE: Backfilled is_last_in_group for {result.rowcount} reservations")
 
+        # participant_snapshots: fix legacy unique constraint (date) → (tenant_id, date)
+        if "participant_snapshots" in inspector.get_table_names():
+            existing_constraints = inspector.get_unique_constraints("participant_snapshots")
+            constraint_names = [c["name"] for c in existing_constraints]
+            if "uq_participant_snapshot_date" in constraint_names:
+                conn.execute(text("ALTER TABLE participant_snapshots DROP CONSTRAINT uq_participant_snapshot_date"))
+                if "uq_tenant_snapshot_date" not in constraint_names:
+                    conn.execute(text("ALTER TABLE participant_snapshots ADD CONSTRAINT uq_tenant_snapshot_date UNIQUE (tenant_id, date)"))
+                print("AUTO-MIGRATE: Fixed participant_snapshots unique constraint: (date) → (tenant_id, date)")
+
         # v5: migrate stay_filter='last_only' → target_mode='last_day' + stay_filter=NULL
         if "template_schedules" in inspector.get_table_names():
             result = conn.execute(text("""

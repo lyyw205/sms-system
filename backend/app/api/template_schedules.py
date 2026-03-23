@@ -29,6 +29,15 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         except (json.JSONDecodeError, TypeError):
             filters = []
 
+    # Get real-time next_run from APScheduler (DB value can be stale)
+    next_run = schedule.next_run_at
+    try:
+        job = scheduler.get_job(f"template_schedule_{schedule.id}")
+        if job and job.next_run_time:
+            next_run = job.next_run_time
+    except Exception:
+        pass
+
     return {
         "id": schedule.id,
         "template_id": schedule.template_id,
@@ -57,7 +66,7 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "created_at": schedule.created_at,
         "updated_at": schedule.updated_at,
         "last_run": schedule.last_run_at,
-        "next_run": schedule.next_run_at,
+        "next_run": next_run,
     }
 
 

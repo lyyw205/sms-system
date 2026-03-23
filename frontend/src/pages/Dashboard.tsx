@@ -152,7 +152,7 @@ const Dashboard = () => {
     )
   }
 
-  const todayCampaigns = stats.campaigns?.today_campaigns ?? 0
+  const todaySent = stats.campaigns?.today_sent ?? 0
 
   return (
     <div className="space-y-6">
@@ -172,8 +172,8 @@ const Dashboard = () => {
         />
         <MetricCard
           title="오늘 발송"
-          value={todayCampaigns.toLocaleString()}
-          subtitle="오늘 템플릿 발송 횟수"
+          value={todaySent.toLocaleString()}
+          subtitle="오늘 발송된 문자 건수"
           icon={<Send size={20} />}
           iconBg="bg-[#FFF5E6] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-[#FF9F00]"
         />
