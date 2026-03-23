@@ -23,6 +23,21 @@ from app.db.models import Reservation, ReservationStatus
 logger = logging.getLogger(__name__)
 
 
+def compute_is_long_stay(res) -> bool:
+    """연박자(2박+) OR 연장자(stay_group_id) 판단"""
+    if res.stay_group_id:
+        return True
+    if res.check_out_date and res.check_in_date:
+        try:
+            from datetime import datetime as _dt
+            d1 = _dt.strptime(str(res.check_in_date), "%Y-%m-%d")
+            d2 = _dt.strptime(str(res.check_out_date), "%Y-%m-%d")
+            return (d2 - d1).days > 1
+        except (ValueError, TypeError):
+            pass
+    return False
+
+
 def detect_and_link_consecutive_stays(db: Session) -> dict:
     """
     Scan all CONFIRMED reservations and link consecutive stays.
@@ -141,7 +156,10 @@ def detect_and_link_consecutive_stays(db: Session) -> dict:
                     res.stay_group_id = group_id
                     res.stay_group_order = order
                     res.is_last_in_group = is_last
+                    res.is_long_stay = True
                     linked_count += 1
+                elif not res.is_long_stay:
+                    res.is_long_stay = True
 
     # Unlink reservations that are no longer consecutive
     for res in reservations:
@@ -149,6 +167,7 @@ def detect_and_link_consecutive_stays(db: Session) -> dict:
             res.stay_group_id = None
             res.stay_group_order = None
             res.is_last_in_group = None
+            res.is_long_stay = compute_is_long_stay(res)
             unlinked_count += 1
 
     if linked_count > 0 or unlinked_count > 0:
@@ -175,6 +194,7 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
     res.stay_group_id = None
     res.stay_group_order = None
     res.is_last_in_group = None
+    res.is_long_stay = compute_is_long_stay(res)
 
     # Re-order remaining members
     remaining = (
@@ -193,6 +213,7 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
             r.stay_group_id = None
             r.stay_group_order = None
             r.is_last_in_group = None
+            r.is_long_stay = compute_is_long_stay(r)
     else:
         for i, r in enumerate(remaining):
             r.stay_group_order = i
@@ -231,6 +252,7 @@ def link_reservations(db: Session, reservation_ids: List[int]) -> Optional[str]:
         res.stay_group_id = group_id
         res.stay_group_order = order
         res.is_last_in_group = (order == len(reservations) - 1)
+        res.is_long_stay = True
 
     db.flush()
     return group_id

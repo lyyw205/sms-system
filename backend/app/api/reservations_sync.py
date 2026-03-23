@@ -10,6 +10,7 @@ import logging
 
 from app.db.models import Reservation, ReservationStatus, NaverBizItem, RoomBizItemLink, Room
 from app.services import room_assignment
+from app.services.consecutive_stay import compute_is_long_stay
 from app.scheduler.room_auto_assign import auto_assign_rooms
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,19 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
     section_hint = res_data.get("_section_hint")
     section = section_hint if section_hint in ('party', 'room') else 'unassigned'
 
+    # Compute is_long_stay from check_in/check_out dates
+    _is_long_stay = False
+    _cin = res_data.get("date")
+    _cout = res_data.get("end_date")
+    if _cin and _cout:
+        try:
+            from datetime import datetime as _dt
+            _d1 = _dt.strptime(str(_cin), "%Y-%m-%d")
+            _d2 = _dt.strptime(str(_cout), "%Y-%m-%d")
+            _is_long_stay = (_d2 - _d1).days > 1
+        except (ValueError, TypeError):
+            pass
+
     return Reservation(
         external_id=res_data.get("external_id"),
         naver_booking_id=res_data.get("naver_booking_id"),
@@ -224,6 +238,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         cancelled_at=_parse_datetime(res_data.get("cancelled_at")),
         gender=res_data.get("gender"),
         section=section,
+        is_long_stay=_is_long_stay,
     )
 
 
@@ -273,6 +288,9 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     # Reconcile room assignments if dates changed
     if existing.check_in_date != old_date or existing.check_out_date != old_end_date:
         room_assignment.reconcile_dates(db, existing)
+
+    # Recompute is_long_stay (stay_group_id may be set later by detect_and_link)
+    existing.is_long_stay = compute_is_long_stay(existing)
 
     existing.updated_at = datetime.now(timezone.utc)
 

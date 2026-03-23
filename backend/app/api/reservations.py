@@ -111,6 +111,7 @@ class ReservationResponse(BaseModel):
     stay_group_id: Optional[str] = None
     stay_group_order: Optional[int] = None
     is_consecutive_stay: bool = False
+    is_long_stay: bool = False
     created_at: datetime
     updated_at: datetime
     sms_assignments: List[SmsAssignmentResponse] = []
@@ -175,7 +176,8 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         section=res.section or 'unassigned',
         stay_group_id=res.stay_group_id,
         stay_group_order=res.stay_group_order,
-        is_consecutive_stay=bool(res.stay_group_id),
+        is_consecutive_stay=bool(res.is_long_stay),
+        is_long_stay=bool(res.is_long_stay),
         created_at=res.created_at,
         updated_at=res.updated_at,
         sms_assignments=assignments,
@@ -339,6 +341,12 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
         section=reservation.section or 'unassigned',
     )
     db.add(db_reservation)
+    db.flush()
+
+    # Compute is_long_stay for manual reservations
+    from app.services.consecutive_stay import compute_is_long_stay
+    db_reservation.is_long_stay = compute_is_long_stay(db_reservation)
+
     db.commit()
     db.refresh(db_reservation)
 

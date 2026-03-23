@@ -65,6 +65,7 @@ interface Reservation {
   stay_group_id?: string | null;
   stay_group_order?: number | null;
   is_consecutive_stay?: boolean;
+  is_long_stay?: boolean;
 }
 
 function isMultiNight(res: Reservation): boolean {
@@ -1160,16 +1161,16 @@ const RoomAssignment = () => {
 
   const renderGuestRow = (res: Reservation, showGrip: boolean) => {
     const genderPeople = formatGenderPeople(res);
-    const multiNight = isMultiNight(res);
+    const longStay = !!res.is_long_stay;
 
     return (
-      <div key={res.id} className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${multiNight ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'} ${guestAreaCursor()}`}>
+      <div key={res.id} className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'} ${guestAreaCursor()}`}>
         {showGrip && (
           <div
             draggable
             onDragStart={(e) => onDragStart(e, res.id)}
             onDragEnd={onDragEnd}
-            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${multiNight ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
+            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${longStay ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
           >
             <GripVertical size={14} />
           </div>
@@ -1180,7 +1181,7 @@ const RoomAssignment = () => {
         >
           <div className="overflow-hidden px-1.5">
             <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" autoFocus={res.id === quickAddedId} />
-            {res.is_consecutive_stay && <Badge size="xs" color="purple" className="ml-1">연박</Badge>}
+            {res.is_long_stay && <Badge size="xs" color="purple" className="ml-1">연박</Badge>}
           </div>
           <div className="overflow-hidden px-1.5">
             <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-[#8B95A1] tabular-nums" placeholder="연락처" />
@@ -1216,7 +1217,7 @@ const RoomAssignment = () => {
       // 연박자(2박+ 예약 또는 연속 예약 그룹)를 윗행에, 1박만 아래로
       const todayIds = new Set(guestsRaw.map(g => g.id));
       const nextIds = new Set(nextGuestsRaw.map(g => g.id));
-      const isStayingGuest = (g: Reservation) => isMultiNight(g) || !!g.stay_group_id;
+      const isStayingGuest = (g: Reservation) => !!g.is_long_stay;
 
       // 오늘: 연박자 먼저 → ID순, 그 다음 1박만 → ID순
       const todayContinuing = [...guestsRaw].filter(g => isStayingGuest(g)).sort((a, b) => a.id - b.id);
@@ -1225,7 +1226,7 @@ const RoomAssignment = () => {
 
       // 내일: 연박자는 오늘과 같은 행 순서 유지, 신규는 아래에
       const continuingIds = todayContinuing.map(g => g.id);
-      const nextIsStaying = (g: Reservation) => isMultiNight(g) || !!g.stay_group_id;
+      const nextIsStaying = (g: Reservation) => !!g.is_long_stay;
       const nextContinuing = continuingIds.map(id => nextGuestsRaw.find(g => g.id === id)).filter(Boolean) as Reservation[];
       const nextOnlyContinuing = [...nextGuestsRaw].filter(g => nextIsStaying(g) && !continuingIds.includes(g.id)).sort((a, b) => a.id - b.id);
       const nextNew = [...nextGuestsRaw].filter(g => !nextIsStaying(g)).sort((a, b) => a.id - b.id);
@@ -1307,7 +1308,7 @@ const RoomAssignment = () => {
               const nextGuest = nextGuests[i];
               const gp = nextGuest ? formatGenderPeople(nextGuest) : '';
               return (
-                <div key={`next-${i}`} className={`flex items-center justify-center h-10 px-1 ${nextGuest && isMultiNight(nextGuest) ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
+                <div key={`next-${i}`} className={`flex items-center justify-center h-10 px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
                   {nextGuest ? (
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{nextGuest.customer_name}</span>

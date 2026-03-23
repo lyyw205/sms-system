@@ -18,6 +18,7 @@ interface PartyGuest {
   stay_group_id?: string | null
   stay_group_order?: number | null
   is_consecutive_stay?: boolean
+  is_long_stay?: boolean
 }
 
 function getTodayStr(): string {
@@ -234,7 +235,7 @@ export default function PartyCheckin() {
                         >
                           {guest.customer_name}
                         </span>
-                        {guest.is_consecutive_stay && <span className="text-caption text-[#8B95A1] ml-1">연박 {(guest.stay_group_order ?? 0) + 1}일차</span>}
+                        {guest.is_long_stay && <span className="text-caption text-[#8B95A1] ml-1">연박 {(guest.stay_group_order ?? 0) + 1}일차</span>}
                       </div>
                     </td>
 

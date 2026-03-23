@@ -582,7 +582,7 @@ class TemplateScheduleExecutor:
         if schedule.target_mode == 'last_day' and results and target_date:
             results = self._filter_last_day(results, target_date)
 
-        # once_per_stay: 연박 그룹 내 가장 빠른 체크인 예약에만 발송
+        # once_per_stay: 연박/연장 그룹 내 가장 빠른 체크인 예약에만 발송
         if schedule.once_per_stay and results:
             from sqlalchemy import exists as sa_exists
             filtered = []
@@ -590,31 +590,42 @@ class TemplateScheduleExecutor:
             # Sort by check_in_date to ensure earliest first
             results.sort(key=lambda r: r.check_in_date)
             for res in results:
-                if res.stay_group_id:
-                    if res.stay_group_id in seen_groups:
-                        continue  # Skip: group already has a target
-                    # Check if an earlier group member already received this template
-                    earlier_sent = self.db.query(sa_exists().where(
-                        (ReservationSmsAssignment.template_key == schedule.template.template_key) &
-                        (ReservationSmsAssignment.sent_at.isnot(None)) &
-                        (ReservationSmsAssignment.reservation_id.in_(
-                            self.db.query(Reservation.id).filter(
-                                Reservation.stay_group_id == res.stay_group_id,
-                                Reservation.id != res.id,
-                            )
-                        ))
-                    )).scalar()
-                    if earlier_sent:
+                if res.is_long_stay:
+                    if res.stay_group_id:
+                        # 연장자: 그룹 내 중복 방지
+                        if res.stay_group_id in seen_groups:
+                            continue  # Skip: group already has a target
+                        # Check if an earlier group member already received this template
+                        earlier_sent = self.db.query(sa_exists().where(
+                            (ReservationSmsAssignment.template_key == schedule.template.template_key) &
+                            (ReservationSmsAssignment.sent_at.isnot(None)) &
+                            (ReservationSmsAssignment.reservation_id.in_(
+                                self.db.query(Reservation.id).filter(
+                                    Reservation.stay_group_id == res.stay_group_id,
+                                    Reservation.id != res.id,
+                                )
+                            ))
+                        )).scalar()
+                        if earlier_sent:
+                            seen_groups.add(res.stay_group_id)
+                            continue  # Skip: another group member already sent
                         seen_groups.add(res.stay_group_id)
-                        continue  # Skip: another group member already sent
-                    seen_groups.add(res.stay_group_id)
+                    else:
+                        # 연박자(stay_group_id=None): reservation_id로 기발송 체크
+                        already_sent = self.db.query(sa_exists().where(
+                            (ReservationSmsAssignment.template_key == schedule.template.template_key) &
+                            (ReservationSmsAssignment.sent_at.isnot(None)) &
+                            (ReservationSmsAssignment.reservation_id == res.id)
+                        )).scalar()
+                        if already_sent:
+                            continue
                 filtered.append(res)
             results = filtered
 
         # Stay filter
         sf = getattr(schedule, 'stay_filter', None)
         if sf == 'exclude':
-            results = [r for r in results if not r.stay_group_id]
+            results = [r for r in results if not r.is_long_stay]
 
         return results
 
@@ -663,7 +674,7 @@ class TemplateScheduleExecutor:
         # 5) 연박 필터 (stay_filter)
         sf = getattr(schedule, 'stay_filter', None)
         if sf == 'exclude':
-            results = [r for r in results if not r.stay_group_id]
+            results = [r for r in results if not r.is_long_stay]
 
         # 6) exclude_sent — 이벤트 전용 (날짜 무관)
         if exclude_sent and schedule.exclude_sent:

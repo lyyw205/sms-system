@@ -30,6 +30,7 @@ class PartyCheckinItem(BaseModel):
     stay_group_id: Optional[str] = None
     stay_group_order: Optional[int] = None
     is_consecutive_stay: bool = False
+    is_long_stay: bool = False
 
     class Config:
         from_attributes = True
@@ -143,7 +144,8 @@ async def get_party_checkin_list(
                 room_number=room_map.get(res.id),
                 stay_group_id=res.stay_group_id,
                 stay_group_order=res.stay_group_order,
-                is_consecutive_stay=bool(res.stay_group_id),
+                is_consecutive_stay=bool(res.is_long_stay),
+                is_long_stay=bool(res.is_long_stay),
             )
         )
 

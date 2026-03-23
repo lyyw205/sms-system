@@ -200,6 +200,26 @@ def init_db():
                 conn.execute(text("ALTER TABLE template_schedules ADD COLUMN stay_filter VARCHAR(20)"))
                 print("AUTO-MIGRATE: Added stay_filter column to template_schedules table")
 
+        # reservations: is_long_stay
+        if "reservations" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("reservations")]
+            if "is_long_stay" not in cols:
+                conn.execute(text("ALTER TABLE reservations ADD COLUMN is_long_stay BOOLEAN DEFAULT FALSE"))
+                print("AUTO-MIGRATE: Added is_long_stay column to reservations table")
+                # Backfill: stay_group_id가 있거나 체류일수 > 1이면 True
+                conn.execute(text("UPDATE reservations SET is_long_stay = 1 WHERE stay_group_id IS NOT NULL"))
+                if str(engine.url).startswith("sqlite"):
+                    conn.execute(text(
+                        "UPDATE reservations SET is_long_stay = 1 "
+                        "WHERE end_date IS NOT NULL AND julianday(end_date) - julianday(date) > 1"
+                    ))
+                else:
+                    conn.execute(text(
+                        "UPDATE reservations SET is_long_stay = TRUE "
+                        "WHERE end_date IS NOT NULL AND (end_date::date - date::date) > 1"
+                    ))
+                print("AUTO-MIGRATE: Backfilled is_long_stay for existing reservations")
+
         # reservations: is_last_in_group
         if "reservations" in inspector.get_table_names():
             cols = [c["name"] for c in inspector.get_columns("reservations")]
