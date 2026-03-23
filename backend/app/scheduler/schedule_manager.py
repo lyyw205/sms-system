@@ -2,10 +2,11 @@
 Schedule manager for APScheduler and DB synchronization
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone as tz
 from typing import Optional
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.jobstores.base import JobLookupError
 from sqlalchemy.orm import Session
 
 from app.db.models import TemplateSchedule, Tenant
@@ -42,8 +43,14 @@ class ScheduleManager:
                 self.scheduler.remove_job(job.id)
                 logger.info(f"Removed existing job: {job.id}")
 
-        # Add all active schedules
+        # Add all active schedules (skip expired ones)
         for schedule in schedules:
+            # Auto-deactivate expired schedules
+            if schedule.expires_at and datetime.now(tz.utc) >= schedule.expires_at:
+                schedule.is_active = False
+                db.commit()
+                logger.info(f"Schedule #{schedule.id} expired during sync, deactivated")
+                continue
             try:
                 self.add_schedule_job(schedule, db)
                 logger.info(f"Added schedule #{schedule.id}: {schedule.schedule_name}")
@@ -83,6 +90,17 @@ class ScheduleManager:
                 ).first()
                 if not fresh_schedule:
                     logger.error(f"Schedule #{schedule_id_captured} not found")
+                    return
+
+                # Check expiry
+                if fresh_schedule.expires_at and datetime.now(tz.utc) >= fresh_schedule.expires_at:
+                    fresh_schedule.is_active = False
+                    db_session.commit()
+                    try:
+                        self.scheduler.remove_job(f"template_schedule_{schedule_id_captured}")
+                    except JobLookupError:
+                        pass
+                    logger.info(f"Schedule #{schedule_id_captured} expired, deactivated")
                     return
 
                 # Check active hours for hourly/interval schedules

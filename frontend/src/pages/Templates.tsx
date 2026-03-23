@@ -90,6 +90,15 @@ interface TemplateSchedule {
   updated_at: string;
   last_run: string | null;
   next_run: string | null;
+  schedule_category?: 'standard' | 'event';
+  hours_since_booking?: number | null;
+  gender_filter?: 'male' | 'female' | null;
+  max_checkin_days?: number | null;
+  expires_after_days?: number | null;
+  expires_at?: string | null;
+  send_condition_date?: 'today' | 'tomorrow' | null;
+  send_condition_ratio?: number | null;
+  send_condition_operator?: 'gte' | 'lte' | null;
 }
 
 interface ScheduleFilter {
@@ -258,7 +267,17 @@ function getTargetLabel(record: TemplateSchedule, buildingList?: Building[]): st
   return parts.length > 0 ? parts.join(' · ') : '전체';
 }
 
+function getEventTargetSummary(record: TemplateSchedule): React.ReactNode {
+  const parts: string[] = [];
+  if (record.hours_since_booking) parts.push(`${record.hours_since_booking}시간 내 예약`);
+  if (record.gender_filter === 'male') parts.push('남성');
+  else if (record.gender_filter === 'female') parts.push('여성');
+  if (record.max_checkin_days) parts.push(`${record.max_checkin_days}일 내 체크인`);
+  return <span className="text-caption text-[#4E5968] dark:text-gray-400">{parts.length > 0 ? parts.join(', ') : '이벤트 대상'}</span>;
+}
+
 function getTargetSummary(record: TemplateSchedule, buildingList?: Building[]): React.ReactNode {
+  if (record.schedule_category === 'event') return getEventTargetSummary(record);
   const filters = parseFilters(record.filters);
   const dateLabel = getScheduleDateLabel(record);
 
@@ -414,6 +433,19 @@ const Templates: React.FC = () => {
   const sExcludeSent = true; // 항상 발송 완료 대상 제외
   const [cmRows, setCmRows] = useState<{ column: string; operator: '' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty'; text: string }[]>([{ column: 'party_type', operator: '', text: '' }]);
   const [sActive, setSActive] = useState(true);
+
+  // event schedule state
+  const [sCategory, setSCategory] = useState<'standard' | 'event'>('standard');
+  const [sHoursSinceBooking, setSHoursSinceBooking] = useState('');
+  const [sGenderFilter, setSGenderFilter] = useState<'' | 'male' | 'female'>('');
+  const [sMaxCheckinDays, setSMaxCheckinDays] = useState('');
+  const [sExpiresAfterDays, setSExpiresAfterDays] = useState('');
+
+  // send condition state
+  const [sSendConditionEnabled, setSSendConditionEnabled] = useState(false);
+  const [sSendConditionDate, setSSendConditionDate] = useState<'today' | 'tomorrow'>('tomorrow');
+  const [sSendConditionRatio, setSSendConditionRatio] = useState('');
+  const [sSendConditionOperator, setSSendConditionOperator] = useState<'gte' | 'lte'>('gte');
 
   // (filter picker state removed — replaced by toggle button UI)
 
@@ -620,6 +652,15 @@ const Templates: React.FC = () => {
     setSStayFilter('');
     setCmRows([{ column: 'party_type', operator: '', text: '' }]);
     setSActive(true);
+    setSCategory('standard');
+    setSHoursSinceBooking('');
+    setSGenderFilter('');
+    setSMaxCheckinDays('');
+    setSExpiresAfterDays('');
+    setSSendConditionEnabled(false);
+    setSSendConditionDate('tomorrow');
+    setSSendConditionRatio('');
+    setSSendConditionOperator('gte');
   };
 
   const openCreateSchedule = () => {
@@ -650,6 +691,15 @@ const Templates: React.FC = () => {
     setSStayFilter(s.stay_filter || '');
     // sExcludeSent는 항상 true 고정
     setSActive(s.active);
+    setSCategory(s.schedule_category || 'standard');
+    setSHoursSinceBooking(s.hours_since_booking?.toString() || '');
+    setSGenderFilter(s.gender_filter || '');
+    setSMaxCheckinDays(s.max_checkin_days?.toString() || '');
+    setSExpiresAfterDays(s.expires_after_days?.toString() || '');
+    setSSendConditionEnabled(!!(s.send_condition_date && s.send_condition_ratio != null));
+    setSSendConditionDate(s.send_condition_date || 'tomorrow');
+    setSSendConditionRatio(s.send_condition_ratio?.toString() || '');
+    setSSendConditionOperator(s.send_condition_operator || 'gte');
     setScheduleDialogOpen(true);
   };
 
@@ -669,12 +719,20 @@ const Templates: React.FC = () => {
       active_end_hour: hasActiveHours ? Number(sActiveEndHour) : null,
       timezone: 'Asia/Seoul',
       filters: sFilters.length > 0 ? sFilters : undefined,
-      date_target: sDateTarget || null,
-      stay_filter: sStayFilter || null,
-      target_mode: sTargetMode,
-      once_per_stay: sTargetMode === 'once',
+      date_target: sCategory === 'event' ? null : (sDateTarget || null),
+      stay_filter: sCategory === 'event' ? null : (sStayFilter || null),
+      target_mode: sCategory === 'event' ? 'once' : sTargetMode,
+      once_per_stay: sCategory === 'event' ? true : sTargetMode === 'once',
       exclude_sent: sExcludeSent,
       active: sActive,
+      schedule_category: sCategory,
+      hours_since_booking: sCategory === 'event' ? (parseInt(sHoursSinceBooking) || null) : null,
+      gender_filter: sCategory === 'event' ? (sGenderFilter || null) : null,
+      max_checkin_days: sCategory === 'event' ? (parseInt(sMaxCheckinDays) || null) : null,
+      expires_after_days: sCategory === 'event' ? (parseInt(sExpiresAfterDays) || null) : null,
+      send_condition_date: (sCategory === 'standard' && sSendConditionEnabled) ? sSendConditionDate : null,
+      send_condition_ratio: (sCategory === 'standard' && sSendConditionEnabled) ? (parseFloat(sSendConditionRatio) || null) : null,
+      send_condition_operator: (sCategory === 'standard' && sSendConditionEnabled) ? sSendConditionOperator : null,
     };
   };
 
@@ -682,6 +740,7 @@ const Templates: React.FC = () => {
     if (!sName.trim()) { toast.error('스케줄 이름을 입력하세요'); return; }
     if (!sTemplateId) { toast.error('템플릿을 선택하세요'); return; }
     if (sType === 'weekly' && sDayOfWeek.length === 0) { toast.error('요일을 선택하세요'); return; }
+    if (sCategory === 'event' && !sHoursSinceBooking) { toast.error('예약 시점(시간)을 입력하세요'); return; }
 
     setSavingSchedule(true);
     try {
@@ -1002,7 +1061,18 @@ const Templates: React.FC = () => {
                         <span className="tabular-nums text-gray-400 dark:text-gray-500">{s.id}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>
+                          {s.schedule_category === 'event' && <Badge color="purple" size="sm">이벤트</Badge>}
+                          {s.schedule_category === 'event' && s.expires_at && (() => {
+                            const expiresAt = new Date(s.expires_at);
+                            const now = new Date();
+                            if (!s.active && expiresAt < now) {
+                              return <Badge color="gray" size="sm">만료됨</Badge>;
+                            }
+                            return <span className="text-caption text-[#8B95A1] dark:text-gray-500">{expiresAt.getMonth() + 1}/{expiresAt.getDate()} 만료</span>;
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
@@ -1445,6 +1515,44 @@ const Templates: React.FC = () => {
             </Select>
           </div>
 
+          {/* Schedule category toggle */}
+          <div className="space-y-1.5">
+            <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">스케줄 유형</div>
+            <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+              {[
+                { value: 'standard' as const, label: '표준' },
+                { value: 'event' as const, label: '이벤트' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setSCategory(opt.value);
+                    if (opt.value === 'event') {
+                      // 이벤트 전환 시 표준 전용 state 초기화
+                      setSDateTarget('today');
+                      setSTargetMode('once');
+                      setSStayFilter('');
+                    } else {
+                      // 표준 전환 시 이벤트 전용 state 초기화
+                      setSHoursSinceBooking('');
+                      setSGenderFilter('');
+                      setSMaxCheckinDays('');
+                      setSExpiresAfterDays('');
+                    }
+                  }}
+                  className={`px-4 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                    ${sCategory === opt.value
+                      ? 'bg-[#3182F6] text-white'
+                      : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                    }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
           {/* Schedule type + time in one row */}
@@ -1554,13 +1662,79 @@ const Templates: React.FC = () => {
             )}
           </div>
 
+          {/* 발송 조건 — 표준 모드에서만 */}
+          {sCategory === 'standard' && (
+          <>
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label className="!mb-0">발송 조건</Label>
+              <span className="text-caption text-[#B0B8C1] dark:text-gray-500">(선택)</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSSendConditionEnabled(!sSendConditionEnabled)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-body transition-colors cursor-pointer
+                ${sSendConditionEnabled
+                  ? 'border-[#3182F6] bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:border-[#3182F6]'
+                  : 'border-[#E5E8EB] bg-white text-[#8B95A1] hover:bg-[#F8F9FA] dark:border-gray-700 dark:bg-[#1E1E24] dark:hover:bg-[#2C2C34]'
+                }`}
+            >
+              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
+                ${sSendConditionEnabled ? 'border-[#3182F6] bg-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
+                {sSendConditionEnabled && <span className="text-white text-[10px]">✓</span>}
+              </div>
+              <span>성비 조건이 충족될 때만 발송</span>
+            </button>
+
+            {sSendConditionEnabled && (
+            <div className="flex flex-wrap items-center gap-2 ml-6">
+              <select
+                value={sSendConditionDate}
+                onChange={e => setSSendConditionDate(e.target.value as 'today' | 'tomorrow')}
+                className="rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-3 py-2"
+              >
+                <option value="today">오늘</option>
+                <option value="tomorrow">내일</option>
+              </select>
+              <span className="text-body text-[#4E5968] dark:text-gray-300">남녀 성비가</span>
+              <TextInput
+                type="number"
+                min={0}
+                step={0.1}
+                placeholder="2"
+                value={sSendConditionRatio}
+                onChange={e => setSSendConditionRatio(e.target.value)}
+                sizing="sm"
+                className="w-16"
+              />
+              <span className="text-body text-[#4E5968] dark:text-gray-300">: 1</span>
+              <select
+                value={sSendConditionOperator}
+                onChange={e => setSSendConditionOperator(e.target.value as 'gte' | 'lte')}
+                className="rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-3 py-2"
+              >
+                <option value="gte">이상</option>
+                <option value="lte">이하</option>
+              </select>
+              <span className="text-body text-[#4E5968] dark:text-gray-300">이면 발송</span>
+            </div>
+            )}
+          </div>
+          </>
+          )}
+
+          {/* Multi-filter target — 표준 모드에서만 표시 */}
+          {sCategory === 'standard' && (
+          <>
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
-          {/* Multi-filter target */}
           <div className="space-y-3">
             <Label>발송 대상 필터</Label>
 
             {/* Row 1: 대상 (v4 unified date_target) */}
+            {sCategory === 'standard' && (
             <div className="space-y-1.5">
               <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">대상</div>
               <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
@@ -1588,6 +1762,7 @@ const Templates: React.FC = () => {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Row 2: Assignment status */}
             <div className="space-y-1.5">
@@ -1711,10 +1886,140 @@ const Templates: React.FC = () => {
             </div>
 
           </div>
+          </>
+          )}
 
+          {/* 이벤트 조건 — 이벤트 모드에서만 표시 */}
+          {sCategory === 'event' && (
+          <>
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
+          <div className="space-y-3">
+            <Label>이벤트 조건</Label>
+
+            {/* 예약 시점 */}
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">
+                예약 시점 <span className="text-[#F04452] dark:text-red-400">*</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <TextInput
+                  type="number"
+                  min={1}
+                  placeholder="24"
+                  value={sHoursSinceBooking}
+                  onChange={e => setSHoursSinceBooking(e.target.value)}
+                  sizing="sm"
+                  className="w-20"
+                />
+                <span className="text-body text-[#4E5968] dark:text-gray-300">시간 이내에 예약한 사람</span>
+              </div>
+            </div>
+
+            {/* 성별 */}
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">성별</div>
+              <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+                {[
+                  { value: '' as const, label: '전체' },
+                  { value: 'male' as const, label: '남성' },
+                  { value: 'female' as const, label: '여성' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSGenderFilter(opt.value)}
+                    className={`px-4 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                      ${sGenderFilter === opt.value
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 체크인 기한 */}
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">체크인 기한</div>
+              <div className="flex items-center gap-2">
+                <TextInput
+                  type="number"
+                  min={1}
+                  placeholder="7"
+                  value={sMaxCheckinDays}
+                  onChange={e => setSMaxCheckinDays(e.target.value)}
+                  sizing="sm"
+                  className="w-20"
+                />
+                <span className="text-body text-[#4E5968] dark:text-gray-300">일 이내 체크인</span>
+              </div>
+              <p className="text-caption text-gray-400 dark:text-gray-500">비워두면 체크인 기한 제한 없이 발송합니다</p>
+            </div>
+          </div>
+
+          {/* 운영 기간 */}
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
+          <div className="space-y-3">
+            <Label>운영 기간</Label>
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">만료</div>
+              <div className="flex items-center gap-2">
+                <TextInput
+                  type="number"
+                  min={1}
+                  placeholder="7"
+                  value={sExpiresAfterDays}
+                  onChange={e => setSExpiresAfterDays(e.target.value)}
+                  sizing="sm"
+                  className="w-20"
+                />
+                <span className="text-body text-[#4E5968] dark:text-gray-300">일 후 자동 종료</span>
+              </div>
+              <p className="text-caption text-gray-400 dark:text-gray-500">비워두면 만료 없이 계속 실행됩니다</p>
+            </div>
+          </div>
+
+          {/* 연박자 설정 — 이벤트 모드 (포함/제외만) */}
+          <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
+          <div className="space-y-3">
+            <Label>연박자 설정</Label>
+            <div className="flex gap-2">
+              {[
+                { value: '', label: '포함', desc: '연박자에게도 발송합니다' },
+                { value: 'exclude', label: '제외', desc: '연박자에게는 발송하지 않습니다' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSStayFilter(opt.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer flex-1
+                    ${sStayFilter === opt.value
+                      ? 'border-[#3182F6] bg-[#E8F3FF] dark:bg-[#3182F6]/15 dark:border-[#3182F6]'
+                      : 'border-[#E5E8EB] bg-white hover:bg-[#F8F9FA] dark:border-gray-700 dark:bg-[#1E1E24] dark:hover:bg-[#2C2C34]'
+                    }`}
+                >
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                    ${sStayFilter === opt.value ? 'border-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
+                    {sStayFilter === opt.value && <div className="w-2 h-2 rounded-full bg-[#3182F6]" />}
+                  </div>
+                  <div>
+                    <p className={`text-body font-medium ${sStayFilter === opt.value ? 'text-[#3182F6]' : 'text-[#191F28] dark:text-white'}`}>{opt.label}</p>
+                    <p className="text-caption text-[#8B95A1] dark:text-gray-500">{opt.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+          </>
+          )}
+
+          {/* 연박자 발송 설정 — 표준 모드에서만 표시 */}
+          {sCategory === 'standard' && (
+          <>
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
-          {/* 연박자 발송 설정 */}
           <div className="space-y-3">
             <Label>연박자 발송 설정</Label>
 
@@ -1774,6 +2079,8 @@ const Templates: React.FC = () => {
                 </div>
               </div>
           </div>
+          </>
+          )}
 
           <div className="border-t border-[#F2F4F6] dark:border-gray-800" />
 
@@ -1783,6 +2090,28 @@ const Templates: React.FC = () => {
       <ModalFooter className="border-t border-[#F2F4F6] dark:border-gray-800">
         <div className="flex flex-wrap items-center justify-between gap-3 w-full">
           {(() => {
+            if (sCategory === 'event') {
+              const eventParts: string[] = [];
+              if (sHoursSinceBooking) eventParts.push(`${sHoursSinceBooking}시간 내 예약`);
+              if (sGenderFilter === 'male') eventParts.push('남성');
+              else if (sGenderFilter === 'female') eventParts.push('여성');
+              if (sMaxCheckinDays) eventParts.push(`${sMaxCheckinDays}일 내 체크인`);
+              if (sExpiresAfterDays) eventParts.push(`${sExpiresAfterDays}일 후 만료`);
+              const eventChipColor = 'bg-[#F3E8FF] text-[#8B5CF6] dark:bg-[#8B5CF6]/15 dark:text-purple-300';
+              return (
+                <div className="flex items-center gap-1.5 flex-wrap text-caption flex-1 min-w-0">
+                  <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${eventChipColor}`}>이벤트</span>
+                  {eventParts.length > 0 && (
+                    <>
+                      <span className="text-[#B0B8C1] dark:text-gray-600">·</span>
+                      <span className="text-[#4E5968] dark:text-gray-300">{eventParts.join(', ')}</span>
+                    </>
+                  )}
+                  <span className="text-[#8B95A1] dark:text-gray-500">대상에게 발송</span>
+                </div>
+              );
+            }
+
             const dateValue = (() => {
               switch (sDateTarget) {
                 case 'today_checkout': return '오늘 체크아웃';

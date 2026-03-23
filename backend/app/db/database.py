@@ -236,6 +236,48 @@ def init_db():
                     conn.execute(text("ALTER TABLE participant_snapshots ADD CONSTRAINT uq_tenant_snapshot_date UNIQUE (tenant_id, date)"))
                 print("AUTO-MIGRATE: Fixed participant_snapshots unique constraint: (date) → (tenant_id, date)")
 
+        # template_schedules: event schedule fields
+        if "template_schedules" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("template_schedules")]
+            if "schedule_category" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN schedule_category VARCHAR(20) DEFAULT 'standard'"))
+                print("AUTO-MIGRATE: Added schedule_category column to template_schedules table")
+            if "hours_since_booking" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN hours_since_booking INTEGER"))
+                print("AUTO-MIGRATE: Added hours_since_booking column to template_schedules table")
+            if "gender_filter" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN gender_filter VARCHAR(10)"))
+                print("AUTO-MIGRATE: Added gender_filter column to template_schedules table")
+            if "max_checkin_days" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN max_checkin_days INTEGER"))
+                print("AUTO-MIGRATE: Added max_checkin_days column to template_schedules table")
+            if "expires_after_days" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN expires_after_days INTEGER"))
+                print("AUTO-MIGRATE: Added expires_after_days column to template_schedules table")
+            if "expires_at" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN expires_at TIMESTAMP"))
+                print("AUTO-MIGRATE: Added expires_at column to template_schedules table")
+
+        # send_condition fields
+        if "template_schedules" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("template_schedules")]
+            if "send_condition_date" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN send_condition_date VARCHAR(20)"))
+                print("AUTO-MIGRATE: Added send_condition_date column to template_schedules table")
+            if "send_condition_ratio" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN send_condition_ratio FLOAT"))
+                print("AUTO-MIGRATE: Added send_condition_ratio column to template_schedules table")
+            if "send_condition_operator" not in cols:
+                conn.execute(text("ALTER TABLE template_schedules ADD COLUMN send_condition_operator VARCHAR(10)"))
+                print("AUTO-MIGRATE: Added send_condition_operator column to template_schedules table")
+
+        # tenants: chip_priority_keys
+        if "tenants" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("tenants")]
+            if "chip_priority_keys" not in cols:
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN chip_priority_keys TEXT"))
+                print("AUTO-MIGRATE: Added chip_priority_keys column to tenants table")
+
         # v5: migrate stay_filter='last_only' → target_mode='last_day' + stay_filter=NULL
         if "template_schedules" in inspector.get_table_names():
             result = conn.execute(text("""

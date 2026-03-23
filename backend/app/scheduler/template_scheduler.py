@@ -146,6 +146,10 @@ def matches_schedule(db: Session, schedule: TemplateSchedule, reservation_id: in
     Returns True if the reservation passes all filter groups (AND between groups,
     OR within same group), or if there are no filters.
     """
+    # 이벤트 스케줄은 시간 기반이라 정적 태그 생성 불가
+    if getattr(schedule, 'schedule_category', 'standard') == 'event':
+        return False
+
     filters = []
     if schedule.filters:
         try:
@@ -232,6 +236,15 @@ class TemplateScheduleExecutor:
             return {"success": False, "error": "Template not found or inactive"}
 
         try:
+            # Send condition check (표준 스케줄 전용)
+            if getattr(schedule, 'send_condition_date', None) and getattr(schedule, 'send_condition_ratio', None) is not None:
+                condition_met = self._check_send_condition(schedule)
+                if not condition_met:
+                    schedule.last_run_at = datetime.now(timezone.utc)
+                    self.db.commit()
+                    logger.info(f"Schedule #{schedule_id}: send condition not met, skipping")
+                    return {"success": True, "sent_count": 0, "message": "Send condition not met, skipped"}
+
             # Get targets
             targets = self.get_targets(schedule)
             logger.info(f"Found {len(targets)} targets for schedule #{schedule_id}")
@@ -247,8 +260,13 @@ class TemplateScheduleExecutor:
             failed_count = 0
             send_results = []
 
-            date_target_val = getattr(schedule, 'date_target', None)
-            target_date = self._resolve_date_target(date_target_val) if date_target_val else None
+            # 이벤트 스케줄: target_date를 오늘로 고정
+            if getattr(schedule, 'schedule_category', 'standard') == 'event':
+                target_date = date.today().strftime('%Y-%m-%d')
+                date_target_val = None
+            else:
+                date_target_val = getattr(schedule, 'date_target', None)
+                target_date = self._resolve_date_target(date_target_val) if date_target_val else None
 
             # Build reservation_id -> building+room display map for log
             # Use RoomAssignment for target_date (not denormalized field)
@@ -390,9 +408,9 @@ class TemplateScheduleExecutor:
 
     def get_targets(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
         """
-        Filter targets based on schedule configuration.
+        Filter targets based on schedule configuration (dispatcher).
 
-        Uses the ``filters`` JSON column (AND-chained).
+        Routes to _get_targets_standard() or _get_targets_event() based on schedule_category.
 
         Args:
             schedule: TemplateSchedule instance
@@ -401,6 +419,99 @@ class TemplateScheduleExecutor:
         Returns:
             List of Reservation instances
         """
+        if getattr(schedule, 'schedule_category', 'standard') == 'event':
+            return self._get_targets_event(schedule, exclude_sent=exclude_sent)
+        return self._get_targets_standard(schedule, exclude_sent=exclude_sent)
+
+    def _apply_structural_filters(self, query, schedule: TemplateSchedule, target_date: str):
+        """Apply structural filters (building/assignment/room/column_match) to a query.
+
+        Extracts filter JSON, groups by type (OR within group, AND between groups),
+        and applies has_unassigned bypass for building/room filters.
+
+        Returns:
+            Filtered query
+        """
+        filters = []
+        if schedule.filters:
+            try:
+                filters = json.loads(schedule.filters)
+            except (json.JSONDecodeError, TypeError):
+                filters = []
+
+        ctx = {"db": self.db, "target_date": target_date}
+
+        # Group filters by type
+        filter_groups: dict = defaultdict(list)
+        for f in filters:
+            ftype = f.get("type", "")
+            fval = f.get("value", "")
+            # column_match: group by type:column so different columns are AND-ed
+            if ftype == "column_match":
+                col = fval.split(':', 1)[0] if ':' in fval else fval
+                group_key = f"column_match:{col}"
+            else:
+                group_key = ftype
+            filter_groups[group_key].append(fval)
+
+        # 미배정이 assignment 조건에 포함되면, 건물/객실 필터에서 면제
+        has_unassigned = 'unassigned' in filter_groups.get('assignment', [])
+
+        for group_key, values in filter_groups.items():
+            filter_type = group_key.split(':')[0] if group_key.startswith('column_match:') else group_key
+            builder = FILTER_BUILDERS.get(filter_type)
+            if not builder:
+                continue
+            conditions = [c for c in (builder(v, ctx) for v in values) if c is not None]
+            if conditions:
+                combined = or_(*conditions) if len(conditions) > 1 else conditions[0]
+                # 미배정 예약자는 건물/객실 조건 면제 (RoomAssignment 없으므로 매칭 불가)
+                if filter_type in ("building", "room") and has_unassigned:
+                    combined = or_(combined, Reservation.section == 'unassigned')
+                query = query.filter(combined)
+
+        return query
+
+    def _check_send_condition(self, schedule: TemplateSchedule) -> bool:
+        """Check if send condition (gender ratio) is met."""
+        # 기준 날짜 결정
+        if schedule.send_condition_date == 'tomorrow':
+            target = (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+        else:
+            target = date.today().strftime('%Y-%m-%d')
+
+        # 해당 날짜 체크인 예약자의 male_count, female_count 합계
+        row = self.db.query(
+            func.coalesce(func.sum(Reservation.male_count), 0).label("male"),
+            func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
+        ).filter(
+            Reservation.status == ReservationStatus.CONFIRMED,
+            Reservation.check_in_date == target,
+        ).first()
+
+        total_male = int(row.male)
+        total_female = int(row.female)
+
+        # female이 0이면 비율 계산 불가
+        if total_female == 0:
+            # male이 있으면 비율 무한대 → gte는 항상 참, lte는 항상 거짓
+            if total_male == 0:
+                return False  # 데이터 없으면 스킵
+            ratio = float('inf')
+        else:
+            ratio = total_male / total_female
+
+        threshold = schedule.send_condition_ratio
+        operator = schedule.send_condition_operator or 'gte'
+
+        if operator == 'gte':
+            return ratio >= threshold
+        elif operator == 'lte':
+            return ratio <= threshold
+        return True  # 알 수 없는 operator면 발송
+
+    def _get_targets_standard(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
+        """Standard schedule targeting — existing logic, unchanged."""
         query = self.db.query(Reservation).filter(
             Reservation.status == ReservationStatus.CONFIRMED
         )
@@ -446,46 +557,8 @@ class TemplateScheduleExecutor:
         if not target_date:
             target_date = date.today().strftime('%Y-%m-%d')
 
-        # --- Parse filters JSON ---
-        filters = []
-        if schedule.filters:
-            try:
-                filters = json.loads(schedule.filters)
-            except (json.JSONDecodeError, TypeError):
-                filters = []
-
-        # Apply filters: OR within same type, AND between types
-        ctx = {"db": self.db, "target_date": target_date}
-
-        # Group filters by type
-        filter_groups: dict = defaultdict(list)
-        for f in filters:
-            ftype = f.get("type", "")
-            fval = f.get("value", "")
-            # column_match: group by type:column so different columns are AND-ed
-            if ftype == "column_match":
-                col = fval.split(':', 1)[0] if ':' in fval else fval
-                group_key = f"column_match:{col}"
-            else:
-                group_key = ftype
-            filter_groups[group_key].append(fval)
-
-        # 미배정이 assignment 조건에 포함되면, 건물/객실 필터에서 면제
-        has_unassigned = 'unassigned' in filter_groups.get('assignment', [])
-
-        for group_key, values in filter_groups.items():
-            # Extract base type from group key (e.g., "column_match:party_type" -> "column_match")
-            filter_type = group_key.split(':')[0] if group_key.startswith('column_match:') else group_key
-            builder = FILTER_BUILDERS.get(filter_type)
-            if not builder:
-                continue
-            conditions = [c for c in (builder(v, ctx) for v in values) if c is not None]
-            if conditions:
-                combined = or_(*conditions) if len(conditions) > 1 else conditions[0]
-                # 미배정 예약자는 건물/객실 조건 면제 (RoomAssignment 없으므로 매칭 불가)
-                if filter_type in ("building", "room") and has_unassigned:
-                    combined = or_(combined, Reservation.section == 'unassigned')
-                query = query.filter(combined)
+        # Apply structural filters (building/assignment/room/column_match)
+        query = self._apply_structural_filters(query, schedule, target_date)
 
         # Apply exclude_sent filter via join table
         if exclude_sent and schedule.exclude_sent:
@@ -541,6 +614,66 @@ class TemplateScheduleExecutor:
 
         return results
 
+    def _get_targets_event(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
+        """Event schedule targeting — confirmed_at 기반 필터링."""
+        query = self.db.query(Reservation).filter(
+            Reservation.status == ReservationStatus.CONFIRMED
+        )
+
+        # No safety guard — max_checkin_days provides its own range limit
+        today_str = date.today().strftime('%Y-%m-%d')
+
+        # 1) N일 이내 체크인
+        if schedule.max_checkin_days:
+            max_date_str = (date.today() + timedelta(days=schedule.max_checkin_days)).strftime('%Y-%m-%d')
+            query = query.filter(
+                Reservation.check_in_date >= today_str,
+                Reservation.check_in_date <= max_date_str,
+            )
+
+        # 2) 성별 필터 — 예약자 본인 기준 (Reservation.gender)
+        if schedule.gender_filter == 'male':
+            query = query.filter(Reservation.gender == '남')
+        elif schedule.gender_filter == 'female':
+            query = query.filter(Reservation.gender == '여')
+
+        # 이벤트는 structural filters (건물/배정/객실) 미적용 — 대상이 아직 미배정인 경우가 대부분
+
+        # 4) confirmed_at N시간 이내 — Python datetime 파싱 방식
+        results = query.all()
+
+        if schedule.hours_since_booking:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=schedule.hours_since_booking)
+            filtered = []
+            for res in results:
+                if not res.confirmed_at:
+                    continue  # 수동 예약 (confirmed_at=NULL) 제외
+                try:
+                    confirmed = datetime.fromisoformat(str(res.confirmed_at))
+                    if confirmed >= cutoff:
+                        filtered.append(res)
+                except (ValueError, TypeError):
+                    continue  # 파싱 실패 시 안전하게 제외
+            results = filtered
+
+        # 5) 연박 필터 (stay_filter)
+        sf = getattr(schedule, 'stay_filter', None)
+        if sf == 'exclude':
+            results = [r for r in results if not r.stay_group_id]
+
+        # 6) exclude_sent — 이벤트 전용 (날짜 무관)
+        if exclude_sent and schedule.exclude_sent:
+            already_sent_ids = {
+                row.reservation_id for row in
+                self.db.query(ReservationSmsAssignment.reservation_id).filter(
+                    ReservationSmsAssignment.template_key == schedule.template.template_key,
+                    ReservationSmsAssignment.sent_at.isnot(None),
+                ).all()
+            }
+            results = [r for r in results if r.id not in already_sent_ids]
+
+        return results
+
     def auto_assign_for_schedule(self, schedule: TemplateSchedule) -> int:
         """
         Auto-assign ReservationSmsAssignment records for a schedule's targets.
@@ -550,6 +683,10 @@ class TemplateScheduleExecutor:
         Returns:
             Number of new assignments created
         """
+        # 이벤트는 사전 태그 생성 불가
+        if getattr(schedule, 'schedule_category', 'standard') == 'event':
+            return 0
+
         targets = self.get_targets(schedule, exclude_sent=False)
         template_key = schedule.template.template_key
         created = 0

@@ -131,11 +131,28 @@ def get_template_labels(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get template labels for chip display"""
-    PRIORITY_KEYS = ["party_info", "room_info", "sub_room_info"]
+    """Get template labels for chip display — 테넌트별 우선순위 지원"""
+    import json as _json
+    from app.db.tenant_context import current_tenant_id
+    from app.db.models import Tenant
+
+    # 테넌트별 chip_priority_keys 로드
+    priority_keys = []
+    tid = current_tenant_id.get()
+    if tid:
+        tenant = db.query(Tenant).filter(Tenant.id == tid).first()
+        if tenant and tenant.chip_priority_keys:
+            try:
+                priority_keys = _json.loads(tenant.chip_priority_keys)
+            except (ValueError, TypeError):
+                pass
+    # 폴백: 설정 없으면 기본 순서
+    if not priority_keys:
+        priority_keys = ["party_info", "room_info", "sub_room_info"]
+
     templates = db.query(MessageTemplate).filter(MessageTemplate.is_active == True).all()
     templates.sort(key=lambda t: (
-        PRIORITY_KEYS.index(t.template_key) if t.template_key in PRIORITY_KEYS else len(PRIORITY_KEYS),
+        priority_keys.index(t.template_key) if t.template_key in priority_keys else len(priority_keys),
         t.template_key,
     ))
     return [

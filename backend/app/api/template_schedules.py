@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Literal, Optional
 from pydantic import BaseModel, model_validator
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.api.deps import get_tenant_scoped_db
 from app.db.models import TemplateSchedule, MessageTemplate, User
@@ -59,6 +59,15 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "once_per_stay": schedule.once_per_stay or False,
         "date_target": schedule.date_target,
         "stay_filter": schedule.stay_filter,
+        "send_condition_date": schedule.send_condition_date,
+        "send_condition_ratio": schedule.send_condition_ratio,
+        "send_condition_operator": schedule.send_condition_operator,
+        "schedule_category": schedule.schedule_category or "standard",
+        "hours_since_booking": schedule.hours_since_booking,
+        "gender_filter": schedule.gender_filter,
+        "max_checkin_days": schedule.max_checkin_days,
+        "expires_after_days": schedule.expires_after_days,
+        "expires_at": schedule.expires_at.isoformat() if schedule.expires_at else None,
         "created_at": schedule.created_at,
         "updated_at": schedule.updated_at,
         "last_run": schedule.last_run_at,
@@ -85,6 +94,16 @@ class TemplateScheduleCreate(BaseModel):
     once_per_stay: Optional[bool] = False
     date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
     stay_filter: Optional[Literal['exclude']] = None
+    # Send condition fields
+    send_condition_date: Optional[Literal['today', 'tomorrow']] = None
+    send_condition_ratio: Optional[float] = None
+    send_condition_operator: Optional[Literal['gte', 'lte']] = None
+    # Event schedule fields
+    schedule_category: Optional[Literal['standard', 'event']] = 'standard'
+    hours_since_booking: Optional[int] = None
+    gender_filter: Optional[Literal['male', 'female']] = None
+    max_checkin_days: Optional[int] = None
+    expires_after_days: Optional[int] = None
 
 
 class TemplateScheduleUpdate(BaseModel):
@@ -105,6 +124,16 @@ class TemplateScheduleUpdate(BaseModel):
     once_per_stay: Optional[bool] = None
     date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
     stay_filter: Optional[Literal['exclude']] = None
+    # Send condition fields
+    send_condition_date: Optional[Literal['today', 'tomorrow']] = None
+    send_condition_ratio: Optional[float] = None
+    send_condition_operator: Optional[Literal['gte', 'lte']] = None
+    # Event schedule fields
+    schedule_category: Optional[Literal['standard', 'event']] = None
+    hours_since_booking: Optional[int] = None
+    gender_filter: Optional[Literal['male', 'female']] = None
+    max_checkin_days: Optional[int] = None
+    expires_after_days: Optional[int] = None
 
 
 class TemplateScheduleResponse(BaseModel):
@@ -128,6 +157,17 @@ class TemplateScheduleResponse(BaseModel):
     once_per_stay: Optional[bool] = False
     date_target: Optional[str] = None
     stay_filter: Optional[str] = None
+    # Send condition fields
+    send_condition_date: Optional[str] = None
+    send_condition_ratio: Optional[float] = None
+    send_condition_operator: Optional[str] = None
+    # Event schedule fields
+    schedule_category: str = 'standard'
+    hours_since_booking: Optional[int] = None
+    gender_filter: Optional[str] = None
+    max_checkin_days: Optional[int] = None
+    expires_after_days: Optional[int] = None
+    expires_at: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     last_run: Optional[datetime] = None
@@ -204,6 +244,15 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     elif schedule.schedule_type == 'interval' and not schedule.interval_minutes:
         raise HTTPException(status_code=400, detail="인터벌 스케줄은 간격(분)을 지정해야 합니다")
 
+    # Event schedule validation
+    if schedule.schedule_category == 'event' and not schedule.hours_since_booking:
+        raise HTTPException(status_code=400, detail="이벤트 스케줄은 hours_since_booking을 지정해야 합니다")
+
+    # Calculate expires_at from expires_after_days
+    expires_at = None
+    if schedule.expires_after_days:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=schedule.expires_after_days)
+
     # Create schedule
     filters_json = json.dumps(schedule.filters, ensure_ascii=False) if schedule.filters else None
     db_schedule = TemplateSchedule(
@@ -224,6 +273,15 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         once_per_stay=schedule.once_per_stay or False,
         date_target=schedule.date_target,
         stay_filter=schedule.stay_filter,
+        send_condition_date=schedule.send_condition_date,
+        send_condition_ratio=schedule.send_condition_ratio,
+        send_condition_operator=schedule.send_condition_operator,
+        schedule_category=schedule.schedule_category or 'standard',
+        hours_since_booking=schedule.hours_since_booking,
+        gender_filter=schedule.gender_filter,
+        max_checkin_days=schedule.max_checkin_days,
+        expires_after_days=schedule.expires_after_days,
+        expires_at=expires_at,
     )
 
     db.add(db_schedule)
@@ -250,6 +308,12 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     if not db_schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
 
+    # Event schedule validation
+    effective_category = schedule.schedule_category if schedule.schedule_category is not None else db_schedule.schedule_category
+    effective_hours = schedule.hours_since_booking if schedule.hours_since_booking is not None else db_schedule.hours_since_booking
+    if effective_category == 'event' and not effective_hours:
+        raise HTTPException(status_code=400, detail="이벤트 스케줄은 hours_since_booking을 지정해야 합니다")
+
     # Update fields
     update_data = schedule.dict(exclude_unset=True)
     # Serialize filters list to JSON string for DB storage
@@ -258,6 +322,12 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     # Remap Pydantic 'active' field to ORM 'is_active' column
     if "active" in update_data:
         update_data["is_active"] = update_data.pop("active")
+    # Recalculate expires_at when expires_after_days changes
+    if "expires_after_days" in update_data:
+        if update_data["expires_after_days"]:
+            update_data["expires_at"] = datetime.now(timezone.utc) + timedelta(days=update_data["expires_after_days"])
+        else:
+            update_data["expires_at"] = None
     # exclude_sent: Pydantic과 ORM 속성명이 동일하므로 리매핑 불필요
     for field, value in update_data.items():
         setattr(db_schedule, field, value)
@@ -345,6 +415,9 @@ def auto_assign(
 
     for schedule in schedules:
         if not schedule.template or not schedule.template.is_active:
+            continue
+        # 이벤트 스케줄은 사전 태그 생성 불가
+        if schedule.schedule_category == 'event':
             continue
         # If a date was provided and schedule has no date_target, temporarily override
         if date and not schedule.date_target:

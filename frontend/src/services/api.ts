@@ -219,6 +219,14 @@ export const templateSchedulesAPI = {
     filters?: Array<{ type: string; value: string }>;
     exclude_sent?: boolean;
     active?: boolean;
+    schedule_category?: 'standard' | 'event';
+    hours_since_booking?: number | null;
+    gender_filter?: 'male' | 'female' | null;
+    max_checkin_days?: number | null;
+    expires_after_days?: number | null;
+    send_condition_date?: string | null;
+    send_condition_ratio?: number | null;
+    send_condition_operator?: string | null;
   }) => api.post('/api/template-schedules', data),
   update: (id: number, data: any) => api.put(`/api/template-schedules/${id}`, data),
   delete: (id: number) => api.delete(`/api/template-schedules/${id}`),

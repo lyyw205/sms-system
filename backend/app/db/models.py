@@ -404,6 +404,19 @@ class TemplateSchedule(TenantMixin, Base):
     date_target = Column(String(30), nullable=True)   # 'today' | 'tomorrow' | 'today_checkout' | 'tomorrow_checkout'
     stay_filter = Column(String(20), nullable=True)    # null(include) | 'exclude'(no consecutive)
 
+    # Send condition (optional — standard schedules only)
+    send_condition_date = Column(String(20), nullable=True)    # 'today' | 'tomorrow'
+    send_condition_ratio = Column(Float, nullable=True)        # N:1 의 N
+    send_condition_operator = Column(String(10), nullable=True) # 'gte' | 'lte'
+
+    # Event schedule fields
+    schedule_category = Column(String(20), default='standard')  # 'standard' | 'event'
+    hours_since_booking = Column(Integer, nullable=True)  # 예약 확정 후 N시간 이내 (이벤트 필수)
+    gender_filter = Column(String(10), nullable=True)  # 'male' | 'female' | NULL(전체)
+    max_checkin_days = Column(Integer, nullable=True)  # 최대 N일 이내 체크인
+    expires_after_days = Column(Integer, nullable=True)  # 생성 후 N일간 운영 (UI용)
+    expires_at = Column(DateTime, nullable=True)  # 실제 만료 시각 (생성 시 자동 계산)
+
     # Relationship
     template = relationship("MessageTemplate", backref="schedules")
 
@@ -503,6 +516,7 @@ class Tenant(Base):
     naver_password = Column(String(200), nullable=True)
     aligo_sender = Column(String(20), nullable=True)  # 펜션별 발신번호
     aligo_testmode = Column(Boolean, default=True)  # True=테스트모드(실제 미발송), False=실제 발송
+    chip_priority_keys = Column(Text, nullable=True)  # JSON array of template_keys for chip display order
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

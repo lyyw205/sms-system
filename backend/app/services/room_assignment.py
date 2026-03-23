@@ -69,6 +69,10 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
 
 def get_schedule_dates(schedule, reservation) -> List[str]:
     """Get target dates for a schedule+reservation pair based on target_mode and date_target."""
+    # 이벤트 스케줄: 체크인 날짜 하나만 반환
+    if getattr(schedule, 'schedule_category', 'standard') == 'event':
+        return [reservation.check_in_date] if reservation.check_in_date else []
+
     date_target = getattr(schedule, 'date_target', None)
 
     # last_day mode: only create chip for last-in-group reservation
