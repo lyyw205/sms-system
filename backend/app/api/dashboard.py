@@ -3,7 +3,7 @@ Dashboard statistics API
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from app.api.deps import get_tenant_scoped_db
 from app.db.models import Reservation, ActivityLog, ReservationStatus, User
 from app.auth.dependencies import get_current_user
@@ -36,26 +36,23 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
         ActivityLog.created_at >= today_start,
     ).scalar() or 0)
 
-    # Gender stats (7 days: today + 6 days forward) — 일별 SUM
+    # Gender stats (7 days: today + 6 days forward) — GROUP BY 단일 쿼리
     from datetime import timedelta
     today = datetime.now(KST).date()
-    gender_daily = []
-    for i in range(7):
-        d = today + timedelta(days=i)
-        d_str = d.strftime("%Y-%m-%d")
-        # tenant_id 필터는 before_compile hook이 select_from(Reservation)에서 자동 적용
-        row = db.query(
-            func.coalesce(func.sum(Reservation.male_count), 0).label("male"),
-            func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
-        ).select_from(Reservation).filter(
-            Reservation.check_in_date == d_str,
-            Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
-        ).first()
-        gender_daily.append({
-            "date": d_str,
-            "male": int(row.male),
-            "female": int(row.female),
-        })
+    date_strs = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    gender_rows = db.query(
+        Reservation.check_in_date,
+        func.coalesce(func.sum(Reservation.male_count), 0).label("male"),
+        func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
+    ).select_from(Reservation).filter(
+        Reservation.check_in_date.in_(date_strs),
+        Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
+    ).group_by(Reservation.check_in_date).all()
+    gender_map = {r.check_in_date: (int(r.male), int(r.female)) for r in gender_rows}
+    gender_daily = [
+        {"date": d, "male": gender_map.get(d, (0, 0))[0], "female": gender_map.get(d, (0, 0))[1]}
+        for d in date_strs
+    ]
 
     # Naver sync status — from APScheduler job info (no DB query)
     from app.scheduler.jobs import scheduler as apscheduler
@@ -115,26 +112,35 @@ async def get_today_schedules(db: Session = Depends(get_tenant_scoped_db), curre
         TemplateSchedule.is_active == True,
     ).all()
 
+    # 오늘 SMS 발송 로그를 한 번에 조회 (N+1 방지)
+    all_logs = db.query(ActivityLog).filter(
+        ActivityLog.activity_type == "sms_send",
+        ActivityLog.created_at >= today_start,
+    ).all()
+
+    # schedule_name 기준 매핑
+    logs_by_schedule: dict = {}
+    for s in schedules:
+        matched = [
+            log for log in all_logs
+            if s.schedule_name and s.schedule_name in (log.title or '')
+        ]
+        logs_by_schedule[s.id] = matched
+
     timeline = []
 
     for s in schedules:
         template_name = s.template.name if s.template else s.schedule_name
+        s_logs = logs_by_schedule.get(s.id, [])
+        first_log = s_logs[0] if s_logs else None
+        log_count = len(s_logs)
 
         if s.schedule_type == 'daily':
             h = s.hour or 0
             m = s.minute or 0
             done = (current_hour > h) or (current_hour == h and current_minute >= m)
-            sent_log = db.query(ActivityLog).filter(
-                ActivityLog.activity_type == "sms_send",
-                ActivityLog.created_at >= today_start,
-                or_(
-                    ActivityLog.detail.contains(f'"schedule_id": {s.id}'),
-                    ActivityLog.detail.contains(f'"schedule_id":{s.id}'),
-                    ActivityLog.title.contains(s.schedule_name),
-                ),
-            ).first()
-            status = "완료" if sent_log else ("대기" if not done else "미발송")
-            result = f"성공 {sent_log.success_count}건" if sent_log else "-"
+            status = "완료" if first_log else ("대기" if not done else "미발송")
+            result = f"성공 {first_log.success_count}건" if first_log else "-"
             timeline.append({
                 "schedule_name": s.schedule_name,
                 "template_name": template_name,
@@ -150,17 +156,8 @@ async def get_today_schedules(db: Session = Depends(get_tenant_scoped_db), curre
             interval = s.interval_minutes or 60
             done = current_hour >= end_h
             in_progress = start_h <= current_hour < end_h
-            sent_count = db.query(ActivityLog).filter(
-                ActivityLog.activity_type == "sms_send",
-                ActivityLog.created_at >= today_start,
-                or_(
-                    ActivityLog.detail.contains(f'"schedule_id": {s.id}'),
-                    ActivityLog.detail.contains(f'"schedule_id":{s.id}'),
-                    ActivityLog.title.contains(s.schedule_name),
-                ),
-            ).count()
             status = "완료" if done else ("진행중" if in_progress else "대기")
-            result = f"{sent_count}건" if sent_count > 0 else "-"
+            result = f"{log_count}건" if log_count > 0 else "-"
             timeline.append({
                 "schedule_name": s.schedule_name,
                 "template_name": template_name,
@@ -176,17 +173,8 @@ async def get_today_schedules(db: Session = Depends(get_tenant_scoped_db), curre
             m = s.minute or 0
             done = current_hour >= end_h
             in_progress = start_h <= current_hour < end_h
-            sent_count = db.query(ActivityLog).filter(
-                ActivityLog.activity_type == "sms_send",
-                ActivityLog.created_at >= today_start,
-                or_(
-                    ActivityLog.detail.contains(f'"schedule_id": {s.id}'),
-                    ActivityLog.detail.contains(f'"schedule_id":{s.id}'),
-                    ActivityLog.title.contains(s.schedule_name),
-                ),
-            ).count()
             status = "완료" if done else ("진행중" if in_progress else "대기")
-            result = f"{sent_count}건" if sent_count > 0 else "-"
+            result = f"{log_count}건" if log_count > 0 else "-"
             timeline.append({
                 "schedule_name": s.schedule_name,
                 "template_name": template_name,

@@ -120,18 +120,19 @@ class ReservationResponse(BaseModel):
         from_attributes = True
 
 
-def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None) -> ReservationResponse:
+def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None, daily_keys: Optional[set] = None) -> ReservationResponse:
     assignments = []
     if db is not None and hasattr(res, 'sms_assignments'):
         source = [a for a in res.sms_assignments if a.assigned_by != 'excluded']
         if filter_date is not None:
-            # once 모드 template_key 조회 (과거 발송완료 칩은 once만 표시)
-            from app.db.models import TemplateSchedule
-            daily_keys = {
-                s.template.template_key
-                for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
-                if s.template
-            }
+            # daily_keys가 미전달이면 fallback 조회 (단건 호출 대응)
+            if daily_keys is None:
+                from app.db.models import TemplateSchedule
+                daily_keys = {
+                    s.template.template_key
+                    for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
+                    if s.template
+                }
             source = [a for a in source if (a.date or '') == filter_date or ((a.date or '') < filter_date and a.sent_at is not None and a.template_key not in daily_keys)]
         assignments = [
             SmsAssignmentResponse(
@@ -278,6 +279,16 @@ async def get_reservations(
         room_map = {}
         daily_party_map = {}
 
+    # daily_keys를 한 번만 조회 (N+1 방지)
+    _daily_keys = None
+    if date:
+        from app.db.models import TemplateSchedule
+        _daily_keys = {
+            s.template.template_key
+            for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
+            if s.template
+        }
+
     results = []
     for res in reservations:
         if res.id in room_map:
@@ -294,7 +305,7 @@ async def get_reservations(
         else:
             override_party_type = None  # Fall back to reservation.party_type in _to_response
 
-        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, db=db, filter_date=date))
+        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, db=db, filter_date=date, daily_keys=_daily_keys))
     return results
 
 
@@ -519,7 +530,7 @@ async def update_daily_info(
             party_type=request.party_type,
         ))
 
-    db.commit()
+    db.flush()
 
     # 칩 재계산 (party_type 변경으로 필터 매칭이 달라질 수 있음)
     from app.services.room_assignment import sync_sms_tags

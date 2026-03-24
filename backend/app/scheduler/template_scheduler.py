@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
 from app.db.models import TemplateSchedule, Reservation, RoomAssignment, ReservationSmsAssignment, Room, ReservationStatus, ReservationDailyInfo
-from app.scheduler.filters import (
+from app.services.filters import (
     FILTER_BUILDERS,
     _parse_filters,
     _build_filter_groups,

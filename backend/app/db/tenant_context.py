@@ -53,16 +53,16 @@ def _apply_tenant_filter_on_select(query):
 
     tid = current_tenant_id.get()
     if tid is None:
-        # Warn if querying tenant models without context (fail-open but detectable)
+        # Fail-closed: block queries on tenant models without context
         if not bypass_tenant_filter.get():
             for desc in query.column_descriptions:
                 entity = desc.get("entity")
                 if entity is not None and entity in TENANT_MODELS:
-                    _logger.warning(
-                        f"Query on tenant model {entity.__name__} without tenant context! "
-                        "Set current_tenant_id or bypass_tenant_filter for intentional cross-tenant queries."
+                    raise RuntimeError(
+                        f"SECURITY: Query on tenant model {entity.__name__} "
+                        "without tenant context. Use get_tenant_scoped_db() "
+                        "or set bypass_tenant_filter for cross-tenant queries."
                     )
-                    break
         return query
 
     # Mark query as processed to prevent re-entrance from .filter() calls

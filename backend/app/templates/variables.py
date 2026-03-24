@@ -10,7 +10,7 @@ import json as _json
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import Reservation, ReservationStatus
+from app.db.models import Reservation, ReservationStatus, ParticipantSnapshot
 
 
 # 사용 가능한 템플릿 변수 정의
@@ -114,9 +114,8 @@ def _apply_buffers(male: int, female: int, custom_vars: dict) -> tuple:
     return eff_male, eff_female, total
 
 
-def get_or_create_snapshot(db: Session, target_date: str) -> 'ParticipantSnapshot':
+def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot:
     """Get existing snapshot for date, or create one from current DB state."""
-    from app.db.models import ParticipantSnapshot
 
     existing = db.query(ParticipantSnapshot).filter(
         ParticipantSnapshot.date == target_date
@@ -238,7 +237,7 @@ def calculate_template_variables(
     try:
         _base_date = datetime.strptime(target_date, '%Y-%m-%d').date() if isinstance(target_date, str) and target_date else datetime.today().date()
     except (ValueError, TypeError):
-        _base_date = date.today()
+        _base_date = datetime.today().date()
 
     for _prefix, _delta in [('tomorrow', 1), ('yesterday', -1)]:
         _d = (_base_date + _td(days=_delta)).strftime('%Y-%m-%d')

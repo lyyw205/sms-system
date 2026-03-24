@@ -51,12 +51,14 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     biz_section_map = {b.biz_item_id: b.section_hint for b in biz_items}
     biz_capacity_map = {b.biz_item_id: b.default_capacity for b in biz_items if b.default_capacity}
 
-    # Fallback: capacity from Room.base_capacity via RoomBizItemLink
-    if not biz_capacity_map:
-        links = db.query(RoomBizItemLink).join(Room).all()
-        for link in links:
-            if link.biz_item_id not in biz_capacity_map:
-                biz_capacity_map[link.biz_item_id] = link.room.base_capacity
+    # Build dormitory map and capacity fallback from RoomBizItemLink → Room
+    biz_dormitory_map: Dict[str, bool] = {}
+    links = db.query(RoomBizItemLink).join(Room).all()
+    for link in links:
+        if link.biz_item_id not in biz_capacity_map:
+            biz_capacity_map[link.biz_item_id] = link.room.base_capacity
+        if link.room.is_dormitory:
+            biz_dormitory_map[link.biz_item_id] = True
 
     # Deduplicate by external_id (monthly chunks can overlap)
     seen_ids = {}
@@ -77,12 +79,15 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
         name = biz_name_map.get(bid, bid)
         res_data["room_type"] = name
         res_data["biz_item_name"] = name
-        # 인원 enrichment (None이거나 1 이하일 때 DB capacity로 보정)
-        pc = res_data.get("people_count") or 0
-        if pc <= 1:
-            cap = biz_capacity_map.get(bid, 1)
-            if cap and cap > pc:
-                res_data["people_count"] = cap
+        # 인원 enrichment: 도미토리 vs 일반실 분기
+        if biz_dormitory_map.get(bid, False):
+            # 도미토리: bookingCount = 인원 (인원수 옵션 무시)
+            res_data["people_count"] = res_data.get("booking_count") or 1
+        else:
+            # 일반실: 인원수 옵션 우선, 없으면 기준인원(base_capacity)
+            pc = res_data.get("people_count")
+            if not pc:
+                res_data["people_count"] = biz_capacity_map.get(bid, 1)
         # section_hint enrichment (res_data에 저장해서 _create_reservation에서 사용)
         res_data["_section_hint"] = biz_section_map.get(bid)
 

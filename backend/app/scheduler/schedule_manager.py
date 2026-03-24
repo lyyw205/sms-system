@@ -106,8 +106,8 @@ class ScheduleManager:
                 # Check active hours for hourly/interval schedules
                 if fresh_schedule.active_start_hour is not None and fresh_schedule.active_end_hour is not None:
                     from zoneinfo import ZoneInfo
-                    tz = ZoneInfo(fresh_schedule.timezone or "Asia/Seoul")
-                    now_hour = datetime.now(tz).hour
+                    local_tz = ZoneInfo(fresh_schedule.timezone or "Asia/Seoul")
+                    now_hour = datetime.now(local_tz).hour
                     start_h = fresh_schedule.active_start_hour
                     end_h = fresh_schedule.active_end_hour
                     if start_h <= end_h:

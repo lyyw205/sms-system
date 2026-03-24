@@ -186,6 +186,7 @@ class SmsSender:
                     template_key=template_key,
                     date=date,
                     created_by="schedule",
+                    skip_commit=True,
                     custom_vars=template.get_buffer_vars(),
                 )
                 if result.get("success"):

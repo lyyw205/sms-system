@@ -50,8 +50,12 @@ def init_db():
     """Initialize database tables and ensure default admin exists"""
     from app.db.models import Base, User, UserRole, Room, RoomBizItemLink
     from app.auth.utils import hash_password
+    from app.db.tenant_context import bypass_tenant_filter
     from sqlalchemy import inspect as sa_inspect, text
     import json
+
+    # init_db는 전역 작업이므로 테넌트 필터 우회
+    _bypass_token = bypass_tenant_filter.set(True)
 
     Base.metadata.create_all(bind=engine)
 
@@ -339,4 +343,5 @@ def init_db():
             logging.getLogger(__name__).info(f"Migrated {migrated} room biz_item links from 1:1 to N:M")
 
     finally:
+        bypass_tenant_filter.reset(_bypass_token)
         db.close()

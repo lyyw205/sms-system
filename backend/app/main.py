@@ -4,16 +4,29 @@ FastAPI application entry point
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 from app.rate_limit import limiter
+
+
 from app.api import messages, webhooks, auto_response, rules, documents, reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin, events, tenants
 from app.config import settings as app_settings
 from app.db.database import init_db, get_db
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 import logging
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses (defense-in-depth with nginx)."""
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +56,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security headers (defense-in-depth with nginx)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Rate Limiting 미들웨어 + 에러 핸들러
 app.state.limiter = limiter

@@ -256,21 +256,28 @@ def _assign_all_rooms(
                     stay_group_room_map[res.stay_group_id] = room.id
                 break
             else:
-                # Regular room: one per room
-                if room_assignment.check_capacity_all_dates(
-                    db, room.id, target_date, res.check_out_date,
-                    people_count=1, exclude_reservation_id=res.id
-                ):
-                    room_assignment.assign_room(
-                        db, res.id, room.id, target_date, res.check_out_date,
-                        assigned_by="auto", skip_sms_sync=True, skip_logging=True,
-                    )
-                    db.flush()
-                    assigned_results.append({"reservation_id": res.id, "customer_name": res.customer_name, "room_number": room.room_number})
-                    # Update group room map so next group member prefers same room
-                    if res.stay_group_id:
-                        stay_group_room_map[res.stay_group_id] = room.id
-                    break
+                # Regular room: booking_count만큼 배정 (2개 예약 = 2개 방)
+                rooms_needed = res.booking_count or 1
+                rooms_assigned = 0
+                for reg_room in candidate_rooms:
+                    if rooms_assigned >= rooms_needed:
+                        break
+                    if reg_room.is_dormitory:
+                        continue
+                    if room_assignment.check_capacity_all_dates(
+                        db, reg_room.id, target_date, res.check_out_date,
+                        people_count=1, exclude_reservation_id=res.id
+                    ):
+                        room_assignment.assign_room(
+                            db, res.id, reg_room.id, target_date, res.check_out_date,
+                            assigned_by="auto", skip_sms_sync=True, skip_logging=True,
+                        )
+                        db.flush()
+                        assigned_results.append({"reservation_id": res.id, "customer_name": res.customer_name, "room_number": reg_room.room_number})
+                        if res.stay_group_id:
+                            stay_group_room_map[res.stay_group_id] = reg_room.id
+                        rooms_assigned += 1
+                break  # 일반실 분기 완료 — 다음 예약으로
 
     return assigned_results
 

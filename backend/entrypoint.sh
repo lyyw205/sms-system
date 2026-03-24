@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-alembic upgrade head || echo "WARNING: Alembic migration failed"
+alembic upgrade head
 
 echo "Starting gunicorn..."
 exec gunicorn app.main:app \
