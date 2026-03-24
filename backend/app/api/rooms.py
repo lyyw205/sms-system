@@ -13,7 +13,7 @@ from app.rate_limit import limiter
 from datetime import datetime, timezone
 import logging
 
-from app.scheduler.room_auto_assign import auto_assign_rooms
+from app.services.room_auto_assign import auto_assign_rooms
 from app.api.shared_schemas import ActionResponse
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])

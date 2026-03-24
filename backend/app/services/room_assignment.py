@@ -31,7 +31,7 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
         schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
 
     # Local import to avoid circular dependency (template_scheduler imports room_assignment)
-    from app.scheduler.template_scheduler import matches_schedule
+    from app.scheduler.filters import matches_schedule
 
     # Compute which (template_key, date) pairs should exist based on schedule rules
     expected_pairs: set[tuple[str, str]] = set()

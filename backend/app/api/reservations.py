@@ -541,7 +541,7 @@ async def sync_from_naver(request: Request, from_date: Optional[str] = None, db:
     Args:
         from_date: Optional start date (YYYY-MM-DD) for historical sync.
     """
-    from app.api.reservations_sync import sync_naver_to_db
+    from app.services.naver_sync import sync_naver_to_db
 
     reservation_provider = get_reservation_provider_for_tenant(tenant)
     result = await sync_naver_to_db(reservation_provider, db, from_date=from_date)

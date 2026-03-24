@@ -447,7 +447,7 @@ const ActivityLogs = () => {
                       {/* Detail row — 2-column layout */}
                       {isExpanded && hasDetail && (() => {
                         const d = parsedDetail!
-                        const targets = Array.isArray(d.targets) ? d.targets as Array<{name: string; phone: string; status: string; error?: string; message_id?: string; template_detail?: string; message?: string; guest_name?: string; room_number?: string; reservation_id?: number}> : []
+                        const targets = Array.isArray(d.targets) ? d.targets as Array<{name: string; phone: string; status: string; error?: string; message_id?: string; template_detail?: string; message?: string; customer_name?: string; guest_name?: string; room_number?: string; reservation_id?: number}> : []
                         const metaKeys = Object.keys(d).filter(k => k !== 'message' && k !== 'targets')
                         // 단건 발송이면 message가 detail에 직접 있고, 배치면 targets[0].message
                         const messageContent = d.message ? String(d.message) : (targets.length > 0 && targets[0].message ? String(targets[0].message) : '')

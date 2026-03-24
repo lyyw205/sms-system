@@ -11,7 +11,7 @@ from app.db.database import SessionLocal
 from app.db.models import Tenant
 from app.db.tenant_context import current_tenant_id, bypass_tenant_filter
 from app.factory import get_reservation_provider_for_tenant
-from app.scheduler.room_auto_assign import daily_assign_rooms
+from app.services.room_auto_assign import daily_assign_rooms
 from app.config import KST
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ async def sync_naver_reservations_job():
     """
     logger.info("Running Naver reservations sync job (all tenants)")
 
-    from app.api.reservations_sync import sync_naver_to_db
+    from app.services.naver_sync import sync_naver_to_db
 
     # Fetch all active tenants without tenant context restriction
     token_bypass = bypass_tenant_filter.set(True)
@@ -155,7 +155,7 @@ async def reconcile_today_reservations_job():
     Catches any reservations missed by the regular 5-min REGDATE sync.
     Runs at 09:55 KST, before daily room assignment at 10:00.
     """
-    from app.api.reservations_sync import sync_naver_to_db
+    from app.services.naver_sync import sync_naver_to_db
     from app.services.activity_logger import log_activity
 
     today = datetime.now(KST).strftime("%Y-%m-%d")
