@@ -238,6 +238,11 @@ def assign_room(
         db.add(assignment)
         assignments.append(assignment)
 
+    # Flush to persist all date records before any subsequent queries
+    # (autoflush=False 환경에서 sync_denormalized_field 쿼리 전에 반드시 필요)
+    db.flush()
+    logger.info(f"assign_room: res={reservation_id} room={room_id} dates={dates} created={len(assignments)} assigned_by={assigned_by}")
+
     # Update denormalized field
     sync_denormalized_field(db, reservation)
 
