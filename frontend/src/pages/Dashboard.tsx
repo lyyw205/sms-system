@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react'
-import {
-  Card,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeadCell,
-  TableRow,
-} from 'flowbite-react'
+import { Card } from '@/components/ui/card'
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import {
   CalendarRange,
   Send,
@@ -28,7 +22,7 @@ const STATUS_LABELS: Record<string, string> = {
 function LoadingSkeleton() {
   return (
     <div className="flex items-center justify-center py-32">
-      <Spinner size="xl" />
+      <Spinner size="lg" />
     </div>
   )
 }
@@ -73,7 +67,8 @@ function GenderWeekly({ daily }: { daily: { date: string; male: number; female: 
   }
 
   return (
-    <div className="grid grid-cols-7 gap-2">
+    <div className="overflow-x-auto scrollbar-none -mx-1 px-1">
+    <div className="grid grid-cols-7 gap-2 min-w-[420px]">
       {daily.map((d) => {
         const dayTotal = d.male + d.female
         const today = isToday(d.date)
@@ -111,6 +106,7 @@ function GenderWeekly({ daily }: { daily: { date: string; male: number; female: 
           </div>
         )
       })}
+    </div>
     </div>
   )
 }
@@ -211,8 +207,7 @@ const Dashboard = () => {
         {schedules.length === 0 ? (
           <div className="py-8 text-center text-label text-gray-400">등록된 스케줄이 없습니다</div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table hoverable striped>
+          <Table hoverable striped>
               <TableHead>
                 <TableRow>
                   <TableHeadCell>템플릿</TableHeadCell>
@@ -245,7 +240,6 @@ const Dashboard = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
         )}
       </div>
 
@@ -257,7 +251,6 @@ const Dashboard = () => {
             <h3 className="text-body font-semibold text-[#191F28] dark:text-white">최근 예약</h3>
           </div>
         </div>
-        <div className="overflow-x-auto">
           <Table hoverable striped>
             <TableHead>
               <TableRow>
@@ -301,7 +294,6 @@ const Dashboard = () => {
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
       </div>
     </div>

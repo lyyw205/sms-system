@@ -15,30 +15,17 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-import {
-  Tabs,
-  TabItem,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Button,
-  TextInput,
-  Textarea,
-  Label,
-  ToggleSwitch,
-  Checkbox,
-  Select,
-  Radio,
-  Table,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableRow,
-  TableCell,
-  Badge,
-  Spinner,
-} from 'flowbite-react';
+import { ToggleSwitch } from '@/components/ui/toggle-switch';
+import { Tabs, TabItem } from '@/components/ui/tabs';
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { TextInput } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 
 import { templatesAPI, templateSchedulesAPI, buildingsAPI, reservationsAPI } from '@/services/api';
 
@@ -904,7 +891,6 @@ const Templates: React.FC = () => {
             <p className="text-label">새 템플릿을 만들어 보세요</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
             <Table hoverable striped>
               <TableHead>
                 <TableRow>
@@ -972,7 +958,7 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-center">
                       {t.schedule_count > 0 ? (
-                        <Badge color="blue" size="sm">{t.schedule_count}개</Badge>
+                        <Badge color="info" size="sm">{t.schedule_count}개</Badge>
                       ) : (
                         <span className="text-caption text-gray-400 dark:text-gray-500">0</span>
                       )}
@@ -991,7 +977,6 @@ const Templates: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
         )}
       </div>
     </div>
@@ -1033,7 +1018,6 @@ const Templates: React.FC = () => {
             <p className="text-label">새 발송 스케줄을 만들어 보세요</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
             <Table hoverable striped>
               <TableHead>
                 <TableRow>
@@ -1081,7 +1065,7 @@ const Templates: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge color="indigo" size="sm">{getScheduleTypeLabel(s.schedule_type)}</Badge>
+                        <Badge color="purple" size="sm">{getScheduleTypeLabel(s.schedule_type)}</Badge>
                       </TableCell>
                       <TableCell>
                         <span className="text-body text-[#4E5968] dark:text-gray-300">{formatScheduleTime(s)}</span>
@@ -1122,7 +1106,6 @@ const Templates: React.FC = () => {
                 })}
               </TableBody>
             </Table>
-          </div>
         )}
       </div>
     </div>
@@ -1672,55 +1655,49 @@ const Templates: React.FC = () => {
               <span className="text-caption text-[#B0B8C1] dark:text-gray-500">(선택)</span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSSendConditionEnabled(!sSendConditionEnabled)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-body transition-colors cursor-pointer
-                ${sSendConditionEnabled
-                  ? 'border-[#3182F6] bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:border-[#3182F6]'
-                  : 'border-[#E5E8EB] bg-white text-[#8B95A1] hover:bg-[#F8F9FA] dark:border-gray-700 dark:bg-[#1E1E24] dark:hover:bg-[#2C2C34]'
-                }`}
-            >
-              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
-                ${sSendConditionEnabled ? 'border-[#3182F6] bg-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
-                {sSendConditionEnabled && <span className="text-white text-[10px]">✓</span>}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSSendConditionEnabled(!sSendConditionEnabled)}
+                className="cursor-pointer flex-shrink-0"
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center
+                  ${sSendConditionEnabled ? 'border-[#3182F6] bg-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
+                  {sSendConditionEnabled && <span className="text-white text-[10px]">✓</span>}
+                </div>
+              </button>
+              <div className={`flex flex-wrap items-center gap-2 ${!sSendConditionEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                <select
+                  value={sSendConditionDate}
+                  onChange={e => setSSendConditionDate(e.target.value as 'today' | 'tomorrow')}
+                  className="h-[34px] w-16 rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-1.5"
+                >
+                  <option value="today">오늘</option>
+                  <option value="tomorrow">내일</option>
+                </select>
+                <span className="text-body text-[#4E5968] dark:text-gray-300">남녀 성비가</span>
+                <TextInput
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  placeholder="2"
+                  value={sSendConditionRatio}
+                  onChange={e => setSSendConditionRatio(e.target.value)}
+                  sizing="sm"
+                  className="w-16"
+                />
+                <span className="text-body text-[#4E5968] dark:text-gray-300">: 1</span>
+                <select
+                  value={sSendConditionOperator}
+                  onChange={e => setSSendConditionOperator(e.target.value as 'gte' | 'lte')}
+                  className="h-[34px] w-16 rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-1.5"
+                >
+                  <option value="gte">이상</option>
+                  <option value="lte">이하</option>
+                </select>
+                <span className="text-body text-[#4E5968] dark:text-gray-300">이면 발송</span>
               </div>
-              <span>성비 조건이 충족될 때만 발송</span>
-            </button>
-
-            {sSendConditionEnabled && (
-            <div className="flex flex-wrap items-center gap-2 ml-6">
-              <select
-                value={sSendConditionDate}
-                onChange={e => setSSendConditionDate(e.target.value as 'today' | 'tomorrow')}
-                className="rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-3 py-2"
-              >
-                <option value="today">오늘</option>
-                <option value="tomorrow">내일</option>
-              </select>
-              <span className="text-body text-[#4E5968] dark:text-gray-300">남녀 성비가</span>
-              <TextInput
-                type="number"
-                min={0}
-                step={0.1}
-                placeholder="2"
-                value={sSendConditionRatio}
-                onChange={e => setSSendConditionRatio(e.target.value)}
-                sizing="sm"
-                className="w-16"
-              />
-              <span className="text-body text-[#4E5968] dark:text-gray-300">: 1</span>
-              <select
-                value={sSendConditionOperator}
-                onChange={e => setSSendConditionOperator(e.target.value as 'gte' | 'lte')}
-                className="rounded-lg border border-[#E5E8EB] dark:border-gray-600 bg-white dark:bg-[#1E1E24] text-body px-3 py-2"
-              >
-                <option value="gte">이상</option>
-                <option value="lte">이하</option>
-              </select>
-              <span className="text-body text-[#4E5968] dark:text-gray-300">이면 발송</span>
             </div>
-            )}
           </div>
           </>
           )}
@@ -2217,7 +2194,6 @@ const Templates: React.FC = () => {
             </div>
           ) : (
             <div className="section-card">
-              <div className="overflow-x-auto">
                 <Table hoverable striped>
                   <TableHead>
                     <TableRow>
@@ -2248,7 +2224,6 @@ const Templates: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
             </div>
           )}
           <p className="text-body text-gray-500 dark:text-gray-400">

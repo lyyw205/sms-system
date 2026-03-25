@@ -1,12 +1,26 @@
 import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { extendTailwindMerge } from 'tailwind-merge'
+
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        'text-display',
+        'text-title',
+        'text-heading',
+        'text-subheading',
+        'text-body',
+        'text-label',
+        'text-caption',
+        'text-overline',
+        'text-tiny',
+      ],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-export function formatKoreanDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('ko-KR')
 }
 
 export function formatRelativeTime(dateStr: string): string {

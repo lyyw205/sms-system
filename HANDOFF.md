@@ -1,31 +1,43 @@
 # HANDOFF
 
-## Current [1774117636]
-- **Task**: 스케줄 필터 확장 계획 수립 — 5가지 실제 문자 발송 시나리오 분석 및 필터 설계
+## Current [1774345481]
+- **Task**: Flowbite → shadcn/ui 완전 마이그레이션 + 반응형 디자인 계획 수립
 - **Completed**:
-  - 현재 템플릿 스케줄 필터 로직 전체 정리 (FILTER_BUILDERS, date_filter, target_mode, exclude_sent, once_per_stay)
-  - 5가지 실제 문자 케이스 vs 현재 필터 호환성 분석 (case 5만 현재 가능, 나머지 4개 신규 필요)
-  - 신규 필터/변수 기능 6가지 설계: 체크아웃 필터, 연박자 필터(stay_group_id 기반), 통계 날짜 분리, 성별별 버퍼, 성비 조건부 버퍼, 반올림
-  - 프론트 UI 배치 계획 (기존 토글 버튼 패턴 유지 + 접이식 인원 설정 섹션)
-  - 계획서 저장: `.omc/plans/schedule-filter-expansion.md`
+  - 전체 12개 페이지 Playwright 스크린샷 캡처 + 디자인 시스템 문서 작성 (`docs/DESIGN_SYSTEM.md`)
+  - **Flowbite → shadcn/ui 마이그레이션 완료** (Phase 1-7)
+    - 16개 커스텀 컴포넌트 생성 (`components/ui/`)
+    - 12개 페이지 + Layout.tsx 전체 교체 (import만 변경, JSX 변경 없음)
+    - `FlowbiteTheme.tsx` 삭제 (204줄 오버라이드 제거)
+    - `flowbite-react` + `@base-ui/react` 패키지 제거
+    - 미사용 CSS 94줄 정리 (Flowbite hack, toss 변수, shadcn 토큰)
+    - `tailwind-merge` 커스텀 font-size 그룹 등록 (text-white 충돌 방지)
+  - **반응형 디자인 개선 계획 수립** (Architect + Critic 3자 합의)
+    - Phase 1: 테이블 모바일 UX (패딩, sticky 열, 행 높이)
+    - Phase 2: 레이아웃 + 타이포 (필터 바, 모달, 헤더)
+    - Phase 3: Messages 1-panel 모바일
+    - Phase 4: 터치 친화 미세조정
 - **Next Steps**:
-  - 계획 검토 후 확정 (사용자가 더 좋은 방안 검토 중)
-  - 확정 시 구현 순서: 체크아웃+연박자 필터 → 성별 버퍼+통계 날짜 → 반올림 → 성비 조건부 버퍼
-  - (이전 세션) 코드 커밋/푸시, /ooo-tenant-check 시나리오 테스트, STABLE 데이터 세팅
-- **Blockers**: 사용자 검토 대기 (계획 확정 전 구현 보류)
+  - Phase 1 실행: table.tsx 패딩 반응형 + sticky 첫 열 + section-card overflow 수정
+  - Phase 2 실행: 페이지 헤더/필터 바 모바일 스택 + Dashboard 성별 grid 수정
+  - Phase 3 실행: Messages 연락처↔채팅 전환
+  - Phase 4 실행: 터치 타겟 + 스크롤바
+- **Blockers**: None
 - **Related Files**:
-  - `.omc/plans/schedule-filter-expansion.md` — 스케줄 필터 확장 계획서
-  - `backend/app/scheduler/template_scheduler.py` — 현재 필터 로직 (FILTER_BUILDERS, get_targets)
-  - `backend/app/templates/variables.py` — 템플릿 변수 계산 (participant_count, male/female_count)
-  - `backend/app/db/models.py` — TemplateSchedule 모델 (신규 컬럼 추가 대상)
-  - `frontend/src/pages/Templates.tsx` — 스케줄 필터 UI (모달 내 필터 섹션)
+  - `.omc/plans/responsive-design-plan.md` — 반응형 계획 (승인됨)
+  - `docs/DESIGN_SYSTEM.md` — 디자인 시스템 문서
+  - `docs/screenshots/` — 원본 페이지 스크린샷
+  - `frontend/src/components/ui/` — shadcn 커스텀 컴포넌트 16개
+  - `frontend/src/components/Layout.tsx` — 순수 HTML/Tailwind 레이아웃 (Flowbite 제거)
+  - `frontend/src/lib/utils.ts` — cn() + extendTailwindMerge
+  - `frontend/src/index.css` — 정리된 Toss 디자인 토큰
+  - `frontend/components.json` — shadcn 설정
 
-## Past 1 [1774072712]
-- **Task**: 객실 자동배정 버그 수정 + 멀티테넌트 격리 전체 감사 + SMS 태그 해제 버그 수정
-- **Completed**: DELETE/UPDATE 7곳 tenant_id 필터 추가, before_compile hook 보강, User 관리 테넌트 범위, SMS excluded 태그, /ooo-tenant-check 스킬 생성
-- **Note**: tenant_context.py RecursionError 수정 포함
+## Past 1 [1774317239]
+- **Task**: 프로젝트 전체 감사 + 3단계 리팩토링 (중복 코드 / 변수명 일관성 / 구조 개선)
+- **Completed**: Phase 1-3 완료 — 데드 코드 삭제, 7건 중복 해소, 구조 분리 (filters.py, room_lookup.py)
+- **Note**: Commits `5e175d4`, `3677606`, `af05c4f`. Phase 4는 DB 마이그레이션 필요로 보류
 
-## Past 2 [1773998617]
-- **Task**: 테넌트 격리 싱글톤/글로벌 상태 수정 + UI 개선
-- **Completed**: SSE 테넌트별 큐 격리, MessageRouter 싱글톤 제거, MockLLMProvider 생성, factory lru_cache 제거, 파티 체크인 토스 스타일 UI
-- **Note**: commits 36c6ce3~a3bd062
+## Past 2 [1774117636]
+- **Task**: 스케줄 필터 확장 계획 수립 — 5가지 실제 문자 발송 시나리오 분석 및 필터 설계
+- **Completed**: 현재 필터 로직 정리, 5가지 케이스 분석, 신규 필터/변수 6가지 설계, 프론트 UI 계획
+- **Note**: 계획서 `.omc/plans/schedule-filter-expansion.md`, 사용자 검토 대기

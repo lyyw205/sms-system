@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom'
 import Layout, { ThemeProvider } from './components/Layout'
-import FlowbiteWrapper from './components/FlowbiteTheme'
 import ProtectedRoute from './components/ProtectedRoute'
 import { Toaster } from '@/components/ui/Sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -39,7 +38,6 @@ function App() {
 
   return (
     <ThemeProvider>
-      <FlowbiteWrapper>
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -76,7 +74,6 @@ function App() {
           </Routes>
         </Router>
         <Toaster position="top-right" richColors />
-      </FlowbiteWrapper>
     </ThemeProvider>
   )
 }

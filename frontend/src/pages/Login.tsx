@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Label, TextInput, Spinner } from 'flowbite-react'
+import { TextInput } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 import { authAPI } from '@/services/api'
 
@@ -51,7 +54,7 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
-              <Label htmlFor="username" className="mb-1.5 block text-label font-medium text-[#4E5968] dark:text-gray-300">
+              <Label htmlFor="username" className="text-[#4E5968] dark:text-gray-300">
                 아이디
               </Label>
               <TextInput
@@ -66,7 +69,7 @@ export default function Login() {
             </div>
 
             <div>
-              <Label htmlFor="password" className="mb-1.5 block text-label font-medium text-[#4E5968] dark:text-gray-300">
+              <Label htmlFor="password" className="text-[#4E5968] dark:text-gray-300">
                 비밀번호
               </Label>
               <TextInput

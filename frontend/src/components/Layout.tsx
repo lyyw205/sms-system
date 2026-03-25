@@ -1,17 +1,10 @@
 import { useState, useEffect, createContext, useContext } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import {
-  Sidebar,
-  SidebarItem,
-  SidebarItemGroup,
-  SidebarItems,
-  Navbar,
-  Tooltip,
-  Drawer,
-  Badge,
-} from 'flowbite-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuthStore } from '@/stores/auth-store'
+import { Badge } from '@/components/ui/badge'
+import { Tooltip } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
   CalendarRange,
@@ -30,6 +23,7 @@ import {
   LogOut,
   History,
   PartyPopper,
+  X,
 } from 'lucide-react'
 
 // ── Theme Context ──
@@ -142,7 +136,7 @@ const PAGE_TITLES: Record<string, string> = {
 }
 
 // ── Role Badge ──
-const ROLE_BADGE_COLORS: Record<string, string> = {
+const ROLE_BADGE_COLORS: Record<string, 'purple' | 'info' | 'gray'> = {
   superadmin: 'purple',
   admin: 'info',
   staff: 'gray',
@@ -152,6 +146,45 @@ const ROLE_LABELS: Record<string, string> = {
   superadmin: '슈퍼관리자',
   admin: '관리자',
   staff: '직원',
+}
+
+// ── Nav Item Component ──
+function SidebarNavItem({
+  item,
+  active,
+  collapsed,
+  onClick,
+}: {
+  item: NavItem
+  active: boolean
+  collapsed: boolean
+  onClick: () => void
+}) {
+  const content = (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-xl p-2.5 text-body font-medium transition-colors",
+        active
+          ? "bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/10 dark:text-[#3182F6]"
+          : "text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]",
+        collapsed && "justify-center",
+      )}
+    >
+      <span className={cn("shrink-0", active && "text-[#3182F6]")}>{item.icon}</span>
+      {!collapsed && <span>{item.label}</span>}
+    </button>
+  )
+
+  if (collapsed) {
+    return (
+      <Tooltip content={item.label} placement="right">
+        {content}
+      </Tooltip>
+    )
+  }
+
+  return content
 }
 
 // ── Desktop Sidebar ──
@@ -174,90 +207,66 @@ function DesktopSidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-30 flex flex-col bg-white shadow-[2px_0_6px_rgba(0,0,0,0.02)] transition-all duration-300 dark:bg-[#17171C] dark:shadow-[2px_0_8px_rgba(0,0,0,0.2)] ${
-        collapsed ? 'w-[68px]' : 'w-60'
-      }`}
+      className={cn(
+        "fixed inset-y-0 left-0 z-30 flex flex-col bg-white shadow-[2px_0_6px_rgba(0,0,0,0.02)] transition-all duration-300 dark:bg-[#17171C] dark:shadow-[2px_0_8px_rgba(0,0,0,0.2)]",
+        collapsed ? 'w-[68px]' : 'w-60',
+      )}
     >
-      <Sidebar aria-label="Navigation sidebar" className="h-full w-full">
-        {/* Logo */}
-        <div
-          className={`flex h-14 items-center px-4 ${
-            collapsed ? 'justify-center' : 'gap-2.5'
-          }`}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#3182F6] text-white">
-            <span className="text-label font-bold">S</span>
-          </div>
-          {!collapsed && (
-            <span className="text-subheading font-bold text-[#191F28] dark:text-white">
-              SMS
-            </span>
-          )}
+      {/* Logo */}
+      <div className={cn("flex h-14 items-center px-4", collapsed ? 'justify-center' : 'gap-2.5')}>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#3182F6] text-white">
+          <span className="text-label font-bold">S</span>
         </div>
+        {!collapsed && (
+          <span className="text-subheading font-bold text-[#191F28] dark:text-white">
+            SMS
+          </span>
+        )}
+      </div>
 
-        {/* Tenant selector hidden — switch via ?tenant=ID query param */}
-
-        <SidebarItems className="mt-1">
-          {visibleGroups.map((group, gi) => (
-            <SidebarItemGroup key={group.title}>
-              {gi > 0 && !collapsed && (
-                <div className="mx-3 my-2 h-px bg-[#F2F4F6] dark:bg-gray-800" />
-              )}
-              {!collapsed && (
-                <p className="mb-1 px-3 text-overline font-semibold tracking-wide text-[#B0B8C1] dark:text-gray-600">
-                  {group.title}
-                </p>
-              )}
-              {group.items.map((item) => {
-                const sidebarItem = (
-                  <SidebarItem
-                    key={item.path}
-                    href="#"
-                    icon={() => <>{item.icon}</>}
+      {/* Navigation */}
+      <nav className="mt-1 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
+        {visibleGroups.map((group, gi) => (
+          <div key={group.title}>
+            {gi > 0 && !collapsed && (
+              <div className="mx-0 my-2 h-px bg-[#F2F4F6] dark:bg-gray-800" />
+            )}
+            {!collapsed && (
+              <p className="mb-1 px-2.5 text-overline font-semibold tracking-wide text-[#B0B8C1] dark:text-gray-600">
+                {group.title}
+              </p>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => (
+                <li key={item.path}>
+                  <SidebarNavItem
+                    item={item}
                     active={isActive(item.path)}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate(item.path)
-                    }}
-                  >
-                    {!collapsed ? item.label : null}
-                  </SidebarItem>
-                )
+                    collapsed={collapsed}
+                    onClick={() => navigate(item.path)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
 
-                if (collapsed) {
-                  return (
-                    <Tooltip key={item.path} content={item.label} placement="right">
-                      {sidebarItem}
-                    </Tooltip>
-                  )
-                }
-
-                return sidebarItem
-              })}
-            </SidebarItemGroup>
-          ))}
-        </SidebarItems>
-
-        {/* Footer */}
-        <div
-          className={`mt-auto flex items-center p-3 ${
-            collapsed ? 'justify-center' : 'justify-between'
-          }`}
+      {/* Footer */}
+      <div className={cn("flex items-center p-3", collapsed ? 'justify-center' : 'justify-between')}>
+        <ThemeToggleButton />
+        <button
+          onClick={onToggle}
+          className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
         >
-          <ThemeToggleButton />
-          <button
-            onClick={onToggle}
-            className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
-          >
-            {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-          </button>
-        </div>
-      </Sidebar>
+          {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+        </button>
+      </div>
     </aside>
   )
 }
 
-// ── Mobile Sidebar ──
+// ── Mobile Sidebar (Drawer) ──
 function MobileSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -270,6 +279,16 @@ function MobileSidebar() {
     (g) => !g.requiredRoles || (user && g.requiredRoles.includes(user.role))
   )
 
+  // Prevent body scroll when open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [open])
+
   return (
     <>
       <button
@@ -279,47 +298,115 @@ function MobileSidebar() {
         <Menu size={20} />
       </button>
 
-      <Drawer open={open} onClose={() => setOpen(false)} position="left">
-        <div className="flex h-14 items-center gap-2.5 px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3182F6] text-white">
-            <span className="text-label font-bold">S</span>
-          </div>
-          <span className="text-subheading font-bold text-[#191F28] dark:text-white">
-            SMS
-          </span>
-        </div>
+      {/* Overlay + Drawer */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-gray-900/50 dark:bg-gray-900/80"
+            onClick={() => setOpen(false)}
+          />
+          {/* Panel */}
+          <div className="relative z-10 flex h-full w-72 flex-col bg-white shadow-xl dark:bg-[#17171C]">
+            {/* Header */}
+            <div className="flex h-14 items-center justify-between px-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3182F6] text-white">
+                  <span className="text-label font-bold">S</span>
+                </div>
+                <span className="text-subheading font-bold text-[#191F28] dark:text-white">
+                  SMS
+                </span>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded-xl p-2 text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-        <Sidebar aria-label="Mobile navigation sidebar" className="w-full">
-          <SidebarItems>
-            {visibleGroups.map((group, gi) => (
-              <SidebarItemGroup key={group.title}>
-                {gi > 0 && (
-                  <div className="mx-3 my-2 h-px bg-[#F2F4F6] dark:bg-gray-800" />
-                )}
-                <p className="mb-1 px-3 text-overline font-semibold tracking-wide text-[#B0B8C1] dark:text-gray-600">
-                  {group.title}
-                </p>
-                {group.items.map((item) => (
-                  <SidebarItem
-                    key={item.path}
-                    href="#"
-                    icon={() => <>{item.icon}</>}
-                    active={isActive(item.path)}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      navigate(item.path)
-                      setOpen(false)
-                    }}
-                  >
-                    {item.label}
-                  </SidebarItem>
-                ))}
-              </SidebarItemGroup>
-            ))}
-          </SidebarItems>
-        </Sidebar>
-      </Drawer>
+            {/* Nav */}
+            <nav className="flex-1 overflow-y-auto px-3 py-2">
+              {visibleGroups.map((group, gi) => (
+                <div key={group.title}>
+                  {gi > 0 && (
+                    <div className="mx-0 my-2 h-px bg-[#F2F4F6] dark:bg-gray-800" />
+                  )}
+                  <p className="mb-1 px-2.5 text-overline font-semibold tracking-wide text-[#B0B8C1] dark:text-gray-600">
+                    {group.title}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {group.items.map((item) => (
+                      <li key={item.path}>
+                        <SidebarNavItem
+                          item={item}
+                          active={isActive(item.path)}
+                          collapsed={false}
+                          onClick={() => {
+                            navigate(item.path)
+                            setOpen(false)
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
     </>
+  )
+}
+
+// ── Header ──
+function AppHeader({
+  pageTitle,
+  isMobile,
+}: {
+  pageTitle: string
+  isMobile: boolean
+}) {
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  return (
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-between bg-[#FAFBFC]/90 px-4 py-2.5 backdrop-blur-md dark:bg-[#17171C]/90">
+      <div className="flex items-center gap-3">
+        {isMobile && <MobileSidebar />}
+        <h1 className="text-subheading font-semibold text-[#191F28] dark:text-white">
+          {pageTitle}
+        </h1>
+      </div>
+      <div className="flex items-center gap-2">
+        {user && (
+          <>
+            <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
+              {user.name}
+            </span>
+            <Badge color={ROLE_BADGE_COLORS[user.role]} size="sm">
+              {ROLE_LABELS[user.role] || user.role}
+            </Badge>
+          </>
+        )}
+        <ThemeToggleButton />
+        <button
+          onClick={handleLogout}
+          className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
+          aria-label="로그아웃"
+          title="로그아웃"
+        >
+          <LogOut size={18} />
+        </button>
+      </div>
+    </header>
   )
 }
 
@@ -347,42 +434,37 @@ export default function Layout({ children }: LayoutProps) {
   if (isStaff) {
     return (
       <div className="flex min-h-screen flex-col bg-[#FAFBFC] dark:bg-[#17171C]">
-        {/* 심플 헤더 */}
-        <Navbar fluid className="sticky top-0 z-20 h-14 bg-[#FAFBFC]/90 backdrop-blur-md dark:bg-[#17171C]/90">
-          <div className="flex w-full items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3182F6] text-white">
-                <span className="text-label font-bold">S</span>
-              </div>
-              <h1 className="text-subheading font-semibold text-[#191F28] dark:text-white">
-                {pageTitle}
-              </h1>
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between bg-[#FAFBFC]/90 px-4 py-2.5 backdrop-blur-md dark:bg-[#17171C]/90">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3182F6] text-white">
+              <span className="text-label font-bold">S</span>
             </div>
-            <div className="flex items-center gap-2">
-              {user && (
-                <>
-                  <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
-                    {user.name}
-                  </span>
-                  <Badge color={ROLE_BADGE_COLORS[user.role] as any} size="sm">
-                    {ROLE_LABELS[user.role] || user.role}
-                  </Badge>
-                </>
-              )}
-              <ThemeToggleButton />
-              <button
-                onClick={handleLogout}
-                className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
-                aria-label="로그아웃"
-                title="로그아웃"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
+            <h1 className="text-subheading font-semibold text-[#191F28] dark:text-white">
+              {pageTitle}
+            </h1>
           </div>
-        </Navbar>
-
-        {/* 전체 화면 콘텐츠 */}
+          <div className="flex items-center gap-2">
+            {user && (
+              <>
+                <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
+                  {user.name}
+                </span>
+                <Badge color={ROLE_BADGE_COLORS[user.role]} size="sm">
+                  {ROLE_LABELS[user.role] || user.role}
+                </Badge>
+              </>
+            )}
+            <ThemeToggleButton />
+            <button
+              onClick={handleLogout}
+              className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
+              aria-label="로그아웃"
+              title="로그아웃"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        </header>
         <main className="flex-1 p-4 md:p-6">
           {children}
         </main>
@@ -402,44 +484,12 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main Area */}
       <div
-        className={`flex flex-1 flex-col transition-all duration-300 ${
-          isMobile ? '' : collapsed ? 'ml-[68px]' : 'ml-60'
-        }`}
+        className={cn(
+          "flex flex-1 flex-col transition-all duration-300",
+          !isMobile && (collapsed ? 'ml-[68px]' : 'ml-60'),
+        )}
       >
-        {/* Header */}
-        <Navbar fluid className="sticky top-0 z-20 h-14 bg-[#FAFBFC]/90 backdrop-blur-md dark:bg-[#17171C]/90">
-          <div className="flex w-full items-center justify-between">
-            <div className="flex items-center gap-3">
-              {isMobile && <MobileSidebar />}
-              <h1 className="text-subheading font-semibold text-[#191F28] dark:text-white">
-                {pageTitle}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              {user && (
-                <>
-                  <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
-                    {user.name}
-                  </span>
-                  <Badge color={ROLE_BADGE_COLORS[user.role] as any} size="sm">
-                    {ROLE_LABELS[user.role] || user.role}
-                  </Badge>
-                </>
-              )}
-              <ThemeToggleButton />
-              <button
-                onClick={handleLogout}
-                className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
-                aria-label="로그아웃"
-                title="로그아웃"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          </div>
-        </Navbar>
-
-        {/* Content */}
+        <AppHeader pageTitle={pageTitle} isMobile={isMobile} />
         <main className="flex-1 p-4 md:p-6">
           {children}
         </main>

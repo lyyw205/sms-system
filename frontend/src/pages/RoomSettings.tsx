@@ -3,25 +3,15 @@ import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ArrowUp
 import { toast } from 'sonner';
 import { roomsAPI, buildingsAPI } from '@/services/api';
 
-import {
-  Button,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  TextInput,
-  Label,
-  ToggleSwitch,
-  Badge,
-  Spinner,
-  Table,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableRow,
-  TableCell,
-  Select,
-} from 'flowbite-react';
+import { ToggleSwitch } from '@/components/ui/toggle-switch';
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { TextInput } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 
 // ── Types ─────────────────────────────────────────────
 

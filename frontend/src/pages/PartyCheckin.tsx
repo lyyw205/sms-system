@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Button, Modal, ModalHeader, ModalBody, Spinner } from 'flowbite-react'
+import { Modal, ModalHeader, ModalBody } from '@/components/ui/modal'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import { Users, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { partyCheckinAPI } from '@/services/api'
 import { toast } from 'sonner'

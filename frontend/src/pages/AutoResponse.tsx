@@ -3,28 +3,17 @@ import { Zap, Plus, Pencil, Trash2, FileText, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { rulesAPI, documentsAPI } from '@/services/api';
 
-import {
-  Tabs,
-  TabItem,
-  Card,
-  Button,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  TextInput,
-  Textarea,
-  Label,
-  ToggleSwitch,
-  Table,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableRow,
-  TableCell,
-  Badge,
-  Spinner,
-} from 'flowbite-react';
+import { Card } from '@/components/ui/card';
+import { ToggleSwitch } from '@/components/ui/toggle-switch';
+import { Tabs, TabItem } from '@/components/ui/tabs';
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { TextInput } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 
 interface Rule {
   id: number;
@@ -212,7 +201,6 @@ const AutoResponse = () => {
                 <p className="text-body">등록된 규칙이 없습니다</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
                 <Table hoverable striped>
                   <TableHead>
                     <TableRow>
@@ -266,7 +254,6 @@ const AutoResponse = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
             )}
           </div>
         </TabItem>
@@ -319,7 +306,7 @@ const AutoResponse = () => {
                 <p className="text-body">업로드된 문서가 없습니다</p>
               </div>
             ) : (
-              <div className="overflow-x-auto p-5 pt-4">
+              <div className="p-5 pt-4">
                 <Table hoverable striped>
                   <TableHead>
                     <TableRow>

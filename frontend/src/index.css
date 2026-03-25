@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /* Enable class-based dark mode (Tailwind v4 defaults to prefers-color-scheme) */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -57,18 +58,6 @@
   --text-tiny: 0.625rem;
   --text-tiny--line-height: 0.875rem;
 
-  /* Toss brand colors */
-  --color-toss-blue: #3182F6;
-  --color-toss-blue-light: #E8F3FF;
-  --color-toss-text: #191F28;
-  --color-toss-text-secondary: #8B95A1;
-  --color-toss-text-tertiary: #B0B8C1;
-  --color-toss-border: #F2F4F6;
-  --color-toss-bg: #F2F4F6;
-  --color-toss-card: #FFFFFF;
-  --color-toss-positive: #F04452;
-  --color-toss-negative: #3182F6;
-  --color-toss-success: #00C9A7;
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -76,11 +65,6 @@
 @layer base {
   * {
     @apply border-[#F2F4F6] dark:border-gray-800;
-  }
-
-  /* Hide Flowbite Table shadow overlay — its -z-10 doesn't work in Tailwind v4 */
-  [data-testid="table-element"] > div:first-child {
-    display: none !important;
   }
 
   body {
@@ -140,7 +124,6 @@
   .dark input[type="date"]:valid:not([value=""])::-webkit-datetime-edit {
     color: #F3F4F6;
   }
-
 }
 
 /* ─── Component Classes (Toss style) ──────────────────────────────────── */
@@ -149,6 +132,12 @@
   /* Page header */
   .page-title {
     @apply text-title font-bold tracking-[-0.02em] text-[#191F28] dark:text-white;
+  }
+  @media (max-width: 639px) {
+    .page-title {
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
   }
   .page-subtitle {
     @apply mt-0.5 text-label text-[#8B95A1] dark:text-gray-500;
@@ -171,7 +160,7 @@
 
   /* Section card — clean, subtle border */
   .section-card {
-    @apply overflow-hidden rounded-2xl border border-[#F2F4F6] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.02)] dark:border-gray-800 dark:bg-[#1E1E24] dark:shadow-[0_1px_4px_rgba(0,0,0,0.15)];
+    @apply overflow-x-auto overflow-y-visible rounded-2xl border border-[#F2F4F6] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.02)] dark:border-gray-800 dark:bg-[#1E1E24] dark:shadow-[0_1px_4px_rgba(0,0,0,0.15)];
   }
   .section-header {
     @apply flex items-center justify-between px-5 py-4;
@@ -182,7 +171,7 @@
 
   /* Filter bar */
   .filter-bar {
-    @apply flex flex-wrap items-center gap-3 rounded-xl p-4;
+    @apply flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 rounded-xl p-4;
   }
 
   /* Empty state */
@@ -219,9 +208,6 @@
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
   .scrollbar-thin {
     scrollbar-width: thin;
   }
@@ -233,3 +219,13 @@
     }
   }
 }
+
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    scrollbar-width: none;
+  }
+}
+

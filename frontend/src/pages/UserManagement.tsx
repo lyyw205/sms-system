@@ -1,21 +1,11 @@
 import { useState, useEffect } from 'react'
-import {
-  Button,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Label,
-  TextInput,
-  Select,
-  Spinner,
-  Table,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableRow,
-  TableCell,
-} from 'flowbite-react'
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table'
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal'
+import { TextInput } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import { UserPlus, TriangleAlert, Pencil } from 'lucide-react'
 import { authAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth-store'
@@ -170,7 +160,7 @@ export default function UserManagement() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="page-title">계정 관리</h1>
           <p className="page-subtitle">사용자 계정을 관리합니다</p>
@@ -247,7 +237,7 @@ export default function UserManagement() {
         <ModalBody>
           <div className="flex flex-col gap-4">
             <div>
-              <Label htmlFor="c-username" className="mb-1.5 block text-label font-medium">아이디</Label>
+              <Label htmlFor="c-username">아이디</Label>
               <TextInput
                 id="c-username"
                 placeholder="아이디"
@@ -256,7 +246,7 @@ export default function UserManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="c-password" className="mb-1.5 block text-label font-medium">비밀번호</Label>
+              <Label htmlFor="c-password">비밀번호</Label>
               <TextInput
                 id="c-password"
                 type="password"
@@ -266,7 +256,7 @@ export default function UserManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="c-name" className="mb-1.5 block text-label font-medium">이름</Label>
+              <Label htmlFor="c-name">이름</Label>
               <TextInput
                 id="c-name"
                 placeholder="이름"
@@ -275,7 +265,7 @@ export default function UserManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="c-role" className="mb-1.5 block text-label font-medium">역할</Label>
+              <Label htmlFor="c-role">역할</Label>
               <Select
                 id="c-role"
                 value={createForm.role}
@@ -304,7 +294,7 @@ export default function UserManagement() {
         <ModalBody>
           <div className="flex flex-col gap-4">
             <div>
-              <Label htmlFor="e-username" className="mb-1.5 block text-label font-medium">아이디</Label>
+              <Label htmlFor="e-username">아이디</Label>
               <TextInput
                 id="e-username"
                 placeholder="아이디"
@@ -313,7 +303,7 @@ export default function UserManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="e-name" className="mb-1.5 block text-label font-medium">이름</Label>
+              <Label htmlFor="e-name">이름</Label>
               <TextInput
                 id="e-name"
                 placeholder="이름"
@@ -322,7 +312,7 @@ export default function UserManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="e-role" className="mb-1.5 block text-label font-medium">역할</Label>
+              <Label htmlFor="e-role">역할</Label>
               <Select
                 id="e-role"
                 value={editForm.role}
@@ -334,7 +324,7 @@ export default function UserManagement() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="e-password" className="mb-1.5 block text-label font-medium">
+              <Label htmlFor="e-password">
                 새 비밀번호 <span className="text-caption text-[#8B95A1]">(변경 시에만 입력)</span>
               </Label>
               <TextInput

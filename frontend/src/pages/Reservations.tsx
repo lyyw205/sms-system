@@ -13,25 +13,15 @@ import dayjs from 'dayjs';
 
 import { reservationsAPI } from '@/services/api';
 
-import {
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableHeadCell,
-  TableCell,
-  Badge,
-  Button,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Label,
-  Select,
-  TextInput,
-  Textarea,
-  Spinner,
-} from 'flowbite-react';
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { TextInput } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 
 
 interface Reservation {
@@ -360,7 +350,7 @@ export default function Reservations() {
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="page-title">예약 관리</h1>
           <p className="page-subtitle">예약 현황을 확인하고 네이버 예약을 동기화합니다.</p>
@@ -396,7 +386,7 @@ export default function Reservations() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="이름 또는 전화번호"
-                className="block w-full rounded-lg border border-[#E5E8EB] bg-white py-2 pl-3 pr-9 text-body text-[#191F28] placeholder:text-[#B0B8C1] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100 dark:placeholder:text-gray-500"
+                className="block w-full sm:w-auto rounded-lg border border-[#E5E8EB] bg-white py-2 pl-3 pr-9 text-body text-[#191F28] placeholder:text-[#B0B8C1] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100 dark:placeholder:text-gray-500"
               />
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                 <Search className="h-4 w-4 text-[#B0B8C1]" />
@@ -410,7 +400,7 @@ export default function Reservations() {
               className="block rounded-lg border border-[#E5E8EB] bg-white py-2 px-3 text-body text-[#191F28] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100"
             />
 
-            <div className="flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+            <div className="flex overflow-x-auto scrollbar-none rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
               {[
                 { value: 'all', label: '전체' },
                 { value: 'confirmed', label: '확정' },
@@ -426,7 +416,7 @@ export default function Reservations() {
                     key={opt.value}
                     type="button"
                     onClick={() => toggleFilter(filterStatus, opt.value, setFilterStatus)}
-                    className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                    className={`shrink-0 px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
                       ${isActive
                         ? 'bg-[#3182F6] text-white'
                         : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
@@ -438,7 +428,7 @@ export default function Reservations() {
               })}
             </div>
 
-            <div className="flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
+            <div className="flex overflow-x-auto scrollbar-none rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
               {[
                 { value: 'all', label: '전체' },
                 { value: 'naver', label: '네이버' },
@@ -452,7 +442,7 @@ export default function Reservations() {
                     key={opt.value}
                     type="button"
                     onClick={() => toggleFilter(filterSource, opt.value, setFilterSource)}
-                    className={`px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                    className={`shrink-0 px-3 py-2 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
                       ${isActive
                         ? 'bg-[#3182F6] text-white'
                         : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
@@ -482,7 +472,6 @@ export default function Reservations() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16">
               <Spinner size="lg" />
@@ -595,7 +584,6 @@ export default function Reservations() {
               </TableBody>
             </Table>
           )}
-        </div>
 
         {/* Pagination */}
         {totalPages > 1 && (

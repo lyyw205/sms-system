@@ -3,14 +3,12 @@ import { Wifi, WifiOff, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { settingsAPI } from '@/services/api';
 import { useTenantStore } from '@/stores/tenant-store';
-import {
-  Button,
-  Badge,
-  Spinner,
-  Textarea,
-  Card,
-  Alert,
-} from 'flowbite-react';
+import { Card } from '@/components/ui/card';
+import { Alert } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 
 interface NaverStatus {
   has_cookie: boolean;
@@ -94,12 +92,12 @@ export default function Settings() {
           </h2>
           <div className="flex items-center gap-2">
             {status?.is_valid === true && (
-              <Badge color="success" icon={() => <Wifi size={12} />}>
+              <Badge color="success" icon={Wifi}>
                 연결됨
               </Badge>
             )}
             {status?.is_valid === false && (
-              <Badge color="failure" icon={() => <WifiOff size={12} />}>
+              <Badge color="failure" icon={WifiOff}>
                 연결 끊김
               </Badge>
             )}

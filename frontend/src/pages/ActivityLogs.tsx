@@ -1,17 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import {
-  Badge,
-  Select,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeadCell,
-  TableRow,
-  Button,
-  TextInput,
-} from 'flowbite-react'
+import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table'
+import { TextInput } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import {
   History,
   BedDouble,
@@ -138,7 +131,14 @@ const ActivityLogs = () => {
     setStatsLoading(true)
     try {
       const res = await activityLogsAPI.getStats()
-      setStats(res.data)
+      const d = res.data
+      const s = d.stats || {}
+      setStats({
+        total_today: d.total_activities ?? 0,
+        room_assign_today: s.room_assign?.count ?? 0,
+        sms_sent_today: (s.sms_send?.count ?? 0) + (s.sms_manual?.count ?? 0),
+        naver_sync_today: s.naver_sync?.count ?? 0,
+      })
     } catch {
       // API not yet wired — show zeros gracefully
       setStats({ total_today: 0, room_assign_today: 0, sms_sent_today: 0, naver_sync_today: 0 })
@@ -210,7 +210,7 @@ const ActivityLogs = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="page-title">활동 로그</h1>
           <p className="page-subtitle">시스템 작업 이력을 타입·상태·날짜로 조회합니다.</p>
@@ -272,7 +272,7 @@ const ActivityLogs = () => {
             sizing="sm"
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="w-40"
+            className="w-full sm:w-40"
           >
             <option value="">전체 타입</option>
             <option value="room_assign">객실 배정</option>
@@ -285,7 +285,7 @@ const ActivityLogs = () => {
             sizing="sm"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-32"
+            className="w-full sm:w-32"
           >
             <option value="">전체 상태</option>
             <option value="success">성공</option>
@@ -298,12 +298,11 @@ const ActivityLogs = () => {
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="w-40"
+            className="w-full sm:w-40"
           />
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Spinner size="lg" />
@@ -603,7 +602,6 @@ const ActivityLogs = () => {
               </TableBody>
             </Table>
           )}
-        </div>
 
         {/* Pagination */}
         {logs.length > 0 && (

@@ -4,9 +4,16 @@ import {
   RefreshCw,
   Send,
   MessageSquareText,
+  ChevronLeft,
 } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
-import { Avatar, Badge, Button, Spinner, TextInput, Textarea } from 'flowbite-react'
+import { Avatar } from '@/components/ui/avatar'
+import { TextInput } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 
 import { messagesAPI } from '@/services/api'
 import { formatRelativeTime, formatTime } from '@/lib/utils'
@@ -116,6 +123,7 @@ function ContactItem({
 }
 
 const Messages = () => {
+  const isMobile = useIsMobile()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
@@ -219,7 +227,8 @@ const Messages = () => {
     <div className="section-card flex h-[calc(100vh-7rem)] overflow-hidden">
 
       {/* Left Panel: Contact List */}
-      <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-[#F2F4F6] dark:border-gray-800 lg:w-80">
+      {(!isMobile || !selectedContact) && (
+      <div className={`flex flex-col overflow-hidden border-r border-[#F2F4F6] dark:border-gray-800 ${isMobile ? 'w-full' : 'w-72 shrink-0 lg:w-80'}`}>
 
         <div className="flex items-center justify-between px-4 py-3">
           <h2 className="text-body font-semibold text-[#191F28] dark:text-white">대화</h2>
@@ -269,9 +278,11 @@ const Messages = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* Right Panel: Chat */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      {(!isMobile || selectedContact) && (
+      <div className={`flex flex-col overflow-hidden ${isMobile ? 'w-full' : 'flex-1'}`}>
         {!selectedContact ? (
           <div className="empty-state flex-1">
             <div className="rounded-2xl bg-[#F2F4F6] p-6 dark:bg-[#1E1E24]">
@@ -283,6 +294,16 @@ const Messages = () => {
           </div>
         ) : (
           <>
+            {/* Mobile back button */}
+            {isMobile && selectedContact && (
+              <button
+                onClick={() => setSelectedContact(null)}
+                className="flex items-center gap-1.5 px-4 py-2 text-label text-[#3182F6]"
+              >
+                <ChevronLeft size={16} />
+                뒤로
+              </button>
+            )}
             {/* Chat header */}
             <div className="flex items-center justify-between border-b border-[#F2F4F6] px-5 py-3 dark:border-gray-800">
               <div className="flex items-center gap-3">
@@ -372,6 +393,7 @@ const Messages = () => {
           </>
         )}
       </div>
+      )}
     </div>
   )
 }

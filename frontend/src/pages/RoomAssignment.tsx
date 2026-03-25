@@ -3,19 +3,14 @@ import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, sms
 import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
-import {
-  Badge,
-  Button,
-  Card,
-  Modal,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  TextInput,
-  Label,
-  Spinner,
-  Tooltip,
-} from 'flowbite-react';
+import { Card } from '@/components/ui/card';
+import { Tooltip } from '@/components/ui/tooltip';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { TextInput } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 import {
   Send,
   RefreshCw,
@@ -117,8 +112,10 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [dropdownAbove, setDropdownAbove] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement>(null);
+  const buttonRectRef = useRef<DOMRect | null>(null);
 
   // Deduplicate by template_key: prefer today's chip, fallback to most recent sent chip
   const assignments = (() => {
@@ -169,6 +166,17 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
     if (dropdownOpen) {
       document.addEventListener('mousedown', handler);
       return () => document.removeEventListener('mousedown', handler);
+    }
+  }, [dropdownOpen]);
+
+  // 드롭다운 실제 높이 측정 후 뷰포트 밖이면 위로 재배치
+  useEffect(() => {
+    if (dropdownOpen && dropdownMenuRef.current && buttonRectRef.current) {
+      const menuRect = dropdownMenuRef.current.getBoundingClientRect();
+      const rect = buttonRectRef.current;
+      if (menuRect.bottom > window.innerHeight) {
+        setDropdownPos({ bottom: window.innerHeight - rect.top + 4, right: window.innerWidth - rect.right });
+      }
     }
   }, [dropdownOpen]);
 
@@ -240,7 +248,9 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
             e.stopPropagation();
             if (!dropdownOpen) {
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setDropdownAbove(window.innerHeight - rect.bottom < 200);
+              buttonRectRef.current = rect;
+              // 일단 아래로 열고, useEffect에서 실제 높이 측정 후 재배치
+              setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
             }
             setDropdownOpen(!dropdownOpen);
           }}
@@ -250,7 +260,11 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
           <Plus size={10} />
         </button>
         {dropdownOpen && templateLabels.length > 0 && (
-          <div className={`absolute right-0 z-50 min-w-[160px] rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg py-1 ${dropdownAbove ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+          <div
+            ref={dropdownMenuRef}
+            className="fixed z-[60] w-max rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] shadow-lg py-1"
+            style={{ top: dropdownPos.top, bottom: dropdownPos.bottom, right: dropdownPos.right }}
+          >
             {templateLabels.map(t => {
               const assigned = isAssigned(t.template_key);
               const sent = assignments.find(a => a.template_key === t.template_key)?.sent_at;
@@ -1441,7 +1455,7 @@ const RoomAssignment = () => {
     <div className={`space-y-4 pb-14 ${processing ? 'opacity-60 pointer-events-none' : ''}`}>
 
       {/* Page header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="page-title">객실 배정</h1>
           <p className="page-subtitle">날짜별 객실을 배정하고 SMS를 발송하세요</p>
@@ -1552,7 +1566,7 @@ const RoomAssignment = () => {
               disabled={sending || targets.length === 0 || !selectedTemplateKey}
             >
               {sending ? (
-                <Spinner size="xs" className="mr-1.5" />
+                <Spinner size="sm" className="mr-1.5" />
               ) : (
                 <Send className="h-3.5 w-3.5 mr-1.5" />
               )}
@@ -1565,7 +1579,7 @@ const RoomAssignment = () => {
           {targets.length > 0 && (
             <div className="mt-3 rounded-lg border border-[#E5E8EB] dark:border-[#2C2C34] bg-[#F8F9FA] dark:bg-[#17171C] p-3">
               <div className="flex justify-between items-center mb-2">
-                <Badge color="blue" size="sm">발송 대상 {targets.length}건</Badge>
+                <Badge color="info" size="sm">발송 대상 {targets.length}건</Badge>
                 <Button
                   color="light"
                   size="xs"
