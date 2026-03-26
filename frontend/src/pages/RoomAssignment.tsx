@@ -475,7 +475,7 @@ const RoomAssignment = () => {
   const getDist = (a: React.Touch, b: React.Touch) =>
     Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
-  // Clamp pan so table edge is always visible in viewport
+  // Clamp pan so at least 30% of table is visible on each axis
   const clampPan = (x: number, y: number, scale: number) => {
     const wrapper = tableWrapperRef.current;
     const table = tableContainerRef.current;
@@ -484,15 +484,14 @@ const RoomAssignment = () => {
     const wh = wrapper.clientHeight;
     const tw = table.scrollWidth * scale;
     const th = table.scrollHeight * scale;
-    // Allow dragging until only 20% of table remains visible
-    const minX = Math.min(0, ww - tw * 0.8);
-    const maxX = Math.max(0, tw * 0.8 - tw);
-    const minY = Math.min(0, wh - th * 0.8);
-    const maxY = Math.max(0, th * 0.8 - th);
-    // Simpler: table can't go further right than x=0, and left edge can't pass 80% of viewport
+    const margin = 0.3; // 30% must remain visible
+    const minX = ww - tw;           // fully scrolled left
+    const maxX = 0;                  // original position
+    const minY = wh - th;           // fully scrolled up
+    const maxY = 0;                  // original position
     return {
-      x: Math.max(Math.min(0, ww - tw), Math.min(x, 0)),
-      y: Math.max(Math.min(0, wh - th), Math.min(y, 0)),
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
     };
   };
 
@@ -1932,7 +1931,10 @@ const RoomAssignment = () => {
               onTouchStart={isMobile ? handleMapTouchStart : undefined}
               onTouchMove={isMobile ? handleMapTouchMove : undefined}
               onTouchEnd={isMobile ? handleMapTouchEnd : undefined}
-              style={isMobile ? { touchAction: 'none' } : undefined}
+              style={isMobile ? {
+                touchAction: 'none',
+                height: tableContainerRef.current ? `${tableContainerRef.current.scrollHeight * mapTransform.scale}px` : undefined,
+              } : undefined}
             >
             <div
               ref={tableContainerRef}
