@@ -451,39 +451,73 @@ const RoomAssignment = () => {
   const resizeStartWidthRef = useRef(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  // --- Mobile pinch-zoom ---
+  // --- Mobile map-style zoom + pan ---
   const isMobile = useIsMobile();
-  const [tableScale, setTableScale] = useState(1);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
-  const pinchStartRef = useRef({ distance: 0, scale: 1 });
+  const mapStateRef = useRef({ scale: 0.8, x: 0, y: 0 });
+  const [mapTransform, setMapTransform] = useState({ scale: 0.8, x: 0, y: 0 });
+  const touchRef = useRef<{
+    mode: 'none' | 'pan' | 'pinch';
+    startX: number; startY: number;
+    startMapX: number; startMapY: number;
+    startDist: number; startScale: number;
+    midX: number; midY: number;
+  }>({ mode: 'none', startX: 0, startY: 0, startMapX: 0, startMapY: 0, startDist: 0, startScale: 1, midX: 0, midY: 0 });
 
   useEffect(() => {
     if (!isMobile || !tableWrapperRef.current) return;
     const containerWidth = tableWrapperRef.current.clientWidth;
-    const tableWidth = 900;
-    const autoScale = containerWidth / tableWidth;
-    setTableScale(Math.max(autoScale, 0.8));
+    const initScale = Math.max(containerWidth / 950, 0.35);
+    mapStateRef.current = { scale: initScale, x: 0, y: 0 };
+    setMapTransform({ scale: initScale, x: 0, y: 0 });
   }, [isMobile]);
 
-  const getDistance = (touches: RTouchList) => {
-    const a = touches[0];
-    const b = touches[1];
-    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-  };
+  const getDist = (a: React.Touch, b: React.Touch) =>
+    Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
-  const handlePinchStart = (e: RTouchEvent) => {
-    if (e.touches.length === 2) {
-      pinchStartRef.current = { distance: getDistance(e.touches), scale: tableScale };
+  const handleMapTouchStart = (e: RTouchEvent) => {
+    if (!isMobile) return;
+    const t = e.touches;
+    if (t.length === 1) {
+      touchRef.current = { mode: 'pan', startX: t[0].clientX, startY: t[0].clientY, startMapX: mapStateRef.current.x, startMapY: mapStateRef.current.y, startDist: 0, startScale: mapStateRef.current.scale, midX: 0, midY: 0 };
+    } else if (t.length === 2) {
+      const rect = tableWrapperRef.current?.getBoundingClientRect();
+      const midX = (t[0].clientX + t[1].clientX) / 2 - (rect?.left || 0);
+      const midY = (t[0].clientY + t[1].clientY) / 2 - (rect?.top || 0);
+      touchRef.current = { mode: 'pinch', startX: 0, startY: 0, startMapX: mapStateRef.current.x, startMapY: mapStateRef.current.y, startDist: getDist(t[0], t[1]), startScale: mapStateRef.current.scale, midX, midY };
     }
   };
 
-  const handlePinchMove = (e: RTouchEvent) => {
-    if (e.touches.length === 2) {
-      const ratio = getDistance(e.touches) / pinchStartRef.current.distance;
-      setTableScale(Math.max(0.3, Math.min(1.5, pinchStartRef.current.scale * ratio)));
+  const handleMapTouchMove = (e: RTouchEvent) => {
+    if (!isMobile) return;
+    e.preventDefault();
+    const t = e.touches;
+    const ref = touchRef.current;
+
+    if (ref.mode === 'pan' && t.length === 1) {
+      const dx = t[0].clientX - ref.startX;
+      const dy = t[0].clientY - ref.startY;
+      const next = { scale: mapStateRef.current.scale, x: ref.startMapX + dx, y: ref.startMapY + dy };
+      mapStateRef.current = next;
+      setMapTransform(next);
+    } else if (ref.mode === 'pinch' && t.length === 2) {
+      const dist = getDist(t[0], t[1]);
+      const ratio = dist / ref.startDist;
+      const newScale = Math.max(0.3, Math.min(2, ref.startScale * ratio));
+      // zoom toward pinch midpoint
+      const scaleChange = newScale / ref.startScale;
+      const nx = ref.startMapX - ref.midX * (scaleChange - 1);
+      const ny = ref.startMapY - ref.midY * (scaleChange - 1);
+      const next = { scale: newScale, x: nx, y: ny };
+      mapStateRef.current = next;
+      setMapTransform(next);
     }
   };
-  // --- end mobile pinch-zoom ---
+
+  const handleMapTouchEnd = () => {
+    touchRef.current.mode = 'none';
+  };
+  // --- end mobile map-style zoom + pan ---
 
   useEffect(() => {
     localStorage.setItem('roomAssignment_colWidths', JSON.stringify(colWidths));
@@ -1863,15 +1897,19 @@ const RoomAssignment = () => {
             {/* Unified Table */}
             <div
               ref={tableWrapperRef}
-              className={`rounded-xl border border-[#F2F4F6] dark:border-[#2C2C34] ${isMobile ? 'overflow-auto' : 'overflow-x-auto'}`}
-              onTouchStart={isMobile ? handlePinchStart : undefined}
-              onTouchMove={isMobile ? handlePinchMove : undefined}
-              {...(isMobile ? { style: { touchAction: 'pan-x pan-y' } } : {})}
+              className={`rounded-xl border border-[#F2F4F6] dark:border-[#2C2C34] ${isMobile ? 'overflow-hidden' : 'overflow-x-auto'}`}
+              onTouchStart={isMobile ? handleMapTouchStart : undefined}
+              onTouchMove={isMobile ? handleMapTouchMove : undefined}
+              onTouchEnd={isMobile ? handleMapTouchEnd : undefined}
+              style={isMobile ? { touchAction: 'none' } : undefined}
             >
             <div
               ref={tableContainerRef}
               className="relative min-w-max"
-              style={isMobile ? { zoom: tableScale } : undefined}
+              style={isMobile ? {
+                transform: `translate(${mapTransform.x}px, ${mapTransform.y}px) scale(${mapTransform.scale})`,
+                transformOrigin: '0 0',
+              } : undefined}
             >
               {resizeGuideX !== null && (
                 <div className="absolute top-0 bottom-0 w-px bg-[#3182F6] z-50 pointer-events-none" style={{ left: resizeGuideX }} />
