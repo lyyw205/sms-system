@@ -368,6 +368,7 @@ class RoomAssignment(TenantMixin, Base):
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False)
     room_password = Column(String(20), nullable=True)
     assigned_by = Column(String(10), default="auto")  # 'auto' or 'manual'
+    bed_order = Column(Integer, default=0)  # 도미토리 행 순서 (1부터 시작, 0=미지정)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

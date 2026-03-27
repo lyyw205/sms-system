@@ -112,6 +112,7 @@ class ReservationResponse(BaseModel):
     stay_group_id: Optional[str] = None
     stay_group_order: Optional[int] = None
     is_long_stay: bool = False
+    bed_order: int = 0
     created_at: datetime
     updated_at: datetime
     sms_assignments: List[SmsAssignmentResponse] = []
@@ -120,7 +121,7 @@ class ReservationResponse(BaseModel):
         from_attributes = True
 
 
-def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None, daily_keys: Optional[set] = None) -> ReservationResponse:
+def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, override_bed_order: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None, daily_keys: Optional[set] = None) -> ReservationResponse:
     assignments = []
     if db is not None and hasattr(res, 'sms_assignments'):
         source = [a for a in res.sms_assignments if a.assigned_by != 'excluded']
@@ -178,6 +179,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         stay_group_id=res.stay_group_id,
         stay_group_order=res.stay_group_order,
         is_long_stay=bool(res.is_long_stay),
+        bed_order=override_bed_order if override_bed_order is not None else 0,
         created_at=res.created_at,
         updated_at=res.updated_at,
         sms_assignments=assignments,
@@ -243,7 +245,7 @@ async def get_reservations(
         if date:
             from app.services.room_lookup import batch_room_lookup
             _rl = batch_room_lookup(db, res_ids, date)
-            room_map = {res_id: (info["room_id"], info["room_number"] or '', info["room_password"], info["assigned_by"]) for res_id, info in _rl.items()}
+            room_map = {res_id: (info["room_id"], info["room_number"] or '', info["room_password"], info["assigned_by"], info.get("bed_order", 0)) for res_id, info in _rl.items()}
 
             # Batch-query daily info for the target date
             daily_infos = (
@@ -273,7 +275,7 @@ async def get_reservations(
             for ra in room_assignments:
                 if ra.date == res_date_map.get(ra.reservation_id) and ra.reservation_id in _rl:
                     info = _rl[ra.reservation_id]
-                    room_map[ra.reservation_id] = (info["room_id"], info["room_number"] or '', info["room_password"], info["assigned_by"])
+                    room_map[ra.reservation_id] = (info["room_id"], info["room_number"] or '', info["room_password"], info["assigned_by"], info.get("bed_order", 0))
             daily_party_map = {}
     else:
         room_map = {}
@@ -292,12 +294,12 @@ async def get_reservations(
     results = []
     for res in reservations:
         if res.id in room_map:
-            override_room_id, override_room, override_password, override_assigned_by = room_map[res.id]
+            override_room_id, override_room, override_password, override_assigned_by, override_bed_order = room_map[res.id]
         elif date:
             # 해당 날짜에 배정 없음 — denormalized field 무시하고 빈 값 반환
-            override_room_id, override_room, override_password, override_assigned_by = None, '', '', None
+            override_room_id, override_room, override_password, override_assigned_by, override_bed_order = None, '', '', None, 0
         else:
-            override_room_id, override_room, override_password, override_assigned_by = None, None, None, None
+            override_room_id, override_room, override_password, override_assigned_by, override_bed_order = None, None, None, None, 0
 
         # Resolve per-date party_type: daily info overrides reservation-level value when date is provided
         if date and res.id in daily_party_map:
@@ -305,7 +307,7 @@ async def get_reservations(
         else:
             override_party_type = None  # Fall back to reservation.party_type in _to_response
 
-        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, db=db, filter_date=date, daily_keys=_daily_keys))
+        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, override_bed_order=override_bed_order, db=db, filter_date=date, daily_keys=_daily_keys))
     return results
 
 

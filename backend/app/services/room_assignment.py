@@ -4,6 +4,7 @@ All room assignment operations go through this module to maintain
 consistency between room_assignments table and denormalized fields.
 """
 from typing import Optional, List
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 import logging
@@ -14,6 +15,59 @@ from app.services.activity_logger import log_activity
 from app.templates.renderer import TemplateRenderer
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_bed_order(db: Session, reservation_id: int, room_id: int, date_str: str, room_obj: Room) -> int:
+    """도미토리 배정 시 bed_order를 계산한다.
+
+    1. 전날 같은 방에 같은 reservation_id 배정 → 그 bed_order 재사용
+    2. 전날 같은 방에 같은 stay_group_id 배정 → 그 bed_order 재사용
+    3. 둘 다 없으면 → 해당 room+date의 기존 bed_order 중 빈 슬롯 (1부터)
+    """
+    if not room_obj.is_dormitory:
+        return 0
+
+    prev_date = (datetime.strptime(date_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 1) 같은 reservation_id로 전날 같은 방 배정 확인 (2박+ 단일 예약)
+    prev_same = db.query(RoomAssignment).filter(
+        RoomAssignment.reservation_id == reservation_id,
+        RoomAssignment.room_id == room_id,
+        RoomAssignment.date == prev_date,
+    ).first()
+    if prev_same and prev_same.bed_order > 0:
+        return prev_same.bed_order
+
+    # 2) stay_group_id로 전날 같은 방 배정 확인 (연박 체인)
+    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+    if reservation and reservation.stay_group_id:
+        group_members = db.query(Reservation.id).filter(
+            Reservation.stay_group_id == reservation.stay_group_id,
+            Reservation.id != reservation_id,
+        ).all()
+        member_ids = [m.id for m in group_members]
+        if member_ids:
+            prev_group = db.query(RoomAssignment).filter(
+                RoomAssignment.reservation_id.in_(member_ids),
+                RoomAssignment.room_id == room_id,
+                RoomAssignment.date == prev_date,
+            ).first()
+            if prev_group and prev_group.bed_order > 0:
+                return prev_group.bed_order
+
+    # 3) 빈 슬롯 찾기: 해당 room+date의 기존 bed_order 조회
+    taken = {
+        row.bed_order for row in
+        db.query(RoomAssignment.bed_order).filter(
+            RoomAssignment.room_id == room_id,
+            RoomAssignment.date == date_str,
+            RoomAssignment.bed_order > 0,
+        ).all()
+    }
+    order = 1
+    while order in taken:
+        order += 1
+    return order
 
 
 def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
@@ -136,14 +190,17 @@ def assign_room(
     # Create new assignments
     assignments = []
     for d in dates:
+        bed_order = _compute_bed_order(db, reservation_id, room_id, d, room_obj)
         assignment = RoomAssignment(
             reservation_id=reservation_id,
             date=d,
             room_id=room_id,
             room_password=password,
             assigned_by=assigned_by,
+            bed_order=bed_order,
         )
         db.add(assignment)
+        db.flush()  # 다음 날짜 계산에서 이 레코드가 보이도록
         assignments.append(assignment)
 
     # Flush to persist all date records before any subsequent queries

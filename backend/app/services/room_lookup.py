@@ -48,6 +48,7 @@ def batch_room_lookup(
             "room_number": rm.room_number if rm else None,
             "room_password": ra.room_password,
             "assigned_by": ra.assigned_by,
+            "bed_order": ra.bed_order or 0,
         }
     return result
 

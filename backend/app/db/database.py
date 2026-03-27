@@ -254,6 +254,13 @@ def init_db():
                 if result.rowcount > 0:
                     print(f"AUTO-MIGRATE: Backfilled is_last_in_group for {result.rowcount} reservations")
 
+        # room_assignments: bed_order (도미토리 행 순서)
+        if "room_assignments" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("room_assignments")]
+            if "bed_order" not in cols:
+                conn.execute(text("ALTER TABLE room_assignments ADD COLUMN bed_order INTEGER DEFAULT 0"))
+                print("AUTO-MIGRATE: Added bed_order column to room_assignments table")
+
         # participant_snapshots: fix legacy unique constraint (date) → (tenant_id, date)
         if "participant_snapshots" in inspector.get_table_names():
             existing_constraints = inspector.get_unique_constraints("participant_snapshots")
