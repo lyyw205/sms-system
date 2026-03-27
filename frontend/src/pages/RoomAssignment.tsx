@@ -356,6 +356,7 @@ const RoomAssignment = () => {
   const [recentlyMovedId, setRecentlyMovedId] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   const [quickAddedId, setQuickAddedId] = useState<number | null>(null);
+  const [collapsedBuildings, setCollapsedBuildings] = useState<Set<number | null>>(new Set());
 
   const [modalVisible, setModalVisible] = useState(false);
   const [savingReservation, setSavingReservation] = useState(false);
@@ -472,6 +473,8 @@ const RoomAssignment = () => {
       room_number: room.room_number as string,
       isDormitory: room.dormitory || false,
       bed_capacity: room.bed_capacity || 1,
+      building_id: room.building_id as number | null,
+      building_name: room.building_name as string | null,
     }));
   }, [rooms]);
 
@@ -736,6 +739,43 @@ const RoomAssignment = () => {
       partyOnly: partyOnlyList,
     };
   }, [reservations, sectionOverrides]);
+
+  // Group rooms by building for fold/unfold
+  const buildingGroups = useMemo(() => {
+    const groups: { building_id: number | null; building_name: string | null; entries: typeof activeRoomEntries; assignedCount: number; totalCount: number }[] = [];
+    let currentBuildingId: number | null | undefined = undefined;
+    let currentGroup: typeof groups[0] | null = null;
+
+    activeRoomEntries.forEach((entry) => {
+      if (entry.building_id !== currentBuildingId) {
+        currentBuildingId = entry.building_id;
+        currentGroup = {
+          building_id: entry.building_id,
+          building_name: entry.building_name,
+          entries: [],
+          assignedCount: 0,
+          totalCount: 0,
+        };
+        groups.push(currentGroup);
+      }
+      currentGroup!.entries.push(entry);
+      currentGroup!.totalCount++;
+      if ((assignedRooms.get(entry.room_id) || []).length > 0) {
+        currentGroup!.assignedCount++;
+      }
+    });
+
+    return groups;
+  }, [activeRoomEntries, assignedRooms]);
+
+  const toggleBuildingCollapse = useCallback((buildingId: number | null) => {
+    setCollapsedBuildings((prev) => {
+      const next = new Set(prev);
+      if (next.has(buildingId)) next.delete(buildingId);
+      else next.add(buildingId);
+      return next;
+    });
+  }, []);
 
   const onDragStart = (e: DragEvent, resId: number) => {
     e.dataTransfer.setData('text/plain', String(resId));
@@ -1307,7 +1347,7 @@ const RoomAssignment = () => {
           </div>
         )}
         <div
-          className="flex-1 grid items-center py-1.5"
+          className="flex-1 grid items-center py-1"
           style={{ gridTemplateColumns: GUEST_COLS }}
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
@@ -1379,6 +1419,8 @@ const RoomAssignment = () => {
       ? Math.min(bed_capacity, maxOccupancy)
       : Math.max(1, guests.length);
     const totalRows = visibleRows;
+    const hasGuests = guests.length > 0;
+    const rowHeight = hasGuests ? 40 : 36;
     const stripeBg = rowIndex % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
 
     return (
@@ -1389,7 +1431,7 @@ const RoomAssignment = () => {
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-[#3182F6]/30'
             : stripeBg
           }`}
-        style={{ minHeight: `${totalRows * 40}px` }}
+        style={{ minHeight: `${totalRows * rowHeight}px` }}
         onDragOver={(e) => onRoomDragOver(e, room_id)}
         onDragLeave={onRoomDragLeave}
         onDrop={(e) => onRoomDrop(e, room_id, room_number)}
@@ -1412,9 +1454,9 @@ const RoomAssignment = () => {
                 return renderGuestRow(guest, true);
               }
               return (
-                <div key={`empty-${i}`} className={`flex items-center h-10 ${guestAreaCursor()}`}>
+                <div key={`empty-${i}`} className={`flex items-center h-9 ${guestAreaCursor()}`}>
                   <div
-                    className="flex-1 grid items-center py-1.5"
+                    className="flex-1 grid items-center py-1"
                     style={{ gridTemplateColumns: GUEST_COLS }}
                   >
                     <div className="overflow-hidden truncate col-span-full text-body text-[#B0B8C1] dark:text-[#4E5968] italic px-1.5">
@@ -1427,9 +1469,9 @@ const RoomAssignment = () => {
           ) : guests.length > 0 ? (
             guests.map((res) => renderGuestRow(res, true))
           ) : (
-            <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
+            <div className={`flex items-center h-9 ${guestAreaCursor()}`}>
               <div
-                className="flex-1 grid items-center py-1.5"
+                className="flex-1 grid items-center py-1"
                 style={{ gridTemplateColumns: GUEST_COLS }}
               >
                 <div className="overflow-hidden truncate col-span-full text-body text-[#3182F6] dark:text-[#3182F6] italic px-1.5">
@@ -1447,7 +1489,7 @@ const RoomAssignment = () => {
               const nextGuest = nextGuests[i];
               const gp = nextGuest ? formatGenderPeople(nextGuest) : '';
               return (
-                <div key={`next-${i}`} className={`flex items-center justify-center h-10 px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
+                <div key={`next-${i}`} className={`flex items-center justify-center ${hasGuests ? 'h-10' : 'h-9'} px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
                   {nextGuest ? (
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{nextGuest.customer_name}</span>
@@ -1810,7 +1852,46 @@ const RoomAssignment = () => {
 
               {/* Room Rows (stale-while-revalidate: 이전 데이터 유지, 새 데이터 조용히 교체) */}
               <div className={loading ? 'pointer-events-none' : ''}>
-                {activeRoomEntries.map((entry, idx) => renderRoomRow(entry, idx))}
+                {(() => {
+                  let rowIdx = 0;
+                  return buildingGroups.map((group) => {
+                    const isCollapsed = collapsedBuildings.has(group.building_id);
+                    const buildingLabel = group.building_name || '기타';
+                    const summary = `${group.assignedCount}/${group.totalCount}`;
+
+                    const roomRows = !isCollapsed
+                      ? group.entries.map((entry) => {
+                          const row = renderRoomRow(entry, rowIdx);
+                          rowIdx++;
+                          return row;
+                        })
+                      : (() => { rowIdx += group.entries.length; return null; })();
+
+                    return (
+                      <div key={`building-${group.building_id ?? 'none'}`} className="relative">
+                        {/* Bookmark tab */}
+                        <div
+                          className="absolute -left-[2px] top-0 z-10 flex items-center justify-center cursor-pointer select-none rounded-l-md w-4 h-8 border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors shadow-sm"
+                          style={{ transform: 'translateX(-100%)' }}
+                          onClick={() => toggleBuildingCollapse(group.building_id)}
+                          title={`${buildingLabel} ${summary}`}
+                        >
+                          {isCollapsed
+                            ? <ChevronDown className="h-3 w-3 text-[#8B95A1]" />
+                            : <ChevronRight className="h-3 w-3 text-[#8B95A1] rotate-180" />}
+                        </div>
+                        {isCollapsed ? (
+                          <div
+                            className="flex items-center h-8 px-3 border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-[#F8F9FA]/50 dark:bg-[#17171C]/30 cursor-pointer"
+                            onClick={() => toggleBuildingCollapse(group.building_id)}
+                          >
+                            <span className="text-caption text-[#B0B8C1] dark:text-gray-600 italic">{buildingLabel} — {summary}</span>
+                          </div>
+                        ) : roomRows}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
 
               {/* Unassigned Pool */}
@@ -1836,7 +1917,7 @@ const RoomAssignment = () => {
                     unassigned.map((res) => renderGuestRow(res, true))
                   ) : (
                     <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
-                      <div className="flex-1 grid items-center py-1.5" style={{ gridTemplateColumns: GUEST_COLS }}>
+                      <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: GUEST_COLS }}>
                         <div className="overflow-hidden truncate col-span-full text-body text-[#FF9500] dark:text-[#FF9500] italic px-1.5">
                           {dragOverPool ? '여기에 놓으면 배정 해제' : ''}
                         </div>
@@ -1872,7 +1953,7 @@ const RoomAssignment = () => {
                     partyOnly.map((res) => renderGuestRow(res, true))
                   ) : (
                     <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
-                      <div className="flex-1 grid items-center py-1.5" style={{ gridTemplateColumns: GUEST_COLS }}>
+                      <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: GUEST_COLS }}>
                         <div className="overflow-hidden truncate col-span-full text-body text-[#7B61FF] dark:text-[#7B61FF] italic px-1.5">
                           {dragOverPartyZone ? '여기에 놓으면 파티만 게스트로 전환' : ''}
                         </div>
