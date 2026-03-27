@@ -218,7 +218,7 @@ class RealReservationProvider:
                 all_data = []
                 page = 0
                 while True:
-                    data = await self._fetch_page(client, dt, dt, date_filter="STARTDATE", page=page)
+                    data = await self._fetch_page(client, dt, dt, date_filter="USEDATE", page=page)
                     logger.info(f"Reconcile fetch: {len(data)} reservations for {target_date} (page {page})")
                     all_data.extend(data)
                     if len(data) < 200:
