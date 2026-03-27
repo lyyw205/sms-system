@@ -1,51 +1,56 @@
 # HANDOFF
 
-## Current [1774603943]
-- **Task**: SMS 칩 배정 로직 통합 + column_match AND 수정 + 도미토리 인원수 버그 수정 + 객실 그룹 UX 개선
+## Current [1774619519]
+- **Task**: 도미토리 bed_order + 커스텀 드래그 전환 + UX 개선 + SMS 테스트 데이터
 - **Completed**:
-  - **칩 배정 로직 통합 (chip_reconciler)**
-    - `chip_reconciler.py` 신규: 단일 매칭 소스 + 생성/삭제 양방향
-    - `schedule_utils.py` 신규: 순환 의존 해소 (get_schedule_dates 추출)
-    - `sync_sms_tags` → chip_reconciler 위임 래퍼
-    - `auto_assign_for_schedule` → chip_reconciler 위임 (create+delete)
-    - 스케줄 PUT에서 필터 변경 시 자동 reconcile 호출
-    - `filters.py`에 `apply_structural_filters()` standalone 함수 추가
-    - `matches_schedule()` deprecated
-  - **column_match 필터 AND 수정**
-    - `_build_filter_groups`: 같은 컬럼 column_match OR → AND 변경
-    - `notes:contains:추2 OR notes:contains:테스트` → AND로 수정
-  - **네이버 API USEDATE 수정**
-    - reconcile job의 `dateFilter=STARTDATE` → `USEDATE` 변경
-    - STARTDATE가 네이버 API 422 에러 → 처음부터 작동 안 했었음
-    - USEDATE로 수정 후 59건 조회 성공, party_participants 정상 갱신
-  - **sync 엔드포인트에 reconcile_date 파라미터 추가**
-  - **인라인 is_long_stay → compute_is_long_stay() 통일** (naver_sync.py)
-  - **프론트엔드 dead code 정리**: isMultiNight 삭제, stayGroupAPI.detect 삭제
-  - **미사용 import 14개 정리** (3개 백엔드 파일 + template_scheduler.py)
-  - **객실 그룹 UX**: 체크박스 그리드 → 구분선 삽입 방식, 테두리 → 하단 1px 라인
+  - **bed_order 도입** (도미토리 행 순서 날짜간 통일)
+    - `RoomAssignment.bed_order` 컬럼 + auto-migration
+    - `_compute_bed_order()`: 전날 같은 방 reservation_id/stay_group_id → bed_order 상속, 없으면 빈 슬롯
+    - `batch_room_lookup` → API 응답에 bed_order 전달
+    - 프론트엔드: 20줄 정렬 로직 → 2줄 `bed_order` 기준 정렬
+  - **HTML5 드래그 → 커스텀 포인터 드래그 전환**
+    - pointer events 기반 (wheel 스크롤 + 터치 지원)
+    - `data-drop-zone` + `elementFromPoint`로 드롭 타겟 판별
+    - 가장자리 자동 스크롤 (80px edge zone)
+  - **UX 개선**
+    - sticky 날짜 헤더 + 테이블 헤더 (ResizeObserver 동적 측정)
+    - 그룹 stripe 배경색 (groupIndex 기준 교대)
+    - 구분선 1px 통일 (방 border-b 색상 교체 방식)
+    - 구분선 모달: 첫행 위/마지막행 아래 추가 가능
+    - 메모 컬럼 텍스트 색상 → primary black
+    - z-index 정리 (sticky 헤더 < 드롭다운)
+  - **SMS 테스트 예약자 생성** (STABLE 테넌트)
+    - 11건 생성 (전화번호 01036886080 통일)
+    - 18개 활성 스케줄의 모든 필터 조합 커버
+    - 연박 2박(J) + 연장자 체인(K1/K2) + stay_filter=exclude 테스트
+    - 객실 배정 완료 (본관/로하스/펠리체)
+    - 노션 체크리스트 생성 (3/28~4/4 날짜별 수신/미수신 28건)
+  - **Click-Select 전환 계획서 작성** (`.omc/plans/click-select-migration.md`)
+    - 드래그/선택 토글 모드 설계 (v2)
+    - 기존 드래그 유지 + 선택 모드 독립 추가 (~140줄)
+    - change-validator 검증 완료 (5건 반영)
+  - **잔재 정리**: Card import 삭제
 - **Next Steps**:
-  - TODO #7: 객실 배정 드래그 중 자동 스크롤 (필수)
+  - 드래그/선택 토글 모드 구현 (계획서 `.omc/plans/click-select-migration.md`)
+  - SMS 테스트 실행 (3/28부터 매일 체크리스트 확인)
   - TODO #1: ParticipantSnapshot 시간대별 갱신
   - TODO #5: 모바일 버튼 레이아웃 정리
   - TODO #6: PWA 설정 (iOS 탭 전환 방지)
-  - B206 등 기존 초과배정 수동 재배정 필요
-  - 미커밋 프론트엔드 변경 정리 (UI 컴포넌트 마이그레이션 관련 14개 파일)
 - **Blockers**: None
 - **Related Files**:
-  - `backend/app/services/chip_reconciler.py` — 통합 칩 동기화 모듈
-  - `backend/app/services/schedule_utils.py` — get_schedule_dates 추출
-  - `backend/app/services/filters.py` — apply_structural_filters + AND 수정
-  - `backend/app/real/reservation.py` — USEDATE 수정
-  - `backend/app/api/reservations.py` — reconcile_date 파라미터 추가
-  - `backend/app/services/naver_sync.py` — is_long_stay 리팩토링
-  - `frontend/src/pages/RoomAssignment.tsx` — 그룹 구분선 UX + isMultiNight 삭제
+  - `backend/app/db/models.py` — RoomAssignment.bed_order 컬럼
+  - `backend/app/services/room_assignment.py` — _compute_bed_order()
+  - `backend/app/services/room_lookup.py` — bed_order API 전달
+  - `backend/app/api/reservations.py` — bed_order 응답 스키마
+  - `frontend/src/pages/RoomAssignment.tsx` — 커스텀 드래그 + sticky + UX
+  - `.omc/plans/click-select-migration.md` — 토글 모드 구현 계획서
 
-## Past 1 [1774540510]
+## Past 1 [1774603943]
+- **Task**: SMS 칩 배정 로직 통합 + column_match AND 수정 + 도미토리 인원수 버그 수정 + 객실 그룹 UX 개선
+- **Completed**: chip_reconciler 통합, column_match AND 수정, 네이버 API USEDATE 수정, sync reconcile_date 파라미터, is_long_stay 리팩토링, dead code 정리, 미사용 import 14개, 객실 그룹 구분선 UX
+- **Note**: commits a2da705..432318f
+
+## Past 2 [1774540510]
 - **Task**: 모바일 반응형 디자인 + 연박 수동 묶기/해제 + 로그인 저장
 - **Completed**: 모바일 반응형 (Layout/Dashboard/Reservations/RoomSettings/Templates/ActivityLogs), 연박 묶기/해제 UI, 예약자 추가 버튼 복원, 로그인 저장
 - **Note**: 객실배정은 PC와 동일 가로스크롤 방식으로 결정
-
-## Past 2 [1774345481]
-- **Task**: Flowbite → shadcn/ui 완전 마이그레이션 + 반응형 디자인 계획 수립
-- **Completed**: 16개 shadcn 컴포넌트 생성, 12개 페이지 교체, flowbite-react 패키지 제거
-- **Note**: Phase 1-7 마이그레이션 완료

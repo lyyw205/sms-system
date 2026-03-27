@@ -25,7 +25,12 @@ import {
   UserPlus,
   Link2,
   Layers,
+  Check,
+  MousePointer,
+  Undo2,
+  Music,
 } from 'lucide-react';
+import GuestContextMenu from '../components/GuestContextMenu';
 
 interface SmsAssignment {
   id: number;
@@ -345,6 +350,19 @@ const RoomAssignment = () => {
   const [dragOverPartyZone, setDragOverPartyZone] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [dragOverTrash, setDragOverTrash] = useState(false);
+
+  // ===== Interaction mode toggle (drag vs select) =====
+  const [interactionMode, setInteractionMode] = useState<'drag' | 'select'>(
+    () => (localStorage.getItem('roomAssignMode') as 'drag' | 'select') || 'drag'
+  );
+  useEffect(() => {
+    localStorage.setItem('roomAssignMode', interactionMode);
+  }, [interactionMode]);
+
+  // ===== Select mode state =====
+  const [selectedGuestIds, setSelectedGuestIds] = useState<Set<number>>(new Set());
+  const selectionActive = interactionMode === 'select' && selectedGuestIds.size > 0;
+
   const dragScrollRaf = useRef<number | null>(null);
   const dragResId = useRef<number | null>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
@@ -352,6 +370,12 @@ const RoomAssignment = () => {
   const [processing, setProcessing] = useState(false);
   const [quickAddedId, setQuickAddedId] = useState<number | null>(null);
   const [collapsedBuildings, setCollapsedBuildings] = useState<Set<number | null>>(new Set());
+
+  // ===== Context menu state =====
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetIds: number[] } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+  const longPressStart = useRef<{ x: number; y: number } | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [savingReservation, setSavingReservation] = useState(false);
@@ -693,6 +717,38 @@ const RoomAssignment = () => {
       return () => clearTimeout(timer);
     }
   }, [quickAddedId]);
+
+  // ===== Select mode: reset on mode switch (BLOCKING FIX) =====
+  useEffect(() => {
+    setSelectedGuestIds(new Set());
+    setDragOverRoom(null);
+    setDragOverPool(false);
+    setDragOverPartyZone(false);
+    setDragOverTrash(false);
+  }, [interactionMode]);
+
+  // Select mode: reset on date change
+  useEffect(() => {
+    setSelectedGuestIds(new Set());
+  }, [selectedDate]);
+
+  // Select mode: prune invalid IDs on reservations change
+  useEffect(() => {
+    setSelectedGuestIds(prev => {
+      const validIds = new Set(reservations.map(r => r.id));
+      const next = new Set([...prev].filter(id => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [reservations]);
+
+  // Select mode: ESC to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedGuestIds(new Set());
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
 
   const loadTargets = () => {
@@ -1164,6 +1220,81 @@ const RoomAssignment = () => {
     }
   };
 
+  // ===== Context menu handlers =====
+  const onGuestContextMenu = useCallback((e: React.MouseEvent, resId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragActive) return;
+    if (modalVisible || showStayGroupModal || multiNightConfirm?.open) return;
+
+    const targetIds =
+      interactionMode === 'select' && selectedGuestIds.size > 0 && selectedGuestIds.has(resId)
+        ? [...selectedGuestIds]
+        : [resId];
+
+    setContextMenu({ x: e.clientX, y: e.clientY, targetIds });
+  }, [dragActive, modalVisible, showStayGroupModal, multiNightConfirm?.open, interactionMode, selectedGuestIds]);
+
+  const onGuestLongPressDown = useCallback((e: React.PointerEvent, resId: number) => {
+    if (e.pointerType === 'mouse') return;
+    if (dragActive) return;
+    if (modalVisible || showStayGroupModal || multiNightConfirm?.open) return;
+    const interactive = (e.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"], [data-interactive]');
+    if (interactive) return;
+
+    longPressTriggered.current = false;
+    longPressStart.current = { x: e.clientX, y: e.clientY };
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+
+      const targetIds =
+        interactionMode === 'select' && selectedGuestIds.size > 0 && selectedGuestIds.has(resId)
+          ? [...selectedGuestIds]
+          : [resId];
+
+      setContextMenu({ x: e.clientX, y: e.clientY, targetIds });
+    }, 500);
+  }, [dragActive, modalVisible, showStayGroupModal, multiNightConfirm?.open, interactionMode, selectedGuestIds]);
+
+  const onGuestLongPressMove = useCallback((e: React.PointerEvent) => {
+    if (!longPressTimer.current || !longPressStart.current) return;
+    const dx = e.clientX - longPressStart.current.x;
+    const dy = e.clientY - longPressStart.current.y;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+      longPressStart.current = null;
+    }
+  }, []);
+
+  const onGuestLongPressEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    longPressStart.current = null;
+  }, []);
+
+  // Close context menu on outside click / scroll / Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    // Use timeout to prevent immediate close from the same click that opened the menu
+    const timer = setTimeout(() => {
+      document.addEventListener('click', close);
+      document.addEventListener('scroll', close, true);
+      document.addEventListener('keydown', onKeyDown);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', close);
+      document.removeEventListener('scroll', close, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
+
   const handleAddPartyGuest = () => {
     setEditingId(null);
     setFormValues({
@@ -1226,6 +1357,51 @@ const RoomAssignment = () => {
       }
     });
   };
+
+  const contextMenuActions = useMemo(() => {
+    if (!contextMenu) return null;
+    const { targetIds } = contextMenu;
+    const firstRes = reservations.find((r) => r.id === targetIds[0]);
+    if (!firstRes) return null;
+
+    const effectiveSection = firstRes.room_id ? 'room' : (sectionOverrides[firstRes.id] ?? firstRes.section ?? 'unassigned');
+
+    return {
+      targetCount: targetIds.length,
+      currentSection: effectiveSection as 'room' | 'unassigned' | 'party',
+      hasStayGroup: !!firstRes.stay_group_id,
+      onMoveToPool: () => {
+        targetIds.forEach((id) => handleDropOnPool(id));
+        setContextMenu(null);
+      },
+      onMoveToParty: () => {
+        targetIds.forEach((id) => handleDropOnParty(id));
+        setContextMenu(null);
+      },
+      onDelete: () => {
+        if (targetIds.length > 1) {
+          showConfirm('게스트 일괄 삭제', `${targetIds.length}명을 삭제하시겠습니까?`, async () => {
+            for (const id of targetIds) {
+              try { await reservationsAPI.delete(id); } catch { /* skip */ }
+            }
+            toast.success(`${targetIds.length}명 삭제 완료`);
+            fetchReservations(selectedDate);
+          });
+        } else {
+          handleDeleteGuest(targetIds[0]);
+        }
+        setContextMenu(null);
+      },
+      onLinkStayGroup: () => {
+        if (firstRes.stay_group_id) {
+          handleStayGroupUnlink(firstRes.id);
+        } else {
+          openStayGroupModal();
+        }
+        setContextMenu(null);
+      },
+    };
+  }, [contextMenu, reservations, sectionOverrides, handleDropOnPool, handleDropOnParty, handleDeleteGuest, selectedDate, fetchReservations, handleStayGroupUnlink, openStayGroupModal, showConfirm]);
 
   const handleSubmit = async () => {
     if (savingReservation) return;
@@ -1384,23 +1560,119 @@ const RoomAssignment = () => {
     return 'cursor-default';
   };
 
+  // ===== Select mode handlers =====
+  const onGripClick = useCallback((e: React.PointerEvent, resId: number) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const res = reservations.find(r => r.id === resId);
+    setSelectedGuestIds(prev => {
+      const next = new Set(prev);
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        if (res?.is_long_stay) {
+          toast.warning('연박자는 개별 선택만 가능합니다');
+          return prev;
+        }
+        if ([...prev].some(id => reservations.find(r => r.id === id)?.is_long_stay)) {
+          toast.warning('연박자가 포함된 상태에서 멀티셀렉트할 수 없습니다');
+          return prev;
+        }
+        if (next.has(resId)) next.delete(resId);
+        else next.add(resId);
+      } else {
+        if (next.has(resId) && next.size === 1) {
+          next.clear();
+        } else {
+          next.clear();
+          next.add(resId);
+        }
+      }
+      return next;
+    });
+  }, [reservations]);
+
+  const onDropZoneClick = useCallback((e: React.MouseEvent) => {
+    if (selectedGuestIds.size === 0) return;
+
+    const interactive = (e.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"], [data-interactive]');
+    if (interactive) return;
+
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-drop-zone]');
+    if (!target) return;
+    const zoneId = target.dataset.dropZone || '';
+
+    const ids = [...selectedGuestIds];
+    setSelectedGuestIds(new Set());
+
+    if (zoneId.startsWith('room-')) {
+      const roomId = Number(zoneId.replace('room-', ''));
+      ids.forEach(id => handleDropOnRoom(id, roomId));
+    } else if (zoneId === 'pool') {
+      ids.forEach(id => handleDropOnPool(id));
+    } else if (zoneId === 'party') {
+      ids.forEach(id => handleDropOnParty(id));
+    } else if (zoneId === 'trash') {
+      ids.forEach(id => handleDeleteGuest(id));
+    }
+  }, [selectedGuestIds, handleDropOnRoom, handleDropOnPool, handleDropOnParty, handleDeleteGuest]);
+
+  const onZoneHover = useCallback((zoneId: string) => {
+    if (selectedGuestIds.size === 0) return;
+    if (zoneId.startsWith('room-')) {
+      setDragOverRoom(Number(zoneId.replace('room-', '')));
+    } else if (zoneId === 'pool') setDragOverPool(true);
+    else if (zoneId === 'party') setDragOverPartyZone(true);
+    else if (zoneId === 'trash') setDragOverTrash(true);
+  }, [selectedGuestIds.size]);
+
+  const onZoneLeave = useCallback(() => {
+    setDragOverRoom(null);
+    setDragOverPool(false);
+    setDragOverPartyZone(false);
+    setDragOverTrash(false);
+  }, []);
+
   const renderGuestRow = (res: Reservation, showGrip: boolean) => {
     const genderPeople = formatGenderPeople(res);
     const longStay = !!res.is_long_stay;
+    const isSelected = interactionMode === 'select' && selectedGuestIds.has(res.id);
 
     return (
-      <div key={res.id} className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'} ${guestAreaCursor()}`}>
+      <div key={res.id}
+        className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${
+          isSelected
+            ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
+            : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
+        } ${guestAreaCursor()}`}
+        onContextMenu={(e) => onGuestContextMenu(e, res.id)}
+      >
         {showGrip && (
           <div
-            onPointerDown={(e) => onCustomDragStart(e, res.id)}
-            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 touch-none ${longStay ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
+            onPointerDown={interactionMode === 'drag'
+              ? (e) => onCustomDragStart(e, res.id)
+              : (e) => onGripClick(e, res.id)}
+            className={`flex items-center justify-center ${interactionMode === 'select' ? 'w-10' : 'w-7'} px-0.5 flex-shrink-0 ${
+              interactionMode === 'drag' ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+            } text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 touch-none ${
+              isSelected
+                ? 'text-[#3182F6] dark:text-[#3182F6]'
+                : longStay ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'
+            }`}
           >
-            <GripVertical size={14} />
+            {interactionMode === 'select' && isSelected
+              ? <Check size={14} />
+              : <GripVertical size={14} />
+            }
           </div>
         )}
         <div
           className="flex-1 grid items-center py-1"
           style={{ gridTemplateColumns: GUEST_COLS }}
+          onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
+          onPointerMove={onGuestLongPressMove}
+          onPointerUp={onGuestLongPressEnd}
+          onPointerCancel={onGuestLongPressEnd}
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" autoFocus={res.id === quickAddedId} />
@@ -1461,9 +1733,12 @@ const RoomAssignment = () => {
           ${isDragOver
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-[#3182F6]/30'
             : stripeBg
-          }`}
+          } ${selectionActive ? 'cursor-pointer' : ''}`}
         style={{ minHeight: `${totalRows * rowHeight}px` }}
         data-drop-zone={`room-${room_id}`}
+        onClick={interactionMode === 'select' ? onDropZoneClick : undefined}
+        onMouseEnter={interactionMode === 'select' ? () => onZoneHover(`room-${room_id}`) : undefined}
+        onMouseLeave={interactionMode === 'select' ? onZoneLeave : undefined}
       >
         {/* Room label - vertically centered, spans all rows */}
         <div className={`flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b ${borderColor} ${stripeBg}`}>
@@ -1769,6 +2044,14 @@ const RoomAssignment = () => {
 
             <div className="ml-auto flex items-center gap-2">
               <Button
+                color={interactionMode === 'select' ? 'blue' : 'light'}
+                size="sm"
+                onClick={() => setInteractionMode(prev => prev === 'drag' ? 'select' : 'drag')}
+              >
+                {interactionMode === 'drag' ? <GripVertical className="h-3.5 w-3.5 mr-1.5" /> : <MousePointer className="h-3.5 w-3.5 mr-1.5" />}
+                {interactionMode === 'drag' ? '드래그 모드' : '선택 모드'}
+              </Button>
+              <Button
                 color="light"
                 size="sm"
                 onClick={() => {
@@ -1914,6 +2197,24 @@ const RoomAssignment = () => {
                 </div>
               </div>
 
+              {/* Selection mode banner */}
+              {selectionActive && (
+                <div className="sticky z-[18] bg-[#3182F6] text-white px-4 py-2 flex items-center justify-between text-sm" style={{ top: dateHeaderH + 40 }}>
+                  <span>
+                    {selectedGuestIds.size === 1
+                      ? `${reservations.find(r => r.id === [...selectedGuestIds][0])?.customer_name} — 이동할 방을 클릭하세요`
+                      : `${selectedGuestIds.size}명 선택됨 — 이동할 방을 클릭하세요`
+                    }
+                  </span>
+                  <button
+                    onClick={() => setSelectedGuestIds(new Set())}
+                    className="ml-4 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 text-xs cursor-pointer"
+                  >
+                    ESC 취소
+                  </button>
+                </div>
+              )}
+
               {/* Room Rows (stale-while-revalidate: 이전 데이터 유지, 새 데이터 조용히 교체) */}
               <div className={loading ? 'pointer-events-none' : ''}>
                 {(() => {
@@ -1964,9 +2265,12 @@ const RoomAssignment = () => {
                   dragOverPool
                     ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/8'
                     : unassigned.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
-                }`}
+                } ${selectionActive ? 'cursor-pointer' : ''}`}
                 style={{ minHeight: `${Math.max(1, unassigned.length) * 40}px` }}
                 data-drop-zone="pool"
+                onClick={interactionMode === 'select' ? onDropZoneClick : undefined}
+                onMouseEnter={interactionMode === 'select' ? () => onZoneHover('pool') : undefined}
+                onMouseLeave={interactionMode === 'select' ? onZoneLeave : undefined}
               >
                 {/* Room label */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
@@ -1981,7 +2285,7 @@ const RoomAssignment = () => {
                     <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
                       <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: GUEST_COLS }}>
                         <div className="overflow-hidden truncate col-span-full text-body text-[#FF9500] dark:text-[#FF9500] italic px-1.5">
-                          {dragOverPool ? '여기에 놓으면 배정 해제' : ''}
+                          {dragOverPool ? (interactionMode === 'select' ? '클릭하면 배정 해제' : '여기에 놓으면 배정 해제') : ''}
                         </div>
                       </div>
                     </div>
@@ -1998,9 +2302,12 @@ const RoomAssignment = () => {
                   dragOverPartyZone
                     ? 'bg-[#7B61FF]/5 dark:bg-[#7B61FF]/8'
                     : partyOnly.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
-                }`}
+                } ${selectionActive ? 'cursor-pointer' : ''}`}
                 style={{ minHeight: `${Math.max(1, partyOnly.length) * 40}px` }}
                 data-drop-zone="party"
+                onClick={interactionMode === 'select' ? onDropZoneClick : undefined}
+                onMouseEnter={interactionMode === 'select' ? () => onZoneHover('party') : undefined}
+                onMouseLeave={interactionMode === 'select' ? onZoneLeave : undefined}
               >
                 {/* Room label */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
@@ -2015,7 +2322,7 @@ const RoomAssignment = () => {
                     <div className={`flex items-center h-10 ${guestAreaCursor()}`}>
                       <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: GUEST_COLS }}>
                         <div className="overflow-hidden truncate col-span-full text-body text-[#7B61FF] dark:text-[#7B61FF] italic px-1.5">
-                          {dragOverPartyZone ? '여기에 놓으면 파티만 게스트로 전환' : ''}
+                          {dragOverPartyZone ? (interactionMode === 'select' ? '클릭하면 파티만으로 전환' : '여기에 놓으면 파티만 게스트로 전환') : ''}
                         </div>
                       </div>
                     </div>
@@ -2199,19 +2506,22 @@ const RoomAssignment = () => {
               </button>
             </div>
           </Tooltip>
-          <Tooltip content={dragOverTrash ? '놓으면 삭제됩니다' : '게스트를 드래그하여 삭제'} placement="top">
+          <Tooltip content={selectionActive ? '게스트 선택 후 클릭하여 삭제' : dragOverTrash ? '놓으면 삭제됩니다' : '게스트를 드래그하여 삭제'} placement="top">
             <div className="inline-block">
               <div
                 data-drop-zone="trash"
+                onClick={interactionMode === 'select' ? onDropZoneClick : undefined}
+                onMouseEnter={interactionMode === 'select' ? () => onZoneHover('trash') : undefined}
+                onMouseLeave={interactionMode === 'select' ? onZoneLeave : undefined}
                 className={`flex items-center justify-center rounded-full transition-all duration-300 ${
                   dragOverTrash
                     ? 'h-12 w-12 bg-[#F04452] text-white scale-110 shadow-lg shadow-[#F04452]/40 ring-4 ring-[#F04452]/20'
-                    : dragActive
+                    : (dragActive || selectionActive)
                       ? 'h-12 w-12 bg-[#FFEBEE] dark:bg-[#F04452]/15 text-[#F04452] border-2 border-[#F04452] animate-bounce'
                       : 'h-10 w-10 bg-white dark:bg-[#2C2C34] border border-[#E5E8EB] dark:border-gray-700 text-[#8B95A1] dark:text-gray-400'
-                }`}
+                } ${selectionActive ? 'cursor-pointer' : ''}`}
               >
-                <Trash2 className={`transition-all duration-300 ${dragActive ? 'h-5 w-5' : 'h-[18px] w-[18px]'}`} />
+                <Trash2 className={`transition-all duration-300 ${(dragActive || selectionActive) ? 'h-5 w-5' : 'h-[18px] w-[18px]'}`} />
               </div>
             </div>
           </Tooltip>
@@ -2646,6 +2956,21 @@ const RoomAssignment = () => {
           )}
         </ModalFooter>
       </Modal>
+
+      {/* Context menu */}
+      {contextMenu && contextMenuActions && (
+        <GuestContextMenu
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          targetCount={contextMenuActions.targetCount}
+          currentSection={contextMenuActions.currentSection}
+          hasStayGroup={contextMenuActions.hasStayGroup}
+          onMoveToPool={contextMenuActions.onMoveToPool}
+          onMoveToParty={contextMenuActions.onMoveToParty}
+          onDelete={contextMenuActions.onDelete}
+          onLinkStayGroup={contextMenuActions.onLinkStayGroup}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 };
