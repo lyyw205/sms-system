@@ -65,15 +65,6 @@ interface Reservation {
   is_long_stay?: boolean;
 }
 
-function isMultiNight(res: Reservation): boolean {
-  if (!res.check_out_date || !res.check_in_date) return false;
-  const start = dayjs(res.check_in_date);
-  const end = dayjs(res.check_out_date);
-  return end.diff(start, 'day') > 1;
-}
-
-
-
 
 
 function formatGenderPeople(res: Reservation): string {
@@ -889,7 +880,7 @@ const RoomAssignment = () => {
     if (!res) return;
 
     // Multi-night or consecutive-stay guest: ask whether to apply to all dates
-    if (isMultiNight(res) || !!res.stay_group_id) {
+    if (!!res.is_long_stay) {
       setMultiNightConfirm({
         open: true,
         resId,
