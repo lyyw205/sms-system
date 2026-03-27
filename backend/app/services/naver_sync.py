@@ -204,20 +204,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
     section_hint = res_data.get("_section_hint")
     section = section_hint if section_hint in ('party', 'room') else 'unassigned'
 
-    # Compute is_long_stay from check_in/check_out dates
-    _is_long_stay = False
-    _cin = res_data.get("date")
-    _cout = res_data.get("end_date")
-    if _cin and _cout:
-        try:
-            from datetime import datetime as _dt
-            _d1 = _dt.strptime(str(_cin), "%Y-%m-%d")
-            _d2 = _dt.strptime(str(_cout), "%Y-%m-%d")
-            _is_long_stay = (_d2 - _d1).days > 1
-        except (ValueError, TypeError):
-            pass
-
-    return Reservation(
+    reservation = Reservation(
         external_id=res_data.get("external_id"),
         naver_booking_id=res_data.get("naver_booking_id"),
         naver_biz_item_id=res_data.get("naver_biz_item_id"),
@@ -243,8 +230,9 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         cancelled_at=_parse_datetime(res_data.get("cancelled_at")),
         gender=res_data.get("gender"),
         section=section,
-        is_long_stay=_is_long_stay,
     )
+    reservation.is_long_stay = compute_is_long_stay(reservation)
+    return reservation
 
 
 def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, Any]):
