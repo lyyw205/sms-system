@@ -1440,12 +1440,8 @@ const RoomAssignment = () => {
     const rowHeight = hasGuests ? 40 : 36;
     const stripeBg = rowIndex % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
 
-    const groupBorderClasses = groupInfo
-      ? [
-          'border-l-2 border-r-2 border-[#9CA3AF] dark:border-[#6B7280]',
-          groupInfo.isFirst ? 'border-t-2' : '',
-          groupInfo.isLast ? 'border-b-2 border-b-[#9CA3AF] dark:border-b-[#6B7280]' : '',
-        ].filter(Boolean).join(' ')
+    const groupBorderClasses = groupInfo?.isLast
+      ? 'border-b border-b-[#D1D5DB] dark:border-b-[#4E5968]'
       : '';
 
     return (

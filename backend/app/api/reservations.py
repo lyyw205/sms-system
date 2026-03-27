@@ -546,16 +546,17 @@ async def update_daily_info(
 
 @router.post("/sync/naver")
 @limiter.limit("5/minute")
-async def sync_from_naver(request: Request, from_date: Optional[str] = None, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user), tenant: Tenant = Depends(get_current_tenant)):
+async def sync_from_naver(request: Request, from_date: Optional[str] = None, reconcile_date: Optional[str] = None, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user), tenant: Tenant = Depends(get_current_tenant)):
     """Sync reservations from Naver Smart Place API.
 
     Args:
         from_date: Optional start date (YYYY-MM-DD) for historical sync.
+        reconcile_date: Optional check-in date (YYYY-MM-DD) for STARTDATE-based reconciliation.
     """
     from app.services.naver_sync import sync_naver_to_db
 
     reservation_provider = get_reservation_provider_for_tenant(tenant)
-    result = await sync_naver_to_db(reservation_provider, db, from_date=from_date)
+    result = await sync_naver_to_db(reservation_provider, db, from_date=from_date, reconcile_date=reconcile_date)
 
     log_activity(
         db,
