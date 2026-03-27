@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, DragEvent, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
@@ -63,6 +63,7 @@ interface Reservation {
   stay_group_id?: string | null;
   stay_group_order?: number | null;
   is_long_stay?: boolean;
+  bed_order?: number;
 }
 
 
@@ -345,6 +346,9 @@ const RoomAssignment = () => {
   const [dragOverPartyZone, setDragOverPartyZone] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [dragOverTrash, setDragOverTrash] = useState(false);
+  const dragScrollRaf = useRef<number | null>(null);
+  const dragResId = useRef<number | null>(null);
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
   const [recentlyMovedId, setRecentlyMovedId] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   const [quickAddedId, setQuickAddedId] = useState<number | null>(null);
@@ -447,10 +451,21 @@ const RoomAssignment = () => {
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const dateHeaderRef = useRef<HTMLDivElement>(null);
+  const [dateHeaderH, setDateHeaderH] = useState(0);
 
   useEffect(() => {
     localStorage.setItem('roomAssignment_colWidths', JSON.stringify(colWidths));
   }, [colWidths]);
+
+  // 날짜 헤더 높이 측정 → 테이블 헤더 sticky top 계산
+  useEffect(() => {
+    if (!dateHeaderRef.current) return;
+    const ro = new ResizeObserver(([entry]) => setDateHeaderH(entry.contentRect.height));
+    ro.observe(dateHeaderRef.current);
+    setDateHeaderH(dateHeaderRef.current.offsetHeight);
+    return () => ro.disconnect();
+  }, []);
 
   const GUEST_COLS = useMemo(() => {
     return `${colWidths.name}px ${colWidths.phone}px ${colWidths.party}px ${colWidths.gender}px ${colWidths.roomType}px ${colWidths.notes}px minmax(${colWidths.sms}px, 1fr)`;
@@ -489,8 +504,9 @@ const RoomAssignment = () => {
 
 
   const roomGroupMap = useMemo(() => {
-    const map = new Map<number, { group_id: number; isFirst: boolean; isLast: boolean }>();
-    for (const group of roomGroups) {
+    const map = new Map<number, { group_id: number; groupIndex: number; isFirst: boolean; isLast: boolean }>();
+    for (let gi = 0; gi < roomGroups.length; gi++) {
+      const group = roomGroups[gi];
       // Find positions of group rooms within activeRoomEntries order
       const orderedIds = activeRoomEntries
         .map((e) => e.room_id)
@@ -498,6 +514,7 @@ const RoomAssignment = () => {
       orderedIds.forEach((roomId, idx) => {
         map.set(roomId, {
           group_id: group.id,
+          groupIndex: gi,
           isFirst: idx === 0,
           isLast: idx === orderedIds.length - 1,
         });
@@ -802,36 +819,210 @@ const RoomAssignment = () => {
     });
   }, []);
 
-  const onDragStart = (e: DragEvent, resId: number) => {
-    e.dataTransfer.setData('text/plain', String(resId));
-    e.dataTransfer.effectAllowed = 'move';
+  // --- Custom pointer-based drag system (휠 스크롤 + 터치 지원) ---
+  const onCustomDragStart = (e: React.PointerEvent, resId: number) => {
+    // 좌클릭만 (터치는 pointerType === 'touch')
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    dragResId.current = resId;
     setDragActive(true);
 
-    // Custom small drag ghost — show guest name in a compact pill
+    // 고스트 생성
     const res = reservations.find((r) => r.id === resId);
     const ghost = document.createElement('div');
     ghost.textContent = res?.customer_name || '이동';
-    ghost.style.cssText = 'position:fixed;top:-100px;left:-100px;padding:4px 12px;border-radius:8px;background:#3182F6;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:9999;';
+    ghost.style.cssText = `position:fixed;left:${e.clientX + 12}px;top:${e.clientY - 14}px;padding:4px 12px;border-radius:8px;background:#3182F6;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:9999;transform:scale(1);transition:transform 0.15s;`;
     document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  };
+    dragGhostRef.current = ghost;
 
-  const onDragEnd = () => {
-    setDragActive(false);
-    setDragOverTrash(false);
-  };
+    // 텍스트 선택 방지
+    document.body.style.userSelect = 'none';
 
-  const onRoomDragOver = (e: DragEvent, roomId: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverRoom !== roomId) setDragOverRoom(roomId);
-  };
-  const onRoomDragLeave = (e: DragEvent) => {
-    // Only clear if actually leaving the room container (not entering a child)
-    const related = e.relatedTarget as Node | null;
-    if (!related || !e.currentTarget.contains(related)) {
+    const EDGE_ZONE = 80;
+    const MAX_SPEED = 20;
+
+    const onPointerMove = (ev: PointerEvent) => {
+      // 고스트 위치 업데이트
+      if (dragGhostRef.current) {
+        dragGhostRef.current.style.left = `${ev.clientX + 12}px`;
+        dragGhostRef.current.style.top = `${ev.clientY - 14}px`;
+      }
+
+      // elementFromPoint로 드롭 타겟 판별
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const dropZone = target?.closest<HTMLElement>('[data-drop-zone]');
+      const zoneId = dropZone?.dataset.dropZone || '';
+
+      // 하이라이트 업데이트
+      if (zoneId.startsWith('room-')) {
+        const roomId = Number(zoneId.replace('room-', ''));
+        setDragOverRoom(roomId);
+        setDragOverPool(false);
+        setDragOverPartyZone(false);
+        setDragOverTrash(false);
+      } else if (zoneId === 'pool') {
+        setDragOverRoom(null);
+        setDragOverPool(true);
+        setDragOverPartyZone(false);
+        setDragOverTrash(false);
+      } else if (zoneId === 'party') {
+        setDragOverRoom(null);
+        setDragOverPool(false);
+        setDragOverPartyZone(true);
+        setDragOverTrash(false);
+      } else if (zoneId === 'trash') {
+        setDragOverRoom(null);
+        setDragOverPool(false);
+        setDragOverPartyZone(false);
+        setDragOverTrash(true);
+      } else {
+        setDragOverRoom(null);
+        setDragOverPool(false);
+        setDragOverPartyZone(false);
+        setDragOverTrash(false);
+      }
+
+      // 가장자리 자동 스크롤
+      if (dragScrollRaf.current) cancelAnimationFrame(dragScrollRaf.current);
+      const y = ev.clientY;
+      const vh = window.innerHeight;
+      let speed = 0;
+      if (y < EDGE_ZONE) {
+        speed = -MAX_SPEED * Math.pow(1 - y / EDGE_ZONE, 1.5);
+      } else if (y > vh - EDGE_ZONE) {
+        speed = MAX_SPEED * Math.pow(1 - (vh - y) / EDGE_ZONE, 1.5);
+      }
+      if (speed !== 0) {
+        const scroll = () => {
+          window.scrollBy(0, speed);
+          dragScrollRaf.current = requestAnimationFrame(scroll);
+        };
+        dragScrollRaf.current = requestAnimationFrame(scroll);
+      } else if (dragScrollRaf.current) {
+        cancelAnimationFrame(dragScrollRaf.current);
+        dragScrollRaf.current = null;
+      }
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+      document.body.style.userSelect = '';
+
+      // 고스트 제거
+      if (dragGhostRef.current) { dragGhostRef.current.remove(); dragGhostRef.current = null; }
+      if (dragScrollRaf.current) { cancelAnimationFrame(dragScrollRaf.current); dragScrollRaf.current = null; }
+
+      // 드롭 타겟 판별
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const dropZone = target?.closest<HTMLElement>('[data-drop-zone]');
+      const zoneId = dropZone?.dataset.dropZone || '';
+      const curResId = dragResId.current;
+
+      // 상태 리셋
+      setDragActive(false);
       setDragOverRoom(null);
+      setDragOverPool(false);
+      setDragOverPartyZone(false);
+      setDragOverTrash(false);
+      dragResId.current = null;
+
+      if (!curResId) return;
+
+      // 드롭 액션 실행
+      if (zoneId.startsWith('room-')) {
+        const roomId = Number(zoneId.replace('room-', ''));
+        handleDropOnRoom(curResId, roomId);
+      } else if (zoneId === 'pool') {
+        handleDropOnPool(curResId);
+      } else if (zoneId === 'party') {
+        handleDropOnParty(curResId);
+      } else if (zoneId === 'trash') {
+        handleDeleteGuest(curResId);
+      }
+    };
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  };
+
+  // --- 드롭 액션 (기존 onXxxDrop 비즈니스 로직 보존) ---
+  const handleDropOnRoom = (resId: number, roomId: number) => {
+    const currentList = assignedRooms.get(roomId) || [];
+    if (currentList.some((r) => r.id === resId)) return;
+    const res = reservations.find((r) => r.id === resId);
+    if (!res) return;
+    const entry = activeRoomEntries.find((e) => e.room_id === roomId);
+    const roomNumber = entry?.room_number || '';
+
+    if (!!res.is_long_stay) {
+      setMultiNightConfirm({
+        open: true, resId, resName: res.customer_name, roomId, roomNumber,
+        onConfirm: (applySubsequent) => {
+          setMultiNightConfirm(null);
+          doAssignRoom(resId, roomId, roomNumber, applySubsequent, !!res.stay_group_id && applySubsequent);
+        },
+      });
+      return;
+    }
+    doAssignRoom(resId, roomId, roomNumber, true);
+  };
+
+  const handleDropOnPool = async (resId: number) => {
+    const res = reservations.find((r) => r.id === resId);
+    if (!res) return;
+    setRecentlyMovedId(resId);
+    const effectiveSection = sectionOverrides[resId] ?? res.section;
+    if (!res.room_id && effectiveSection === 'unassigned') return;
+
+    if (res.room_id) {
+      setReservations((prev) => prev.map((r) => {
+        if (r.id !== resId) return r;
+        const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
+        return { ...r, room_id: null, room_number: null, sms_assignments: filtered };
+      }));
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
+      try {
+        await reservationsAPI.assignRoom(resId, { room_id: null, date: selectedDate.format('YYYY-MM-DD'), apply_subsequent: true });
+        await reservationsAPI.update(resId, { section: 'unassigned' });
+        toast.success('미배정으로 이동');
+        fetchReservations(selectedDate);
+      } catch { toast.error('배정 해제에 실패했습니다.'); await fetchReservations(selectedDate); }
+    } else {
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
+      toast.success('미배정으로 이동');
+      try { await reservationsAPI.update(resId, { section: 'unassigned' }); fetchReservations(selectedDate); }
+      catch { setSectionOverrides((prev) => { const next = { ...prev }; delete next[resId]; return next; }); toast.error('이동 실패'); }
+    }
+  };
+
+  const handleDropOnParty = async (resId: number) => {
+    const guest = reservations.find((r) => r.id === resId);
+    if (!guest) return;
+    setRecentlyMovedId(resId);
+    const effectiveSection = sectionOverrides[resId] ?? guest.section;
+    if (!guest.room_id && effectiveSection === 'party') return;
+
+    if (guest.room_id) {
+      setReservations((prev) => prev.map((r) => {
+        if (r.id !== resId) return r;
+        const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
+        return { ...r, room_id: null, room_number: null, sms_assignments: filtered };
+      }));
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
+      try {
+        await reservationsAPI.assignRoom(resId, { room_id: null, date: selectedDate.format('YYYY-MM-DD'), apply_subsequent: true });
+        await reservationsAPI.update(resId, { section: 'party' });
+        toast.success('파티만으로 이동');
+        fetchReservations(selectedDate);
+      } catch { toast.error('이동 실패'); await fetchReservations(selectedDate); }
+    } else {
+      setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
+      toast.success('파티만으로 이동');
+      try { await reservationsAPI.update(resId, { section: 'party' }); fetchReservations(selectedDate); }
+      catch { setSectionOverrides((prev) => { const next = { ...prev }; delete next[resId]; return next; }); toast.error('이동 실패'); }
     }
   };
 
@@ -868,168 +1059,7 @@ const RoomAssignment = () => {
     }
   };
 
-  const onRoomDrop = async (e: DragEvent, roomId: number, roomNumber: string) => {
-    e.preventDefault();
-    setDragOverRoom(null);
-    const resId = Number(e.dataTransfer.getData('text/plain'));
-    if (!resId) return;
-    const currentList = assignedRooms.get(roomId) || [];
-    if (currentList.some((r) => r.id === resId)) return;
 
-    const res = reservations.find((r) => r.id === resId);
-    if (!res) return;
-
-    // Multi-night or consecutive-stay guest: ask whether to apply to all dates
-    if (!!res.is_long_stay) {
-      setMultiNightConfirm({
-        open: true,
-        resId,
-        resName: res.customer_name,
-        roomId,
-        roomNumber,
-        onConfirm: (applySubsequent) => {
-          setMultiNightConfirm(null);
-          doAssignRoom(resId, roomId, roomNumber, applySubsequent, !!res.stay_group_id && applySubsequent);
-        },
-      });
-      return;
-    }
-
-    // Single-night: assign directly (apply_subsequent doesn't matter)
-    await doAssignRoom(resId, roomId, roomNumber, true);
-  };
-
-  const onPoolDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (!dragOverPool) setDragOverPool(true);
-  };
-  const onPoolDragLeave = (e: DragEvent) => {
-    const related = e.relatedTarget as Node | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setDragOverPool(false);
-    }
-  };
-
-  const onPoolDrop = async (e: DragEvent) => {
-    e.preventDefault();
-    setDragOverPool(false);
-    const resId = Number(e.dataTransfer.getData('text/plain'));
-    if (!resId) return;
-    const res = reservations.find((r) => r.id === resId);
-    if (!res) return;
-    setRecentlyMovedId(resId);
-
-    // Already in unassigned section → nothing to do
-    const effectiveSectionPool = sectionOverrides[resId] ?? res.section;
-    if (!res.room_id && effectiveSectionPool === 'unassigned') return;
-
-    if (res.room_id) {
-      // Optimistic update: clear room + remove unsent room_info tag
-      setReservations((prev) =>
-        prev.map((r) => {
-          if (r.id !== resId) return r;
-          const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
-          return { ...r, room_id: null, room_number: null, sms_assignments: filtered };
-        })
-      );
-      setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
-
-      try {
-        await reservationsAPI.assignRoom(resId, { room_id: null, date: selectedDate.format('YYYY-MM-DD'), apply_subsequent: true });
-        // unassign_room sets section by naver_room_type; override to 'unassigned' explicitly
-        await reservationsAPI.update(resId, { section: 'unassigned' });
-        toast.success('미배정으로 이동');
-        fetchReservations(selectedDate);
-      } catch {
-        toast.error('배정 해제에 실패했습니다.');
-        await fetchReservations(selectedDate);
-      }
-    } else {
-      // Section move (party → unassigned): update DB
-      setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
-      toast.success('미배정으로 이동');
-      try {
-        await reservationsAPI.update(resId, { section: 'unassigned' });
-        fetchReservations(selectedDate);
-      } catch {
-        // Revert optimistic update on failure
-        setSectionOverrides((prev) => {
-          const next = { ...prev };
-          delete next[resId];
-          return next;
-        });
-        toast.error('이동 실패');
-      }
-    }
-  };
-
-  const onPartyZoneDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (!dragOverPartyZone) setDragOverPartyZone(true);
-  };
-
-  const onPartyZoneDragLeave = (e: DragEvent) => {
-    const related = e.relatedTarget as Node | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setDragOverPartyZone(false);
-    }
-  };
-
-  const onPartyZoneDrop = async (e: DragEvent) => {
-    e.preventDefault();
-    setDragOverPartyZone(false);
-    const resId = Number(e.dataTransfer.getData('text/plain'));
-    if (!resId) return;
-    setRecentlyMovedId(resId);
-
-    const guest = reservations.find((r) => r.id === resId);
-    if (!guest) return;
-
-    // Already in party section → nothing to do
-    const effectiveSectionParty = sectionOverrides[resId] ?? guest.section;
-    if (!guest.room_id && effectiveSectionParty === 'party') return;
-
-    if (guest.room_id) {
-      // Optimistic update: clear room + remove unsent room_info tag
-      setReservations((prev) =>
-        prev.map((r) => {
-          if (r.id !== resId) return r;
-          const filtered = r.sms_assignments?.filter((a) => !(a.template_key === 'room_info' && !a.sent_at)) || [];
-          return { ...r, room_id: null, room_number: null, sms_assignments: filtered };
-        })
-      );
-      setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
-
-      try {
-        await reservationsAPI.assignRoom(resId, { room_id: null, date: selectedDate.format('YYYY-MM-DD'), apply_subsequent: true });
-        // unassign_room sets section by naver_room_type; override to 'party' explicitly
-        await reservationsAPI.update(resId, { section: 'party' });
-        toast.success('파티만으로 이동');
-        fetchReservations(selectedDate);
-      } catch {
-        toast.error('이동 실패');
-        await fetchReservations(selectedDate);
-      }
-    } else {
-      // Section move (unassigned → party): update DB
-      setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
-      toast.success('파티만으로 이동');
-      try {
-        await reservationsAPI.update(resId, { section: 'party' });
-        fetchReservations(selectedDate);
-      } catch {
-        // Revert optimistic update on failure
-        setSectionOverrides((prev) => {
-          const next = { ...prev };
-          delete next[resId];
-          return next;
-        });
-        toast.error('이동 실패');
-      }
-    }
-  };
 
   // Stay group modal helpers
   const loadReservationsForDate = async (date: string) => {
@@ -1363,10 +1393,8 @@ const RoomAssignment = () => {
       <div key={res.id} className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'} ${guestAreaCursor()}`}>
         {showGrip && (
           <div
-            draggable
-            onDragStart={(e) => onDragStart(e, res.id)}
-            onDragEnd={onDragEnd}
-            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${longStay ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
+            onPointerDown={(e) => onCustomDragStart(e, res.id)}
+            className={`flex items-center justify-center w-7 px-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 touch-none ${longStay ? 'group-hover/guest:text-[#FFB366] dark:group-hover/guest:text-[#FFB366]' : 'group-hover/guest:text-[#3182F6] dark:group-hover/guest:text-[#3182F6]'}`}
           >
             <GripVertical size={14} />
           </div>
@@ -1389,7 +1417,7 @@ const RoomAssignment = () => {
           </div>
           <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-[#8B95A1] text-center px-1.5">{res.naver_room_type || <span className="text-[#B0B8C1] dark:text-[#4E5968]">-</span>}</div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-[#8B95A1]" placeholder="" />
+            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#191F28] dark:text-white" placeholder="" />
           </div>
           <div className="overflow-visible px-1.5">
             <SmsCell reservation={res} templateLabels={templateLabels} selectedDate={selectedDate.format('YYYY-MM-DD')} onToggle={handleSmsToggle} onAssign={handleSmsAssign} onRemove={handleSmsRemove} />
@@ -1406,29 +1434,12 @@ const RoomAssignment = () => {
     const isDragOver = dragOverRoom === room_id;
     const nextGuestsRaw = nextDayRoomMap.get(room_id) || [];
 
-    // 도미토리: 연박자를 윗행에 고정, 날짜간 행 위치 통일
+    // 도미토리: bed_order 기준 정렬 (백엔드에서 연박자 행 위치 통일)
     let guests = guestsRaw;
     let nextGuests = nextGuestsRaw;
     if (isDormitory) {
-      // 연박자(2박+ 예약 또는 연속 예약 그룹)를 윗행에, 1박만 아래로
-      const todayIds = new Set(guestsRaw.map(g => g.id));
-      const nextIds = new Set(nextGuestsRaw.map(g => g.id));
-      const isStayingGuest = (g: Reservation) => !!g.is_long_stay;
-
-      // 오늘: 연박자 먼저 → ID순, 그 다음 1박만 → ID순
-      const todayContinuing = [...guestsRaw].filter(g => isStayingGuest(g)).sort((a, b) => a.id - b.id);
-      const todayOnly = [...guestsRaw].filter(g => !isStayingGuest(g)).sort((a, b) => a.id - b.id);
-      const guestsSorted = [...todayContinuing, ...todayOnly];
-
-      // 내일: 연박자는 오늘과 같은 행 순서 유지, 신규는 아래에
-      const continuingIds = todayContinuing.map(g => g.id);
-      const nextIsStaying = (g: Reservation) => !!g.is_long_stay;
-      const nextContinuing = continuingIds.map(id => nextGuestsRaw.find(g => g.id === id)).filter(Boolean) as Reservation[];
-      const nextOnlyContinuing = [...nextGuestsRaw].filter(g => nextIsStaying(g) && !continuingIds.includes(g.id)).sort((a, b) => a.id - b.id);
-      const nextNew = [...nextGuestsRaw].filter(g => !nextIsStaying(g)).sort((a, b) => a.id - b.id);
-      const nextSorted = [...nextContinuing, ...nextOnlyContinuing, ...nextNew];
-      guests = guestsSorted;
-      nextGuests = nextSorted;
+      guests = [...guestsRaw].sort((a, b) => (a.bed_order || 0) - (b.bed_order || 0) || a.id - b.id);
+      nextGuests = [...nextGuestsRaw].sort((a, b) => (a.bed_order || 0) - (b.bed_order || 0) || a.id - b.id);
     }
 
     const maxOccupancy = Math.max(guests.length, nextGuests.length, 1);
@@ -1438,11 +1449,11 @@ const RoomAssignment = () => {
     const totalRows = visibleRows;
     const hasGuests = guests.length > 0;
     const rowHeight = hasGuests ? 40 : 36;
-    const stripeBg = rowIndex % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
+    const stripeKey = groupInfo ? groupInfo.groupIndex : rowIndex;
+    const stripeBg = stripeKey % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
 
-    const groupBorderClasses = groupInfo?.isLast
-      ? 'border-b border-b-[#D1D5DB] dark:border-b-[#4E5968]'
-      : '';
+    const groupLast = groupInfo?.isLast;
+    const borderColor = groupLast ? 'border-b-[#D1D5DB] dark:border-b-[#4E5968]' : 'border-b-[#E5E8EB] dark:border-b-[#2C2C34]';
 
     return (
       <div
@@ -1451,14 +1462,12 @@ const RoomAssignment = () => {
           ${isDragOver
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-[#3182F6]/30'
             : stripeBg
-          } ${groupBorderClasses}`}
+          }`}
         style={{ minHeight: `${totalRows * rowHeight}px` }}
-        onDragOver={(e) => onRoomDragOver(e, room_id)}
-        onDragLeave={onRoomDragLeave}
-        onDrop={(e) => onRoomDrop(e, room_id, room_number)}
+        data-drop-zone={`room-${room_id}`}
       >
         {/* Room label - vertically centered, spans all rows */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
+        <div className={`flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b ${borderColor} ${stripeBg}`}>
           <span className="font-semibold text-[#191F28] dark:text-white text-body">{room_number}</span>
           {roomInfoMap[room_number] && (
             <span className="text-caption text-[#B0B8C1] dark:text-[#8B95A1] truncate">{roomInfoMap[room_number]}</span>
@@ -1466,7 +1475,7 @@ const RoomAssignment = () => {
         </div>
 
         {/* Guest rows */}
-        <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
+        <div className={`flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b ${borderColor}`}>
           {isDormitory ? (
             // Dormitory: show beds as rows, filled or empty
             Array.from({ length: totalRows }).map((_, i) => {
@@ -1504,7 +1513,7 @@ const RoomAssignment = () => {
         </div>
 
         {/* Next day column */}
-        <div className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b border-b-[#E5E8EB] dark:border-b-gray-700 ${stripeBg}`} style={{ width: colWidths.nextDay }}>
+        <div className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b ${borderColor} ${stripeBg}`} style={{ width: colWidths.nextDay }}>
           <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
             {Array.from({ length: totalRows }).map((_, i) => {
               const nextGuest = nextGuests[i];
@@ -1769,6 +1778,11 @@ const RoomAssignment = () => {
                   const groupMap = new Map<number, number>();
                   roomGroups.forEach(g => g.room_ids.forEach(rid => groupMap.set(rid, g.id)));
                   const newDividers = new Set<number>();
+                  // 그룹이 존재하면 상단/하단 경계 자동 추가
+                  if (roomGroups.length > 0) {
+                    newDividers.add(-1);
+                    newDividers.add(roomIds.length - 1);
+                  }
                   roomIds.forEach((id, idx) => {
                     if (idx < roomIds.length - 1) {
                       const curGroup = groupMap.get(id);
@@ -1833,29 +1847,31 @@ const RoomAssignment = () => {
 
       {/* Main grid card */}
       <div className="section-card !overflow-visible w-max min-w-full">
-        {/* Date navigation header */}
-        <div className="section-header justify-center">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => navigateDate('prev')}
-              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <TextInput
-              type="date"
-              sizing="sm"
-              value={selectedDate.format('YYYY-MM-DD')}
-              onChange={(e) => {
-                if (e.target.value) setSelectedDate(dayjs(e.target.value));
-              }}
-            />
-            <button
-              onClick={() => navigateDate('next')}
-              className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+        {/* Date navigation header — sticky */}
+        <div ref={dateHeaderRef} className="sticky top-0 z-20">
+          <div className="section-header justify-center bg-white dark:bg-[#1E1E24]">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => navigateDate('prev')}
+                className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <TextInput
+                type="date"
+                sizing="sm"
+                value={selectedDate.format('YYYY-MM-DD')}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(dayjs(e.target.value));
+                }}
+              />
+              <button
+                onClick={() => navigateDate('next')}
+                className="cursor-pointer p-1 text-[#B0B8C1] hover:text-[#191F28] dark:text-[#4E5968] dark:hover:text-white transition-colors bg-transparent border-none"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1876,7 +1892,7 @@ const RoomAssignment = () => {
                 <div className="absolute top-0 bottom-0 w-px bg-[#3182F6] z-50 pointer-events-none" style={{ left: resizeGuideX }} />
               )}
               {/* Header */}
-              <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-[#2C2C34]">
+              <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-[#2C2C34] sticky z-[19]" style={{ top: dateHeaderH }}>
                 <div className="flex-shrink-0 pl-3 pr-2 w-42 border-r border-[#F2F4F6] dark:border-[#2C2C34]">
                   <span className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">객실</span>
                 </div>
@@ -1951,9 +1967,7 @@ const RoomAssignment = () => {
                     : unassigned.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
                 }`}
                 style={{ minHeight: `${Math.max(1, unassigned.length) * 40}px` }}
-                onDragOver={onPoolDragOver}
-                onDragLeave={onPoolDragLeave}
-                onDrop={onPoolDrop}
+                data-drop-zone="pool"
               >
                 {/* Room label */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
@@ -1987,9 +2001,7 @@ const RoomAssignment = () => {
                     : partyOnly.length > 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F2F4F6]/50 dark:bg-[#17171C]/30'
                 }`}
                 style={{ minHeight: `${Math.max(1, partyOnly.length) * 40}px` }}
-                onDragOver={onPartyZoneDragOver}
-                onDragLeave={onPartyZoneDragLeave}
-                onDrop={onPartyZoneDrop}
+                data-drop-zone="party"
               >
                 {/* Room label */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
@@ -2191,24 +2203,7 @@ const RoomAssignment = () => {
           <Tooltip content={dragOverTrash ? '놓으면 삭제됩니다' : '게스트를 드래그하여 삭제'} placement="top">
             <div className="inline-block">
               <div
-                onDragOver={(e: React.DragEvent) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (!dragOverTrash) setDragOverTrash(true);
-                }}
-                onDragLeave={(e: React.DragEvent) => {
-                  const related = e.relatedTarget as Node | null;
-                  if (!related || !e.currentTarget.contains(related)) {
-                    setDragOverTrash(false);
-                  }
-                }}
-                onDrop={(e: React.DragEvent) => {
-                  e.preventDefault();
-                  setDragOverTrash(false);
-                  setDragActive(false);
-                  const resId = Number(e.dataTransfer.getData('text/plain'));
-                  if (resId) handleDeleteGuest(resId);
-                }}
+                data-drop-zone="trash"
                 className={`flex items-center justify-center rounded-full transition-all duration-300 ${
                   dragOverTrash
                     ? 'h-12 w-12 bg-[#F04452] text-white scale-110 shadow-lg shadow-[#F04452]/40 ring-4 ring-[#F04452]/20'
@@ -2429,48 +2424,54 @@ const RoomAssignment = () => {
         <ModalHeader>그룹 설정</ModalHeader>
         <ModalBody>
           <div className="space-y-0">
-            {activeRoomEntries.map((entry, idx) => (
-              <React.Fragment key={entry.room_id}>
-                {/* Room row */}
-                <div className="flex items-center px-4 py-2.5 text-body">
-                  <span className="font-medium text-[#191F28] dark:text-white w-16">{entry.room_number}</span>
-                  <span className="text-[#8B95A1] dark:text-[#8B95A1] text-caption">{roomInfoMap[entry.room_number] || ''}</span>
-                  {entry.building_name && (
-                    <span className="ml-auto text-caption text-[#B0B8C1] dark:text-[#4E5968]">{entry.building_name}</span>
+            {activeRoomEntries.map((entry, idx) => {
+              const renderDivider = (divIdx: number) => (
+                <div
+                  className="relative py-1.5 flex items-center justify-center cursor-pointer group/divider"
+                  onClick={() => {
+                    setDividers(prev => {
+                      const next = new Set(prev);
+                      if (next.has(divIdx)) next.delete(divIdx);
+                      else next.add(divIdx);
+                      return next;
+                    });
+                  }}
+                >
+                  {dividers.has(divIdx) ? (
+                    <>
+                      <div className="absolute inset-x-4 border-t-2 border-[#3182F6] dark:border-[#3182F6]" />
+                      <div className="absolute z-10 bg-[#3182F6] text-white rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
+                        <X className="h-3 w-3" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="absolute inset-x-4 border-t border-dashed border-transparent group-hover/divider:border-[#D1D5DB] dark:group-hover/divider:border-[#4E5968] transition-colors" />
+                      <div className="absolute z-10 bg-[#E5E8EB] dark:bg-[#2C2C34] text-[#8B95A1] rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
+                        <Plus className="h-3 w-3" />
+                      </div>
+                    </>
                   )}
                 </div>
-                {/* Divider zone (not after last item) */}
-                {idx < activeRoomEntries.length - 1 && (
-                  <div
-                    className="relative py-1.5 flex items-center justify-center cursor-pointer group/divider"
-                    onClick={() => {
-                      setDividers(prev => {
-                        const next = new Set(prev);
-                        if (next.has(idx)) next.delete(idx);
-                        else next.add(idx);
-                        return next;
-                      });
-                    }}
-                  >
-                    {dividers.has(idx) ? (
-                      <>
-                        <div className="absolute inset-x-4 border-t-2 border-[#3182F6] dark:border-[#3182F6]" />
-                        <div className="absolute z-10 bg-[#3182F6] text-white rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
-                          <X className="h-3 w-3" />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="absolute inset-x-4 border-t border-dashed border-transparent group-hover/divider:border-[#D1D5DB] dark:group-hover/divider:border-[#4E5968] transition-colors" />
-                        <div className="absolute z-10 bg-[#E5E8EB] dark:bg-[#2C2C34] text-[#8B95A1] rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
-                          <Plus className="h-3 w-3" />
-                        </div>
-                      </>
+              );
+
+              return (
+                <React.Fragment key={entry.room_id}>
+                  {/* Divider before first room */}
+                  {idx === 0 && renderDivider(-1)}
+                  {/* Room row */}
+                  <div className="flex items-center px-4 py-2.5 text-body">
+                    <span className="font-medium text-[#191F28] dark:text-white w-16">{entry.room_number}</span>
+                    <span className="text-[#8B95A1] dark:text-[#8B95A1] text-caption">{roomInfoMap[entry.room_number] || ''}</span>
+                    {entry.building_name && (
+                      <span className="ml-auto text-caption text-[#B0B8C1] dark:text-[#4E5968]">{entry.building_name}</span>
                     )}
                   </div>
-                )}
-              </React.Fragment>
-            ))}
+                  {/* Divider after each room (including last) */}
+                  {renderDivider(idx)}
+                </React.Fragment>
+              );
+            })}
           </div>
         </ModalBody>
         <ModalFooter>
