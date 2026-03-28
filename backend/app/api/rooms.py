@@ -567,11 +567,10 @@ async def trigger_auto_assign(
     수동 트리거: 미배정 예약자만 빈 객실에 배정.
     기존 배정(수동/자동)은 유지하고, 미배정자만 추가 배정.
     """
-    from datetime import datetime as dt
     from zoneinfo import ZoneInfo as _ZI
 
     if not date:
-        date = dt.now(_ZI("Asia/Seoul")).strftime("%Y-%m-%d")
+        date = datetime.now(_ZI("Asia/Seoul")).strftime("%Y-%m-%d")
 
     today = date
 

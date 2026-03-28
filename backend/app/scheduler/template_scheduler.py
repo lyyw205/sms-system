@@ -18,7 +18,7 @@ from app.services.activity_logger import log_activity
 from app.services.event_bus import publish as publish_event
 from app.db.tenant_context import current_tenant_id
 from app.services.sms_sender import send_single_sms
-from app.config import KST, today_kst, today_kst_date
+from app.config import today_kst, today_kst_date
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,6 @@ class TemplateScheduleExecutor:
             target_res_ids = [r.id for r in targets]
             room_building_map = {}  # reservation_id -> display string
             if target_res_ids and target_date:
-                from app.db.models import RoomAssignment
                 assignments = self.db.query(RoomAssignment).filter(
                     RoomAssignment.reservation_id.in_(target_res_ids),
                     RoomAssignment.date == target_date,

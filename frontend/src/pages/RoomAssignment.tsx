@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI } from '../services/api';
-import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -27,8 +26,6 @@ import {
   Layers,
   Check,
   MousePointer,
-  Undo2,
-  Music,
 } from 'lucide-react';
 import GuestContextMenu from '../components/GuestContextMenu';
 
@@ -336,7 +333,6 @@ interface ConfirmState {
 }
 
 const RoomAssignment = () => {
-  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [reservations, setReservations] = useState<Reservation[]>([]);
   // Track which section unassigned reservations belong to: 'party' or 'unassigned'
@@ -414,7 +410,6 @@ const RoomAssignment = () => {
     onConfirm: (applySubsequent: boolean) => void;
   } | null>(null);
 
-  const [partyValues, setPartyValues] = useState<Record<number, string>>({});
   const [templateLabels, setTemplateLabels] = useState<{template_key: string; name: string; short_label: string | null}[]>([]);
 
   const [roomGroups, setRoomGroups] = useState<Array<{id: number; name: string; sort_order: number; color?: string; room_ids: number[]}>>([]);
@@ -587,18 +582,6 @@ const RoomAssignment = () => {
     } catch {
       toast.error('객실 목록을 불러오지 못했습니다.');
     }
-  }, []);
-
-  const fetchPreviews = useCallback(async (date: Dayjs) => {
-    const fetchOne = async (d: Dayjs, setter: (data: Reservation[]) => void) => {
-      try {
-        const res = await reservationsAPI.getAll({ date: d.format('YYYY-MM-DD'), limit: 200 });
-        setter(res.data.filter((r: Reservation) => r.status !== 'cancelled'));
-      } catch {
-        setter([]);
-      }
-    };
-    fetchOne(date.add(1, 'day'), setNextDayReservations);
   }, []);
 
   // 날짜 이동 방향 추적 (프리페치용)
@@ -1862,8 +1845,6 @@ const RoomAssignment = () => {
     [animDirection, selectedDate, filterActive],
   );
 
-  // suppress unused navigate warning — keep for future routing
-  void navigate;
   // suppress unused handleEditGuest warning — used via modal open
   void handleEditGuest;
 

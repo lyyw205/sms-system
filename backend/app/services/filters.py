@@ -1,8 +1,7 @@
 """
 Schedule filter logic for template-based SMS scheduling.
 
-Contains condition builders, filter parsing, grouping, and the
-`matches_schedule()` helper used by room assignment tag sync.
+Contains condition builders, filter parsing, and grouping.
 """
 import json
 from collections import defaultdict
@@ -211,48 +210,3 @@ def _build_filter_groups(filters: list) -> tuple:
         filter_groups[group_key].append(fval)
     has_unassigned = 'unassigned' in filter_groups.get('assignment', [])
     return filter_groups, has_unassigned
-
-
-def matches_schedule(db: Session, schedule: TemplateSchedule, reservation_id: int) -> bool:
-    """Check if a single reservation matches a schedule's structural filters.
-
-    .. deprecated::
-        Use chip_reconciler._reservation_matches_schedule() instead, which
-        resolves target_date from schedule.date_target rather than hardcoding today.
-
-    Does NOT apply date_target or exclude_sent — those are for get_targets() only.
-    Applies only building/assignment/room/column_match filters.
-
-    Returns True if the reservation passes all filter groups (AND between groups,
-    OR within same group), or if there are no filters.
-    """
-    # 이벤트 스케줄은 시간 기반이라 정적 태그 생성 불가
-    if (schedule.schedule_category or 'standard') == 'event':
-        return False
-
-    filters = _parse_filters(schedule.filters)
-
-    if not filters:
-        return True
-
-    query = db.query(Reservation).filter(Reservation.id == reservation_id)
-
-    # Use today as target_date for building/room subqueries
-    ctx = {"db": db, "target_date": today_kst()}
-
-    filter_groups, has_unassigned = _build_filter_groups(filters)
-
-    for group_key, values in filter_groups.items():
-        filter_type = group_key.split(':')[0] if group_key.startswith('column_match:') else group_key
-        builder = FILTER_BUILDERS.get(filter_type)
-        if not builder:
-            continue
-        conditions = [c for c in (builder(v, ctx) for v in values) if c is not None]
-        if conditions:
-            combined = or_(*conditions) if len(conditions) > 1 else conditions[0]
-            # 미배정 예약자는 건물/객실 조건 면제 (RoomAssignment 없으므로 매칭 불가)
-            if filter_type in ("building", "room") and has_unassigned:
-                combined = or_(combined, Reservation.section == 'unassigned')
-            query = query.filter(combined)
-
-    return query.first() is not None

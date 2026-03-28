@@ -79,9 +79,9 @@ def sync_sms_tags(db: Session, reservation_id: int, schedules=None) -> None:
     reconcile_chips_for_reservation(db, reservation_id, schedules)
 
 
-# get_schedule_dates and _date_range moved to services/schedule_utils.py
+# _date_range moved to services/schedule_utils.py
 # to break circular dependency. Re-export for backward compatibility.
-from app.services.schedule_utils import get_schedule_dates, date_range as _date_range
+from app.services.schedule_utils import date_range as _date_range
 
 
 

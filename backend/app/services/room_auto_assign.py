@@ -175,9 +175,8 @@ def _assign_all_rooms(
     if group_ids:
         # Find existing assignments for any member of these groups
         # Check target_date AND adjacent dates (previous day) to seed from prior night
-        from datetime import datetime as _dt, timedelta as _td
         try:
-            prev_date = (_dt.strptime(target_date, "%Y-%m-%d") - _td(days=1)).strftime("%Y-%m-%d")
+            prev_date = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
             check_dates = [target_date, prev_date]
         except ValueError:
             check_dates = [target_date]
