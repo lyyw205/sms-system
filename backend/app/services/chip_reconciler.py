@@ -9,7 +9,6 @@ Both entry points use the same matching source (apply_structural_filters)
 and the same diff+protect logic (_sync_chips).
 """
 import logging
-from datetime import date
 from typing import List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session
@@ -21,6 +20,7 @@ from app.db.models import (
     ReservationStatus,
     TemplateSchedule,
 )
+from app.config import today_kst
 from app.services.filters import apply_structural_filters
 from app.services.schedule_utils import get_schedule_dates, resolve_target_date
 
@@ -98,7 +98,7 @@ def reconcile_chips_for_schedule(
     template_key = schedule.template.template_key
 
     # Resolve target date
-    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else date.today().strftime('%Y-%m-%d')
+    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
 
     # Build matching reservations query with structural filters only
     matching_reservations = _get_matching_reservations(db, schedule, target_date)
@@ -128,7 +128,7 @@ def _reservation_matches_schedule(
     Uses apply_structural_filters on a single-row query for consistency
     with the batch path.
     """
-    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else date.today().strftime('%Y-%m-%d')
+    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
 
     query = db.query(Reservation).filter(Reservation.id == reservation_id)
     query = apply_structural_filters(db, query, schedule, target_date)

@@ -3,7 +3,7 @@ Template-based schedule execution engine
 """
 import logging
 from typing import List, Dict, Any
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
@@ -18,6 +18,7 @@ from app.services.activity_logger import log_activity
 from app.services.event_bus import publish as publish_event
 from app.db.tenant_context import current_tenant_id
 from app.services.sms_sender import send_single_sms
+from app.config import KST, today_kst, today_kst_date
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ class TemplateScheduleExecutor:
 
             # 이벤트 스케줄: target_date를 오늘로 고정
             if (schedule.schedule_category or 'standard') == 'event':
-                target_date = date.today().strftime('%Y-%m-%d')
+                target_date = today_kst()
                 date_target_val = None
             else:
                 date_target_val = schedule.date_target
@@ -251,9 +252,9 @@ class TemplateScheduleExecutor:
         """Check if send condition (gender ratio) is met."""
         # 기준 날짜 결정
         if schedule.send_condition_date == 'tomorrow':
-            target = (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+            target = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
         else:
-            target = date.today().strftime('%Y-%m-%d')
+            target = today_kst()
 
         # 해당 날짜 체크인 예약자의 male_count, female_count 합계
         row = self.db.query(
@@ -294,7 +295,7 @@ class TemplateScheduleExecutor:
         date_target_val = schedule.date_target
 
         # Safety guard: never send to reservations more than 1 day out
-        max_date = (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+        max_date = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
         if date_target_val and date_target_val.endswith('_checkout'):
             query = query.filter(
                 Reservation.check_out_date.isnot(None),
@@ -330,7 +331,7 @@ class TemplateScheduleExecutor:
                     query = query.filter(Reservation.check_in_date == target_date)
         # Default target_date for filters that need it
         if not target_date:
-            target_date = date.today().strftime('%Y-%m-%d')
+            target_date = today_kst()
 
         # Apply structural filters (building/assignment/room/column_match)
         query = self._apply_structural_filters(query, schedule, target_date)
@@ -406,11 +407,11 @@ class TemplateScheduleExecutor:
         )
 
         # No safety guard — max_checkin_days provides its own range limit
-        today_str = date.today().strftime('%Y-%m-%d')
+        today_str = today_kst()
 
         # 1) N일 이내 체크인
         if schedule.max_checkin_days:
-            max_date_str = (date.today() + timedelta(days=schedule.max_checkin_days)).strftime('%Y-%m-%d')
+            max_date_str = (today_kst_date() + timedelta(days=schedule.max_checkin_days)).strftime('%Y-%m-%d')
             query = query.filter(
                 Reservation.check_in_date >= today_str,
                 Reservation.check_in_date <= max_date_str,
@@ -480,7 +481,7 @@ class TemplateScheduleExecutor:
 
         # Batch lookup room assignments from RoomAssignment table (source of truth)
         date_target_val = schedule.date_target
-        target_date = self._resolve_date_target(date_target_val) if date_target_val else date.today().strftime('%Y-%m-%d')
+        target_date = self._resolve_date_target(date_target_val) if date_target_val else today_kst()
         res_ids = [r.id for r in targets]
         from app.services.room_lookup import batch_room_number_map
         room_map: dict[int, str] = batch_room_number_map(self.db, res_ids, target_date) if res_ids else {}
@@ -508,8 +509,8 @@ class TemplateScheduleExecutor:
             Date string for today or tomorrow, regardless of checkout suffix.
         """
         if date_target_val.startswith('tomorrow'):
-            return (date.today() + timedelta(days=1)).strftime('%Y-%m-%d')
-        return date.today().strftime('%Y-%m-%d')
+            return (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
+        return today_kst()
 
     def _filter_last_day(self, results: List[Reservation], target_date: str) -> List[Reservation]:
         """Keep only reservations whose stay group's last checkout date - 1 == target_date.

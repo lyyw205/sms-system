@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { UserPlus, TriangleAlert, Pencil } from 'lucide-react'
 import { authAPI } from '@/services/api'
+import { normalizeUtcString } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 interface User {
@@ -38,7 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString('ko-KR')
+  return new Date(normalizeUtcString(dateStr)).toLocaleDateString('ko-KR')
 }
 
 export default function UserManagement() {

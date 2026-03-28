@@ -7,6 +7,8 @@ Extracted from room_assignment.py to break circular dependency:
 from datetime import datetime, timedelta
 from typing import Optional, List
 
+from app.config import today_kst, today_kst_date
+
 
 def get_schedule_dates(schedule, reservation) -> List[str]:
     """Get target dates for a schedule+reservation pair based on target_mode and date_target."""
@@ -72,5 +74,5 @@ def resolve_target_date(date_target_val: str) -> str:
         Date string for today or tomorrow, regardless of checkout suffix.
     """
     if date_target_val and date_target_val.startswith('tomorrow'):
-        return (datetime.now().date() + timedelta(days=1)).strftime('%Y-%m-%d')
-    return datetime.now().date().strftime('%Y-%m-%d')
+        return (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
+    return today_kst()

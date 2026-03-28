@@ -28,6 +28,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 
 import { templatesAPI, templateSchedulesAPI, buildingsAPI, reservationsAPI } from '@/services/api';
+import { normalizeUtcString } from '../lib/utils';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -168,9 +169,7 @@ function formatScheduleTime(s: TemplateSchedule): string {
 
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return '-';
-  // Backend stores next_run as UTC (naive) — append 'Z' if no timezone info
-  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  const date = new Date(normalized);
+  const date = new Date(normalizeUtcString(iso));
   const diff = date.getTime() - Date.now();
   const minutes = Math.floor(diff / 60000);
   if (minutes < -5) return '대기 중';
@@ -1036,7 +1035,7 @@ const Templates: React.FC = () => {
                 {schedules.map(s => {
                   const nextRun = formatRelativeTime(s.next_run);
                   const isNextRunSoon = s.next_run && (() => {
-                    const diff = new Date(s.next_run!).getTime() - Date.now();
+                    const diff = new Date(normalizeUtcString(s.next_run!)).getTime() - Date.now();
                     return diff > 0 && diff < 3600000;
                   })();
                   return (
@@ -1049,7 +1048,7 @@ const Templates: React.FC = () => {
                           <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>
                           {s.schedule_category === 'event' && <Badge color="purple" size="sm">이벤트</Badge>}
                           {s.schedule_category === 'event' && s.expires_at && (() => {
-                            const expiresAt = new Date(s.expires_at);
+                            const expiresAt = new Date(normalizeUtcString(s.expires_at));
                             const now = new Date();
                             if (!s.active && expiresAt < now) {
                               return <Badge color="gray" size="sm">만료됨</Badge>;

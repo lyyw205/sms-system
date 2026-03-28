@@ -23,8 +23,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Backend returns UTC-naive ISO strings (no 'Z'). Normalize for correct browser parsing. */
+export function normalizeUtcString(iso: string): string {
+  if (!iso.includes('T')) return iso;  // date-only string, no TZ needed
+  return iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+}
+
 export function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = new Date(normalizeUtcString(dateStr))
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMin = Math.floor(diffMs / 60000)
@@ -39,7 +45,7 @@ export function formatRelativeTime(dateStr: string): string {
 }
 
 export function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('ko-KR', {
+  return new Date(normalizeUtcString(dateStr)).toLocaleTimeString('ko-KR', {
     hour: '2-digit',
     minute: '2-digit',
   })

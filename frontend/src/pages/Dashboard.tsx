@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { dashboardAPI } from '@/services/api'
+import { normalizeUtcString } from '../lib/utils'
 
 const STATUS_LABELS: Record<string, string> = {
   pending: '대기중',
@@ -177,7 +178,7 @@ const Dashboard = () => {
           title="네이버 동기화"
           value={stats.naver_sync?.status === 'success' ? '실행중' : stats.naver_sync?.status === 'failed' ? '오류' : '-'}
           subtitle={stats.naver_sync?.last_sync_at
-            ? `${new Date(stats.naver_sync.last_sync_at).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 다음 ${new Date(stats.naver_sync.next_sync_at).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
+            ? `${new Date(normalizeUtcString(stats.naver_sync.last_sync_at)).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 다음 ${new Date(normalizeUtcString(stats.naver_sync.next_sync_at)).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
             : '스케줄러 미실행'}
           icon={<RefreshCw size={20} />}
           iconBg={stats.naver_sync?.status === 'failed'

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.config import KST
 
 from app.api.deps import get_tenant_scoped_db
@@ -34,9 +34,10 @@ def get_activity_logs(
         query = query.filter(ActivityLog.status == status)
     if date:
         # Filter by date (YYYY-MM-DD)
-        start = datetime.strptime(date, "%Y-%m-%d")
-        end = start + timedelta(days=1)
-        query = query.filter(ActivityLog.created_at >= start, ActivityLog.created_at < end)
+        start_kst = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=KST)
+        start_utc = start_kst.astimezone(timezone.utc).replace(tzinfo=None)
+        end_utc = start_utc + timedelta(days=1)
+        query = query.filter(ActivityLog.created_at >= start_utc, ActivityLog.created_at < end_utc)
 
     logs = query.order_by(ActivityLog.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -63,7 +64,8 @@ def get_activity_stats(
     current_user: User = Depends(get_current_user),
 ):
     """Get today's activity statistics by type"""
-    today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_kst = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_kst.astimezone(timezone.utc).replace(tzinfo=None)
     today_end = today_start + timedelta(days=1)
 
     rows = (

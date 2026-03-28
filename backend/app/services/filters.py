@@ -6,9 +6,10 @@ Contains condition builders, filter parsing, grouping, and the
 """
 import json
 from collections import defaultdict
-from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
+
+from app.config import today_kst
 
 from app.db.models import (
     Reservation,
@@ -237,7 +238,7 @@ def matches_schedule(db: Session, schedule: TemplateSchedule, reservation_id: in
     query = db.query(Reservation).filter(Reservation.id == reservation_id)
 
     # Use today as target_date for building/room subqueries
-    ctx = {"db": db, "target_date": date.today().strftime('%Y-%m-%d')}
+    ctx = {"db": db, "target_date": today_kst()}
 
     filter_groups, has_unassigned = _build_filter_groups(filters)
 

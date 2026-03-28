@@ -20,6 +20,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { activityLogsAPI } from '@/services/api'
+import { normalizeUtcString } from '../lib/utils'
 
 // ── Type helpers ──────────────────────────────────────────────
 
@@ -191,8 +192,7 @@ const ActivityLogs = () => {
 
   const fmtTime = (iso: string) => {
     try {
-      // Backend stores as UTC naive — append Z if no timezone info
-      const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+      const normalized = normalizeUtcString(iso);
       return new Date(normalized).toLocaleString('ko-KR', {
         month: '2-digit',
         day: '2-digit',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Zap, Plus, Pencil, Trash2, FileText, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { rulesAPI, documentsAPI } from '@/services/api';
+import { normalizeUtcString } from '../lib/utils';
 
 import { Card } from '@/components/ui/card';
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
@@ -331,7 +332,7 @@ const AutoResponse = () => {
                         </TableCell>
                         <TableCell>
                           <span className="text-body text-gray-500">
-                            {new Date(doc.uploaded_at).toLocaleString('ko-KR')}
+                            {new Date(normalizeUtcString(doc.uploaded_at)).toLocaleString('ko-KR')}
                           </span>
                         </TableCell>
                         <TableCell>

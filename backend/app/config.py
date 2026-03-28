@@ -7,6 +7,19 @@ import logging
 
 KST = ZoneInfo("Asia/Seoul")
 
+
+def today_kst() -> str:
+    """Return today's date as YYYY-MM-DD string, always in KST."""
+    from datetime import datetime
+    return datetime.now(KST).strftime("%Y-%m-%d")
+
+
+def today_kst_date():
+    """Return today's date as a date object, always in KST."""
+    from datetime import datetime
+    return datetime.now(KST).date()
+
+
 _config_logger = logging.getLogger(__name__)
 
 # 자동 생성 여부 추적 (Settings 모델 오염 방지)
