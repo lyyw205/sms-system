@@ -122,6 +122,7 @@ class Reservation(TenantMixin, Base):
     stay_group_order = Column(Integer, nullable=True)                # Order within group (0, 1, 2...)
     is_last_in_group = Column(Boolean, nullable=True)                # True: last reservation in consecutive stay group
     is_long_stay = Column(Boolean, default=False)                    # 연박자(2박+) OR 연장자(stay_group_id) 통합
+    highlight_color = Column(String(20), nullable=True)              # UI highlight color for reservation card
 
     # Extended Naver booking data
     check_out_date = Column("end_date", String(20), nullable=True)  # checkout date YYYY-MM-DD  # TODO: PostgreSQL 전환 시 Date 타입으로 변경

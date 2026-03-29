@@ -52,6 +52,7 @@ class ReservationUpdate(BaseModel):
     party_type: Optional[str] = None
     naver_room_type: Optional[str] = None  # Original reservation room type
     section: Optional[str] = None  # 'room', 'unassigned', 'party'
+    highlight_color: Optional[str] = None
 
 
 class RoomAssignRequest(BaseModel):
@@ -113,6 +114,7 @@ class ReservationResponse(BaseModel):
     stay_group_order: Optional[int] = None
     is_long_stay: bool = False
     bed_order: int = 0
+    highlight_color: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     sms_assignments: List[SmsAssignmentResponse] = []
@@ -180,6 +182,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         stay_group_order=res.stay_group_order,
         is_long_stay=bool(res.is_long_stay),
         bed_order=override_bed_order if override_bed_order is not None else 0,
+        highlight_color=res.highlight_color,
         created_at=res.created_at,
         updated_at=res.updated_at,
         sms_assignments=assignments,

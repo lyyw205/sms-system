@@ -65,6 +65,7 @@ interface Reservation {
   stay_group_order?: number | null;
   is_long_stay?: boolean;
   bed_order?: number;
+  highlight_color?: string | null;
 }
 
 
@@ -1383,6 +1384,17 @@ const RoomAssignment = () => {
         }
         setContextMenu(null);
       },
+      onSetColor: async (color: string | null) => {
+        for (const id of targetIds) {
+          try {
+            await reservationsAPI.update(id, { highlight_color: color });
+          } catch { /* skip */ }
+        }
+        setReservations(prev => prev.map(r =>
+          targetIds.includes(r.id) ? { ...r, highlight_color: color } : r
+        ));
+        setContextMenu(null);
+      },
     };
   }, [contextMenu, reservations, sectionOverrides, handleDropOnPool, handleDropOnParty, handleDeleteGuest, selectedDate, fetchReservations, handleStayGroupUnlink, openStayGroupModal, showConfirm]);
 
@@ -1616,17 +1628,28 @@ const RoomAssignment = () => {
     setDragOverTrash(false);
   }, []);
 
+  const HIGHLIGHT_COLORS: Record<string, { bg: string; hover: string }> = {
+    yellow: { bg: 'bg-[#FFF8E1] dark:bg-[#FFF8E1]/15', hover: 'hover:bg-[#FFF0C0] dark:hover:bg-[#FFF8E1]/25' },
+    pink: { bg: 'bg-[#FFE8EE] dark:bg-[#FFE8EE]/15', hover: 'hover:bg-[#FFD6E0] dark:hover:bg-[#FFE8EE]/25' },
+    green: { bg: 'bg-[#E8F5E9] dark:bg-[#E8F5E9]/15', hover: 'hover:bg-[#D0ECD2] dark:hover:bg-[#E8F5E9]/25' },
+    blue: { bg: 'bg-[#E3F2FD] dark:bg-[#E3F2FD]/15', hover: 'hover:bg-[#CFEBFF] dark:hover:bg-[#E3F2FD]/25' },
+    purple: { bg: 'bg-[#F3E5F5] dark:bg-[#F3E5F5]/15', hover: 'hover:bg-[#E8D0ED] dark:hover:bg-[#F3E5F5]/25' },
+  };
+
   const renderGuestRow = (res: Reservation, showGrip: boolean) => {
     const genderPeople = formatGenderPeople(res);
     const longStay = !!res.is_long_stay;
     const isSelected = interactionMode === 'select' && selectedGuestIds.has(res.id);
+    const highlightStyle = res.highlight_color ? HIGHLIGHT_COLORS[res.highlight_color] : null;
 
     return (
       <div key={res.id}
         className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${
           isSelected
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
-            : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
+            : highlightStyle
+              ? `${highlightStyle.bg} ${highlightStyle.hover}`
+              : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
         } ${guestAreaCursor()}`}
         onContextMenu={(e) => onGuestContextMenu(e, res.id)}
       >
@@ -2951,6 +2974,7 @@ const RoomAssignment = () => {
           onMoveToParty={contextMenuActions.onMoveToParty}
           onDelete={contextMenuActions.onDelete}
           onLinkStayGroup={contextMenuActions.onLinkStayGroup}
+          onSetColor={contextMenuActions.onSetColor}
           onClose={() => setContextMenu(null)}
         />
       )}

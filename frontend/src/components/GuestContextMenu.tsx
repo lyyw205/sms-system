@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Music, Trash2, Link2 } from 'lucide-react';
+import { Undo2, Music, Trash2, Link2, X } from 'lucide-react';
 
 interface GuestContextMenuProps {
   position: { x: number; y: number };
@@ -11,8 +11,17 @@ interface GuestContextMenuProps {
   onMoveToParty: () => void;
   onDelete: () => void;
   onLinkStayGroup: () => void;
+  onSetColor: (color: string | null) => void;
   onClose: () => void;
 }
+
+const COLOR_PRESETS: { key: string; label: string; bg: string }[] = [
+  { key: 'yellow', label: '노랑', bg: '#FFF8E1' },
+  { key: 'pink',   label: '분홍', bg: '#FFE8EE' },
+  { key: 'green',  label: '초록', bg: '#E8F5E9' },
+  { key: 'blue',   label: '파랑', bg: '#E3F2FD' },
+  { key: 'purple', label: '보라', bg: '#F3E5F5' },
+];
 
 export default function GuestContextMenu({
   position,
@@ -23,6 +32,7 @@ export default function GuestContextMenu({
   onMoveToParty,
   onDelete,
   onLinkStayGroup,
+  onSetColor,
   onClose,
 }: GuestContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -87,6 +97,27 @@ export default function GuestContextMenu({
           {item.label}
         </button>
       ))}
+
+      <div className="border-t border-[#E5E8EB] dark:border-gray-800 my-1" />
+
+      <div className="px-3 py-1.5 flex items-center gap-1.5">
+        {COLOR_PRESETS.map((preset) => (
+          <button
+            key={preset.key}
+            title={preset.label}
+            onClick={(e) => { e.stopPropagation(); onSetColor(preset.key); }}
+            className="w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 cursor-pointer hover:scale-110 transition-transform flex-shrink-0"
+            style={{ backgroundColor: preset.bg }}
+          />
+        ))}
+        <button
+          title="색상 해제"
+          onClick={(e) => { e.stopPropagation(); onSetColor(null); }}
+          className="w-5 h-5 rounded-full border border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:scale-110 transition-transform flex items-center justify-center flex-shrink-0"
+        >
+          <X className="h-2.5 w-2.5 text-[#8B95A1]" />
+        </button>
+      </div>
 
       <div className="border-t border-[#E5E8EB] dark:border-gray-800 my-1" />
 
