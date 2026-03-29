@@ -558,10 +558,11 @@ async def update_daily_info(
         ReservationDailyInfo.date == request.date,
     ).first()
 
+    sent_fields = request.dict(exclude_unset=True)
     if existing:
-        if request.party_type is not None:
+        if "party_type" in sent_fields:
             existing.party_type = request.party_type
-        if request.notes is not None:
+        if "notes" in sent_fields:
             existing.notes = request.notes
         existing.updated_at = datetime.now(timezone.utc)
     else:
@@ -575,7 +576,7 @@ async def update_daily_info(
     db.flush()
 
     # party_type 변경 시에만 칩 재계산 (필터 매칭이 달라질 수 있음)
-    if request.party_type is not None:
+    if "party_type" in sent_fields:
         from app.services.room_assignment import sync_sms_tags
         sync_sms_tags(db, reservation_id)
     db.commit()
@@ -583,8 +584,8 @@ async def update_daily_info(
     db.refresh(db_reservation)
 
     # Return with the daily override applied
-    override_party_type = request.party_type
-    override_notes = request.notes
+    override_party_type = request.party_type if "party_type" in sent_fields else None
+    override_notes = request.notes if "notes" in sent_fields else None
     return _to_response(db_reservation, override_party_type=override_party_type, override_notes=override_notes, db=db)
 
 
