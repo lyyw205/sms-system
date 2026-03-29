@@ -602,7 +602,7 @@ const RoomAssignment = () => {
 
       // 당일 먼저 로딩
       const current = await reservationsAPI.getAll({ date: dateStr, limit: 200 });
-      const curr = filterActive(current.data);
+      const curr = filterActive(current.data.items ?? current.data);
       setReservations(curr);
       reservationsRef.current = curr;
       prevDateRef.current = date;
@@ -610,7 +610,7 @@ const RoomAssignment = () => {
 
       // 다음날 백그라운드 fetch
       reservationsAPI.getAll({ date: date.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
-        .then(res => { const d = filterActive(res.data); setNextDayReservations(d); nextDayRef.current = d; })
+        .then(res => { const d = filterActive(res.data.items ?? res.data); setNextDayReservations(d); nextDayRef.current = d; })
         .catch(() => { setNextDayReservations([]); nextDayRef.current = []; });
     } catch {
       toast.error('예약 목록을 불러오지 못했습니다.');
@@ -1812,9 +1812,9 @@ const RoomAssignment = () => {
         // 다음: 시프트 + 익일만 fetch
         const newCurrent = nextDayRef.current;
         dataPromise = reservationsAPI.getAll({ date: newDate.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
-          .catch(() => ({ data: [] }))
+          .catch(() => ({ data: { items: [] } }))
           .then((res: any) => {
-            const nextData = filterActive(res.data);
+            const nextData = filterActive(res.data.items ?? res.data);
             reservationsRef.current = newCurrent;
             nextDayRef.current = nextData;
             setReservations(newCurrent);
@@ -1824,12 +1824,12 @@ const RoomAssignment = () => {
         // 폴백: 당일 먼저
         dataPromise = reservationsAPI.getAll({ date: dateStr, limit: 200 })
           .then((res) => {
-            const curr = filterActive(res.data);
+            const curr = filterActive(res.data.items ?? res.data);
             reservationsRef.current = curr;
             setReservations(curr);
             // 다음날 백그라운드
             reservationsAPI.getAll({ date: newDate.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
-              .then(r => { const d = filterActive(r.data); setNextDayReservations(d); nextDayRef.current = d; })
+              .then(r => { const d = filterActive(r.data.items ?? r.data); setNextDayReservations(d); nextDayRef.current = d; })
               .catch(() => { setNextDayReservations([]); nextDayRef.current = []; });
           })
           .catch(() => { toast.error('예약 목록을 불러오지 못했습니다.'); });

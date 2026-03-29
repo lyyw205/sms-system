@@ -132,8 +132,10 @@ def test_section_Q(token):
     print("═"*60)
 
     # Get data from both tenants
-    res1, _ = api("get", "/api/reservations", token=token, tenant_id=1)
-    res2, _ = api("get", "/api/reservations", token=token, tenant_id=2)
+    _res1, _ = api("get", "/api/reservations", token=token, tenant_id=1)
+    res1 = (_res1 or {}).get("items", _res1 or [])
+    _res2, _ = api("get", "/api/reservations", token=token, tenant_id=2)
+    res2 = (_res2 or {}).get("items", _res2 or [])
     rooms1, _ = api("get", "/api/rooms", token=token, tenant_id=1)
     rooms2, _ = api("get", "/api/rooms", token=token, tenant_id=2)
     bldg1, _ = api("get", "/api/buildings", token=token, tenant_id=1)
@@ -260,7 +262,8 @@ def test_section_Q(token):
     if st == 201 or st == 200:
         test_id = test_res.get("id") if test_res else None
         # Verify it's NOT in T1
-        res1_after, _ = api("get", "/api/reservations", token=token, tenant_id=1)
+        _res1_after, _ = api("get", "/api/reservations", token=token, tenant_id=1)
+        res1_after = (_res1_after or {}).get("items", _res1_after or [])
         ids1_after = {r["id"] for r in (res1_after or [])}
         if test_id and test_id not in ids1_after:
             PASS("Q-10", f"Created id={test_id} in T2, not visible in T1")
@@ -329,7 +332,8 @@ def test_section_R(token):
     print("═"*60)
 
     # Find a reservation to test with
-    res, _ = api("get", "/api/reservations", token=token, tenant_id=2)
+    _res, _ = api("get", "/api/reservations", token=token, tenant_id=2)
+    res = (_res or {}).get("items", _res or [])
     if not res:
         for rid in ["R-1", "R-2", "R-3"]:
             SKIP(rid, "No reservations available")
@@ -406,8 +410,9 @@ def test_section_B(token):
         return r, st
 
     def get_res(rid):
-        all_res, st = api("get", "/api/reservations", token=token, tenant_id=2,
+        _all_res, st = api("get", "/api/reservations", token=token, tenant_id=2,
                           params={"search": "E2E_", "limit": 200})
+        all_res = (_all_res or {}).get("items", _all_res or [])
         if st == 200 and all_res:
             for r in all_res:
                 if r["id"] == rid:
@@ -704,8 +709,9 @@ def test_section_D(token):
 
 def get_res_detail(token, rid):
     """Get single reservation from list endpoint by filtering"""
-    all_res, st = api("get", "/api/reservations", token=token, tenant_id=2,
+    _all_res, st = api("get", "/api/reservations", token=token, tenant_id=2,
                       params={"search": "E2E_", "limit": 200})
+    all_res = (_all_res or {}).get("items", _all_res or [])
     if st == 200 and all_res:
         for r in all_res:
             if r["id"] == rid:

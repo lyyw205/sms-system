@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   RefreshCw,
   Plus,
@@ -137,7 +137,8 @@ export default function Reservations() {
   const [syncing, setSyncing]           = useState(false);
   const [syncFromDate, setSyncFromDate] = useState('');
 
-  const [filterDate,   setFilterDate]   = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo,   setFilterDateTo]   = useState('');
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [filterSource, setFilterSource] = useState<string[]>([]);
   const [searchQuery,  setSearchQuery]  = useState('');
@@ -162,19 +163,26 @@ export default function Reservations() {
   const [deleting,  setDeleting]  = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 100;
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 50;
 
 
-  async function fetchReservations() {
+  async function fetchReservations(page = currentPage) {
     setLoading(true);
     try {
-      const params: { limit?: number; date?: string; status?: string; source?: string; search?: string } = { limit: 50 };
-      if (filterDate) params.date = filterDate;
-      if (filterStatus.length === 1) params.status = filterStatus[0];
-      if (filterSource.length === 1) params.source = filterSource[0];
+      const params: { skip?: number; limit?: number; date?: string; status?: string; source?: string; search?: string } = {
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      };
+      if (filterDateFrom) (params as any).date_from = filterDateFrom;
+      if (filterDateTo) (params as any).date_to = filterDateTo;
+      if (filterStatus.length > 0) params.status = filterStatus.join(',');
+      if (filterSource.length > 0) params.source = filterSource.join(',');
       if (searchQuery.trim()) params.search = searchQuery.trim();
       const res = await reservationsAPI.getAll(params);
-      setReservations(res.data ?? []);
+      const data = res.data;
+      setReservations(data.items ?? data ?? []);
+      setTotalCount(data.total ?? 0);
     } catch {
       toast.error('예약 목록을 불러오지 못했습니다.');
     } finally {
@@ -183,39 +191,22 @@ export default function Reservations() {
   }
 
 
+  // Reset to page 1 when filters change (no fetch here — page effect handles it)
+  const prevFiltersRef = useRef({ filterDateFrom, filterDateTo, filterStatus, filterSource, searchQuery });
   useEffect(() => {
-    fetchReservations();
+    const prev = prevFiltersRef.current;
+    const changed = prev.filterDateFrom !== filterDateFrom || prev.filterDateTo !== filterDateTo || prev.filterStatus !== filterStatus || prev.filterSource !== filterSource || prev.searchQuery !== searchQuery;
+    prevFiltersRef.current = { filterDateFrom, filterDateTo, filterStatus, filterSource, searchQuery };
+    if (changed) setCurrentPage(1);
+  }, [filterDateFrom, filterDateTo, filterStatus, filterSource, searchQuery]);
+
+  // Single fetch effect — fires on page or filter change
+  useEffect(() => {
+    fetchReservations(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterDate, filterStatus, filterSource, searchQuery]);
+  }, [currentPage, filterDateFrom, filterDateTo, filterStatus, filterSource, searchQuery]);
 
-  const filtered = useMemo(() => {
-    // Server already filters by status, source, search when a single value is active.
-    // Multi-value status/source selections fall back to client-side filtering.
-    const list = reservations.filter((r) => {
-      if (filterStatus.length > 1 && !filterStatus.includes(r.status)) return false;
-      const src = r.booking_source ?? 'manual';
-      if (filterSource.length > 1 && !filterSource.includes(src)) return false;
-      return true;
-    });
-    // Sort by most recent confirmed or cancelled datetime
-    list.sort((a, b) => {
-      const aDate = a.cancelled_at || a.confirmed_at || a.created_at || '';
-      const bDate = b.cancelled_at || b.confirmed_at || b.created_at || '';
-      return bDate.localeCompare(aDate);
-    });
-    return list;
-  }, [reservations, filterStatus, filterSource]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterDate, filterStatus, filterSource, searchQuery]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, currentPage]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   async function handleSync() {
     setSyncing(true);
@@ -338,13 +329,14 @@ export default function Reservations() {
   }
 
   function clearFilters() {
-    setFilterDate('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
     setFilterStatus([]);
     setFilterSource([]);
     setSearchQuery('');
   }
 
-  const hasFilter = filterDate || filterStatus.length > 0 || filterSource.length > 0 || searchQuery;
+  const hasFilter = filterDateFrom || filterDateTo || filterStatus.length > 0 || filterSource.length > 0 || searchQuery;
 
   return (
     <div className="space-y-6">
@@ -393,12 +385,21 @@ export default function Reservations() {
               </div>
             </div>
 
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="block rounded-lg border border-[#E5E8EB] bg-white py-2 px-3 text-body text-[#191F28] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100"
-            />
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="block w-[130px] rounded-lg border border-[#E5E8EB] bg-white py-2 px-2.5 text-caption text-[#191F28] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100"
+              />
+              <span className="text-caption text-[#8B95A1]">~</span>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="block w-[130px] rounded-lg border border-[#E5E8EB] bg-white py-2 px-2.5 text-caption text-[#191F28] focus:border-[#3182F6] focus:ring-1 focus:ring-[#3182F6] focus:outline-none dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-100"
+              />
+            </div>
 
             <div className="flex w-full sm:w-auto overflow-x-auto scrollbar-none rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
               {[
@@ -466,7 +467,7 @@ export default function Reservations() {
             )}
 
             <span className="ml-auto text-caption tabular-nums text-gray-500">
-              {filtered.length}건 표시
+              {totalCount}건 중 {reservations.length}건 표시
             </span>
           </div>
         </div>
@@ -477,7 +478,7 @@ export default function Reservations() {
               <Spinner size="lg" />
               <span className="text-body text-[#B0B8C1] dark:text-gray-600">불러오는 중...</span>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : reservations.length === 0 ? (
             <div className="empty-state">
               <CalendarDays size={40} strokeWidth={1} />
               <p className="text-body">예약 내역이 없습니다.</p>
@@ -501,7 +502,7 @@ export default function Reservations() {
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
-                {paginated.map((r) => {
+                {reservations.map((r) => {
                   const isNaver = !!r.external_id;
 
                   return (
@@ -589,9 +590,9 @@ export default function Reservations() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-[#F2F4F6] dark:border-gray-800 px-5 py-3">
             <span className="text-caption text-[#8B95A1] dark:text-gray-500">
-              총 <span className="tabular-nums font-medium">{filtered.length}</span>건 중{' '}
+              총 <span className="tabular-nums font-medium">{totalCount}</span>건 중{' '}
               <span className="tabular-nums font-medium">{(currentPage - 1) * PAGE_SIZE + 1}</span>–
-              <span className="tabular-nums font-medium">{Math.min(currentPage * PAGE_SIZE, filtered.length)}</span>건
+              <span className="tabular-nums font-medium">{Math.min(currentPage * PAGE_SIZE, totalCount)}</span>건
             </span>
             <div className="flex items-center gap-1">
               <Button

@@ -502,7 +502,7 @@ const Templates: React.FC = () => {
 
   const loadSampleExamples = () => {
     reservationsAPI.getAll({ limit: 20, status: 'confirmed' }).then(res => {
-      const reservations = res.data;
+      const reservations = res.data.items ?? res.data;
       if (!reservations || reservations.length === 0) return;
       const pick = reservations[Math.floor(Math.random() * reservations.length)];
       const rn = pick.room_number || '';

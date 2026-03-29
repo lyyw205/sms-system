@@ -186,12 +186,14 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
     )
 
 
-@router.get("", response_model=List[ReservationResponse])
+@router.get("")
 async def get_reservations(
     skip: int = 0,
     limit: int = 50,
     status: Optional[str] = None,
     date: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     search: Optional[str] = None,
     source: Optional[str] = None,
     db: Session = Depends(get_tenant_scoped_db),
@@ -201,7 +203,11 @@ async def get_reservations(
     query = db.query(Reservation)
 
     if status:
-        query = query.filter(Reservation.status == status)
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            query = query.filter(Reservation.status == statuses[0])
+        else:
+            query = query.filter(Reservation.status.in_(statuses))
 
     if search:
         query = query.filter(
@@ -212,11 +218,14 @@ async def get_reservations(
         )
 
     if source:
-        query = query.filter(Reservation.booking_source == source)
+        sources = [s.strip() for s in source.split(",") if s.strip()]
+        if len(sources) == 1:
+            query = query.filter(Reservation.booking_source == sources[0])
+        else:
+            query = query.filter(Reservation.booking_source.in_(sources))
 
     if date:
-        # check-in <= date < check-out (check_out_date)
-        # If check_out_date is null, fall back to exact date match
+        # Single date: check-in <= date < check-out (used by RoomAssignment)
         query = query.filter(
             or_(
                 and_(
@@ -229,6 +238,20 @@ async def get_reservations(
                 ),
             )
         )
+    elif date_from or date_to:
+        # Date range: reservations overlapping with [date_from, date_to]
+        if date_from:
+            query = query.filter(
+                or_(
+                    Reservation.check_out_date >= date_from,
+                    Reservation.check_out_date.is_(None),
+                )
+            )
+        if date_to:
+            query = query.filter(Reservation.check_in_date <= date_to)
+
+    # Total count before pagination (for server-side pagination)
+    total_count = query.count()
 
     # Order by most recent confirmation or cancellation datetime
     from sqlalchemy.orm import selectinload
@@ -308,7 +331,7 @@ async def get_reservations(
             override_party_type = None  # Fall back to reservation.party_type in _to_response
 
         results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, override_bed_order=override_bed_order, db=db, filter_date=date, daily_keys=_daily_keys))
-    return results
+    return {"items": results, "total": total_count}
 
 
 @router.post("", response_model=ReservationResponse)
