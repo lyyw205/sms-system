@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTenantStore } from '@/stores/tenant-store'
 import { Modal, ModalHeader, ModalBody } from '@/components/ui/modal'
 import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,9 @@ function formatGender(male: number | null, female: number | null): string {
 
 
 export default function PartyCheckin() {
+  const { tenants, currentTenantId } = useTenantStore()
+  const hasUnstable = tenants.find(t => String(t.id) === currentTenantId)?.has_unstable ?? false
+
   const [selectedDate, setSelectedDate] = useState(getTodayStr())
   const [partySource, setPartySource] = useState<'stable' | 'unstable'>('stable')
   const [guests, setGuests] = useState<PartyGuest[]>([])
@@ -172,7 +176,7 @@ export default function PartyCheckin() {
       </div>
 
       {/* 파티 소스 탭 */}
-      <div className="flex items-center justify-center gap-1">
+      {hasUnstable && <div className="flex items-center justify-center gap-1">
         {[
           { value: 'stable' as const, label: '스테이블' },
           { value: 'unstable' as const, label: '언스테이블' },
@@ -189,7 +193,7 @@ export default function PartyCheckin() {
             {tab.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* 카운터 */}
       <div className="flex items-center justify-center gap-[15px] text-body tabular-nums">

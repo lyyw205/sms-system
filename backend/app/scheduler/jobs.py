@@ -122,7 +122,7 @@ async def sync_status_log_job():
         log_activity(
             db,
             type="naver_sync",
-            title=f"네이버 예약 동기화 : 자동 실행 ({period_start}~{period_end})",
+            title=f"[스테이블] 네이버 예약 동기화 : 자동 실행 ({period_start}~{period_end})",
             detail={"period_start": period_start, "period_end": period_end},
             created_by="scheduler",
         )
@@ -189,7 +189,7 @@ async def reconcile_today_reservations_job():
                 log_activity(
                     db,
                     type="naver_reconcile",
-                    title=f"네이버 예약 대사 : 스케줄 ({today}~{tomorrow})",
+                    title=f"[스테이블] 네이버 예약 대사 : 스케줄 ({today}~{tomorrow})",
                     detail={"today": today, "tomorrow": tomorrow, "added": total_added},
                     target_count=total_added,
                     success_count=total_added,
@@ -215,6 +215,16 @@ async def reconcile_today_reservations_job():
                     if added > 0:
                         logger.info(f"[{tenant.slug}] Unstable reconcile {target_date}: +{added} reservations")
                 if unstable_added > 0:
+                    log_activity(
+                        db,
+                        type="naver_reconcile",
+                        title=f"[언스테이블] 네이버 예약 대사 : 스케줄 ({today}~{tomorrow})",
+                        detail={"source": "unstable", "today": today, "tomorrow": tomorrow, "added": unstable_added},
+                        target_count=unstable_added,
+                        success_count=unstable_added,
+                        created_by="scheduler",
+                    )
+                    db.commit()
                     logger.info(f"[{tenant.slug}] Unstable reconciliation complete: {unstable_added} added")
 
         except Exception as e:
@@ -256,6 +266,18 @@ async def sync_unstable_reservations_job():
             )
             result = await sync_naver_to_db(provider, db, source="unstable")
             logger.info(f"[{tenant.slug}] Unstable sync result: {result['message']}")
+            if result.get("added", 0) > 0:
+                from app.services.activity_logger import log_activity
+                log_activity(
+                    db,
+                    type="naver_sync",
+                    title=f"[언스테이블] 네이버 예약 동기화 : {result['message']}",
+                    detail={"source": "unstable", "added": result["added"], "updated": result["updated"]},
+                    target_count=result.get("synced", 0),
+                    success_count=result.get("added", 0),
+                    created_by="scheduler",
+                )
+                db.commit()
         except Exception as e:
             logger.error(f"[{tenant.slug}] Error in unstable sync job: {e}")
             db.rollback()

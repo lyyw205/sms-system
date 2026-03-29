@@ -15,6 +15,7 @@ class TenantResponse(BaseModel):
     slug: str
     name: str
     is_active: bool
+    has_unstable: bool = False
 
     class Config:
         from_attributes = True
@@ -38,4 +39,10 @@ async def get_tenants(
             )
             .all()
         )
-    return tenants
+    return [
+        TenantResponse(
+            id=t.id, slug=t.slug, name=t.name, is_active=t.is_active,
+            has_unstable=bool(t.unstable_business_id),
+        )
+        for t in tenants
+    ]

@@ -5,6 +5,7 @@ export interface Tenant {
   id: number
   name: string
   slug: string
+  has_unstable?: boolean
 }
 
 interface TenantState {

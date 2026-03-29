@@ -26,6 +26,9 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [cookieInput, setCookieInput] = useState('');
   const { tenants, currentTenantId } = useTenantStore();
+  const currentTenant = tenants.find(t => String(t.id) === currentTenantId);
+  const hasUnstable = currentTenant?.has_unstable ?? false;
+  const tenantLabel = currentTenant?.name || currentTenant?.slug || '네이버';
 
   // Unstable state
   const [unstableStatus, setUnstableStatus] = useState<NaverStatus | null>(null);
@@ -152,7 +155,7 @@ export default function Settings() {
       <Card>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            스테이블 네이버 연동
+            {tenantLabel} 네이버 연동
           </h2>
           <div className="flex items-center gap-2">
             {status?.is_valid === true && (
@@ -237,7 +240,7 @@ export default function Settings() {
 
 
       {/* Unstable Naver Connection Status */}
-      <Card>
+      {hasUnstable && <Card>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             언스테이블 네이버 연동
@@ -281,10 +284,10 @@ export default function Settings() {
             쿠키가 만료되었습니다. 새 쿠키를 입력해주세요.
           </Alert>
         )}
-      </Card>
+      </Card>}
 
       {/* Unstable Settings Input */}
-      <Card>
+      {hasUnstable && <Card>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           언스테이블 설정
         </h2>
@@ -327,7 +330,7 @@ export default function Settings() {
             </Button>
           )}
         </div>
-      </Card>
+      </Card>}
 
       {/* Tenant switch */}
       {tenants.length > 1 && (

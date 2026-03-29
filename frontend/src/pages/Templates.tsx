@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { useTenantStore } from '@/stores/tenant-store';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 
@@ -366,6 +367,9 @@ function ConfirmDeleteDialog({ open, message, onConfirm, onCancel }: ConfirmDele
 // ---------------------------------------------------------------------------
 
 const Templates: React.FC = () => {
+  const { tenants, currentTenantId } = useTenantStore();
+  const hasUnstable = tenants.find(t => String(t.id) === currentTenantId)?.has_unstable ?? false;
+
   const [activeTab, setActiveTab] = useState('templates');
 
   // --- templates state ---
@@ -1749,7 +1753,7 @@ const Templates: React.FC = () => {
                   { value: 'room', label: '객실배정' },
                   { value: 'party', label: '파티만' },
                   { value: 'unassigned', label: '미배정' },
-                  { value: 'unstable', label: '언스테이블' },
+                  ...(hasUnstable ? [{ value: 'unstable', label: '언스테이블' }] : []),
                 ].map(opt => {
                   const isActive = isFilterActive('assignment', opt.value);
                   return (

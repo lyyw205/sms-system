@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI } from '../services/api';
+import { useTenantStore } from '@/stores/tenant-store';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -337,6 +338,10 @@ interface ConfirmState {
 }
 
 const RoomAssignment = () => {
+  const { tenants, currentTenantId } = useTenantStore();
+  const currentTenant = tenants.find(t => String(t.id) === currentTenantId);
+  const hasUnstable = currentTenant?.has_unstable ?? false;
+
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [reservations, setReservations] = useState<Reservation[]>([]);
   // Track which section unassigned reservations belong to: 'party' or 'unassigned'
@@ -2068,7 +2073,7 @@ const RoomAssignment = () => {
               <span className="stat-value tabular-nums text-[#E05263]">{summary.secondOnlyFemale}<span className="ml-0.5 text-label font-normal text-[#B0B8C1]">명</span></span>
             </div>
           </div>
-          {summary.unstableTotal > 0 && (
+          {hasUnstable && summary.unstableTotal > 0 && (
             <>
               <div className="w-px bg-[#E5E8EB] dark:bg-[#2C2C34] my-3" />
               <div className="w-[130px] flex flex-col items-center justify-center px-3 py-4">
@@ -3114,8 +3119,8 @@ const RoomAssignment = () => {
           onDelete={contextMenuActions.onDelete}
           onLinkStayGroup={contextMenuActions.onLinkStayGroup}
           onSetColor={contextMenuActions.onSetColor}
-          onCopyToUnstable={contextMenuActions.onCopyToUnstable}
-          onRemoveFromUnstable={contextMenuActions.onRemoveFromUnstable}
+          onCopyToUnstable={hasUnstable ? contextMenuActions.onCopyToUnstable : undefined}
+          onRemoveFromUnstable={hasUnstable ? contextMenuActions.onRemoveFromUnstable : undefined}
           onClose={() => setContextMenu(null)}
         />
       )}

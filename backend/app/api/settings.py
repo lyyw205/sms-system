@@ -74,10 +74,12 @@ async def update_naver_cookie(
     db: Session = Depends(get_tenant_scoped_db),
 ):
     """Update Naver cookie — saves to Tenant table + runtime"""
-    if not req.cookie.strip():
+    import re as _re
+    cleaned = _re.sub(r'\s+', ' ', req.cookie).strip()
+    if not cleaned:
         return {"success": False, "message": "Cookie cannot be empty"}
 
-    cookie = req.cookie.strip()
+    cookie = cleaned
     business_id = tenant.naver_business_id or ''
 
     # Save to Tenant table (persistent across restarts)
@@ -176,7 +178,10 @@ async def update_unstable_settings(
         updated.append("business_id")
 
     if req.cookie is not None:
-        tenant.unstable_cookie = req.cookie.strip() or None
+        # 개행/탭/연속 공백 제거 (브라우저 복사 시 혼입되는 공백 정리)
+        import re as _re
+        cleaned = _re.sub(r'\s+', ' ', req.cookie).strip()
+        tenant.unstable_cookie = cleaned or None
         updated.append("cookie")
 
     if not updated:
