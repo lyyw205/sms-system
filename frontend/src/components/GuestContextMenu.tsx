@@ -16,11 +16,16 @@ interface GuestContextMenuProps {
 }
 
 const COLOR_PRESETS: { key: string; label: string; bg: string }[] = [
-  { key: 'yellow', label: '노랑', bg: '#FFF8E1' },
-  { key: 'pink',   label: '분홍', bg: '#FFE8EE' },
-  { key: 'green',  label: '초록', bg: '#E8F5E9' },
-  { key: 'blue',   label: '파랑', bg: '#E3F2FD' },
-  { key: 'purple', label: '보라', bg: '#F3E5F5' },
+  { key: 'yellow', label: '연노랑', bg: '#FFF8E1' },
+  { key: 'pink',   label: '연분홍', bg: '#FFE8EE' },
+  { key: 'green',  label: '연초록', bg: '#E8F5E9' },
+  { key: 'blue',   label: '연파랑', bg: '#E3F2FD' },
+  { key: 'purple', label: '연보라', bg: '#F3E5F5' },
+  { key: 'yellow-dark', label: '노랑', bg: '#FFD54F' },
+  { key: 'pink-dark',   label: '분홍', bg: '#F48FB1' },
+  { key: 'green-dark',  label: '초록', bg: '#81C784' },
+  { key: 'blue-dark',   label: '파랑', bg: '#64B5F6' },
+  { key: 'purple-dark', label: '보라', bg: '#CE93D8' },
 ];
 
 export default function GuestContextMenu({
@@ -100,7 +105,7 @@ export default function GuestContextMenu({
 
       <div className="border-t border-[#E5E8EB] dark:border-gray-800 my-1" />
 
-      <div className="px-3 py-1.5 flex items-center gap-1.5">
+      <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5">
         {COLOR_PRESETS.map((preset) => (
           <button
             key={preset.key}

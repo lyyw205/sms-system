@@ -1644,6 +1644,11 @@ const RoomAssignment = () => {
     green: { bg: 'bg-[#E8F5E9] dark:bg-[#E8F5E9]/15', hover: 'hover:bg-[#D0ECD2] dark:hover:bg-[#E8F5E9]/25' },
     blue: { bg: 'bg-[#E3F2FD] dark:bg-[#E3F2FD]/15', hover: 'hover:bg-[#CFEBFF] dark:hover:bg-[#E3F2FD]/25' },
     purple: { bg: 'bg-[#F3E5F5] dark:bg-[#F3E5F5]/15', hover: 'hover:bg-[#E8D0ED] dark:hover:bg-[#F3E5F5]/25' },
+    'yellow-dark': { bg: 'bg-[#FFD54F] dark:bg-[#FFD54F]/25', hover: 'hover:bg-[#FFCA28] dark:hover:bg-[#FFD54F]/35' },
+    'pink-dark': { bg: 'bg-[#F48FB1] dark:bg-[#F48FB1]/25', hover: 'hover:bg-[#F06292] dark:hover:bg-[#F48FB1]/35' },
+    'green-dark': { bg: 'bg-[#81C784] dark:bg-[#81C784]/25', hover: 'hover:bg-[#66BB6A] dark:hover:bg-[#81C784]/35' },
+    'blue-dark': { bg: 'bg-[#64B5F6] dark:bg-[#64B5F6]/25', hover: 'hover:bg-[#42A5F5] dark:hover:bg-[#64B5F6]/35' },
+    'purple-dark': { bg: 'bg-[#CE93D8] dark:bg-[#CE93D8]/25', hover: 'hover:bg-[#BA68C8] dark:hover:bg-[#CE93D8]/35' },
   };
 
   const renderGuestRow = (res: Reservation, showGrip: boolean) => {
