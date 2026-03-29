@@ -499,6 +499,7 @@ class ReservationDailyInfo(TenantMixin, Base):
     reservation_id = Column(Integer, ForeignKey("reservations.id", ondelete="CASCADE"), nullable=False)
     date = Column(String(20), nullable=False)  # YYYY-MM-DD
     party_type = Column(String(20), nullable=True)  # '1'=1차만, '2'=1+2차, '2차만'=2차만, 'X'=미참여
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

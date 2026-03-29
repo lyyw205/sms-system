@@ -123,7 +123,7 @@ class ReservationResponse(BaseModel):
         from_attributes = True
 
 
-def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, override_bed_order: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None, daily_keys: Optional[set] = None) -> ReservationResponse:
+def _to_response(res: Reservation, override_room: Optional[str] = None, override_password: Optional[str] = None, override_assigned_by: Optional[str] = None, override_party_type: Optional[str] = None, override_room_id: Optional[int] = None, override_bed_order: Optional[int] = None, db: Session = None, filter_date: Optional[str] = None, daily_keys: Optional[set] = None, override_notes: Optional[str] = None) -> ReservationResponse:
     assignments = []
     if db is not None and hasattr(res, 'sms_assignments'):
         source = [a for a in res.sms_assignments if a.assigned_by != 'excluded']
@@ -157,7 +157,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         check_in_date=res.check_in_date,
         check_in_time=res.check_in_time,
         status=res.status.value,
-        notes=res.notes,
+        notes=override_notes if override_notes is not None else res.notes,
         booking_source=res.booking_source,
         room_id=override_room_id,
         room_number=override_room if override_room is not None else res.room_number,
@@ -283,6 +283,7 @@ async def get_reservations(
                 .all()
             )
             daily_party_map = {di.reservation_id: di.party_type for di in daily_infos}
+            daily_notes_map = {di.reservation_id: di.notes for di in daily_infos if di.notes is not None}
         else:
             # date 없음: 각 예약의 check-in date 기준으로 조회
             # (reservation_id, date) 쌍을 한 번에 가져온 뒤 매핑
@@ -303,9 +304,11 @@ async def get_reservations(
                     info = _rl[ra.reservation_id]
                     room_map[ra.reservation_id] = (info["room_id"], info["room_number"] or '', info["room_password"], info["assigned_by"], info.get("bed_order", 0))
             daily_party_map = {}
+            daily_notes_map = {}
     else:
         room_map = {}
         daily_party_map = {}
+        daily_notes_map = {}
 
     # daily_keys를 한 번만 조회 (N+1 방지)
     _daily_keys = None
@@ -333,7 +336,13 @@ async def get_reservations(
         else:
             override_party_type = None  # Fall back to reservation.party_type in _to_response
 
-        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, override_bed_order=override_bed_order, db=db, filter_date=date, daily_keys=_daily_keys))
+        # Resolve per-date notes
+        if date and res.id in daily_notes_map:
+            override_notes = daily_notes_map[res.id]
+        else:
+            override_notes = None
+
+        results.append(_to_response(res, override_room=override_room, override_password=override_password, override_assigned_by=override_assigned_by, override_party_type=override_party_type, override_room_id=override_room_id, override_bed_order=override_bed_order, db=db, filter_date=date, daily_keys=_daily_keys, override_notes=override_notes))
     return {"items": results, "total": total_count}
 
 
@@ -529,6 +538,7 @@ async def assign_room(
 class DailyInfoUpdate(BaseModel):
     date: str  # YYYY-MM-DD
     party_type: Optional[str] = None
+    notes: Optional[str] = None
 
 
 @router.put("/{reservation_id}/daily-info", response_model=ReservationResponse)
@@ -549,27 +559,33 @@ async def update_daily_info(
     ).first()
 
     if existing:
-        existing.party_type = request.party_type
+        if request.party_type is not None:
+            existing.party_type = request.party_type
+        if request.notes is not None:
+            existing.notes = request.notes
         existing.updated_at = datetime.now(timezone.utc)
     else:
         db.add(ReservationDailyInfo(
             reservation_id=reservation_id,
             date=request.date,
             party_type=request.party_type,
+            notes=request.notes,
         ))
 
     db.flush()
 
-    # 칩 재계산 (party_type 변경으로 필터 매칭이 달라질 수 있음)
-    from app.services.room_assignment import sync_sms_tags
-    sync_sms_tags(db, reservation_id)
+    # party_type 변경 시에만 칩 재계산 (필터 매칭이 달라질 수 있음)
+    if request.party_type is not None:
+        from app.services.room_assignment import sync_sms_tags
+        sync_sms_tags(db, reservation_id)
     db.commit()
 
     db.refresh(db_reservation)
 
     # Return with the daily override applied
     override_party_type = request.party_type
-    return _to_response(db_reservation, override_party_type=override_party_type, db=db)
+    override_notes = request.notes
+    return _to_response(db_reservation, override_party_type=override_party_type, override_notes=override_notes, db=db)
 
 
 @router.post("/sync/naver")

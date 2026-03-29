@@ -325,6 +325,13 @@ def init_db():
             if result.rowcount > 0:
                 print(f"AUTO-MIGRATE: Migrated {result.rowcount} schedules from stay_filter='last_only' to target_mode='last_day'")
 
+        # reservation_daily_info: notes
+        if "reservation_daily_info" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("reservation_daily_info")]
+            if "notes" not in cols:
+                conn.execute(text("ALTER TABLE reservation_daily_info ADD COLUMN notes TEXT"))
+                print("AUTO-MIGRATE: Added notes column to reservation_daily_info table")
+
     # Task 1.5: admin 기본 비밀번호 환경변수화
     db = SessionLocal()
     try:

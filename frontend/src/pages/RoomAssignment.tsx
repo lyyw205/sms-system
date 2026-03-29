@@ -436,6 +436,15 @@ const RoomAssignment = () => {
       }
       return;
     }
+    if (field === 'notes') {
+      try {
+        await reservationsAPI.updateDailyInfo(resId, { date: selectedDate.format('YYYY-MM-DD'), notes: value || null });
+        setReservations(prev => prev.map(r => r.id === resId ? { ...r, notes: value } : r));
+      } catch {
+        toast.error('저장 실패');
+      }
+      return;
+    }
     try {
       if (field === 'genderPeople') {
         // Parse mixed gender format: "남1여1", "남2", "여3", "남1", etc.
