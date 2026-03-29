@@ -26,6 +26,7 @@ import {
   Layers,
   Check,
   MousePointer,
+  Minus,
 } from 'lucide-react';
 import GuestContextMenu from '../components/GuestContextMenu';
 
@@ -2194,7 +2195,7 @@ const RoomAssignment = () => {
                 <div className="absolute top-0 bottom-0 w-px bg-[#3182F6] z-50 pointer-events-none" style={{ left: resizeGuideX }} />
               )}
               {/* Header */}
-              <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#F2F4F6] dark:border-[#2C2C34] sticky z-[19]" style={{ top: dateHeaderH }}>
+              <div className="flex items-center h-10 bg-[#F2F4F6] dark:bg-[#17171C] border-b border-[#D1D5DB] dark:border-[#4E5968] sticky z-[19]" style={{ top: dateHeaderH }}>
                 <div className="flex-shrink-0 pl-3 pr-2 w-42 border-r border-[#F2F4F6] dark:border-[#2C2C34]">
                   <span className="text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">객실</span>
                 </div>
@@ -2256,21 +2257,21 @@ const RoomAssignment = () => {
                       <div key={`building-${group.building_id ?? 'none'}`} className="relative">
                         {/* Bookmark tab */}
                         <div
-                          className="absolute -left-[2px] top-0 z-10 flex items-center justify-center cursor-pointer select-none rounded-l-md w-4 h-8 border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors shadow-sm"
+                          className="absolute -left-[2px] top-0 z-10 flex items-center justify-center cursor-pointer select-none rounded-l-md w-4 h-6 border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] transition-colors shadow-sm"
                           style={{ transform: 'translateX(-100%)' }}
                           onClick={() => toggleBuildingCollapse(group.building_id)}
                           title={`${buildingLabel} ${summary}`}
                         >
                           {isCollapsed
-                            ? <ChevronDown className="h-3 w-3 text-[#8B95A1]" />
-                            : <ChevronRight className="h-3 w-3 text-[#8B95A1] rotate-180" />}
+                            ? <Plus className="h-2.5 w-2.5 text-[#8B95A1]" />
+                            : <Minus className="h-2.5 w-2.5 text-[#8B95A1]" />}
                         </div>
                         {isCollapsed ? (
                           <div
                             className="flex items-center h-8 px-3 border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-[#F8F9FA]/50 dark:bg-[#17171C]/30 cursor-pointer"
                             onClick={() => toggleBuildingCollapse(group.building_id)}
                           >
-                            <span className="text-caption text-[#B0B8C1] dark:text-gray-600 italic">{buildingLabel} — {summary}</span>
+                            <span className="text-caption text-[#B0B8C1] dark:text-gray-600">{buildingLabel} ({summary})</span>
                           </div>
                         ) : roomRows}
                       </div>
