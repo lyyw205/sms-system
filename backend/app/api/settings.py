@@ -247,3 +247,40 @@ async def sync_unstable_reservations(
         return {"success": False, "message": f"동기화 실패: {str(e)}"}
 
 
+# ── Custom Highlight Colors ──────────────────────────────────────
+
+class CustomHighlightColorsRequest(BaseModel):
+    colors: list[str]  # list of hex color strings e.g. ["#FF5733"]
+
+
+@router.get("/highlight-colors")
+async def get_highlight_colors(
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_tenant),
+):
+    """Get custom highlight colors for this tenant"""
+    import json
+    colors = []
+    if tenant.custom_highlight_colors:
+        try:
+            colors = json.loads(tenant.custom_highlight_colors)
+        except (json.JSONDecodeError, TypeError):
+            colors = []
+    return {"colors": colors}
+
+
+@router.put("/highlight-colors")
+async def update_highlight_colors(
+    req: CustomHighlightColorsRequest,
+    current_user: User = Depends(require_admin_or_above),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_tenant_scoped_db),
+):
+    """Update custom highlight colors for this tenant"""
+    import json
+    import re
+    valid_colors = [c for c in req.colors if re.match(r'^#[0-9A-Fa-f]{6}$', c)]
+    tenant.custom_highlight_colors = json.dumps(valid_colors)
+    db.commit()
+    return {"success": True, "colors": valid_colors}
+

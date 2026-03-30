@@ -230,6 +230,10 @@ export const settingsAPI = {
   updateUnstableSettings: (data: { business_id?: string; cookie?: string }) =>
     api.post('/api/settings/unstable/settings', data),
   syncUnstable: () => api.post('/api/settings/unstable/sync'),
+  // Custom highlight colors
+  getHighlightColors: () => api.get('/api/settings/highlight-colors'),
+  updateHighlightColors: (colors: string[]) =>
+    api.put('/api/settings/highlight-colors', { colors }),
 };
 
 // Party Check-in API

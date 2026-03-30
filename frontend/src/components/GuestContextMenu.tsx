@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Undo2, Music, Trash2, Link2, X, Zap, XCircle } from 'lucide-react';
+import { COLOR_PRESETS } from '@/lib/highlight-colors';
 
 interface GuestContextMenuProps {
   position: { x: number; y: number };
@@ -8,6 +9,7 @@ interface GuestContextMenuProps {
   currentSection: 'room' | 'unassigned' | 'party' | 'unstable';
   hasStayGroup: boolean;
   isUnstableCopy?: boolean;
+  customColors?: string[];
   onMoveToPool: () => void;
   onMoveToParty: () => void;
   onDelete: () => void;
@@ -18,25 +20,13 @@ interface GuestContextMenuProps {
   onClose: () => void;
 }
 
-const COLOR_PRESETS: { key: string; label: string; bg: string }[] = [
-  { key: 'yellow', label: '연노랑', bg: '#FFF8E1' },
-  { key: 'pink',   label: '연분홍', bg: '#FFE8EE' },
-  { key: 'green',  label: '연초록', bg: '#E8F5E9' },
-  { key: 'blue',   label: '연파랑', bg: '#E3F2FD' },
-  { key: 'purple', label: '연보라', bg: '#F3E5F5' },
-  { key: 'yellow-dark', label: '노랑', bg: '#FFD54F' },
-  { key: 'pink-dark',   label: '분홍', bg: '#F48FB1' },
-  { key: 'green-dark',  label: '초록', bg: '#81C784' },
-  { key: 'blue-dark',   label: '파랑', bg: '#64B5F6' },
-  { key: 'purple-dark', label: '보라', bg: '#CE93D8' },
-];
-
 export default function GuestContextMenu({
   position,
   targetCount,
   currentSection,
   hasStayGroup,
   isUnstableCopy,
+  customColors = [],
   onMoveToPool,
   onMoveToParty,
   onDelete,
@@ -138,7 +128,16 @@ export default function GuestContextMenu({
             title={preset.label}
             onClick={(e) => { e.stopPropagation(); onSetColor(preset.key); }}
             className="w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 cursor-pointer hover:scale-110 transition-transform flex-shrink-0"
-            style={{ backgroundColor: preset.bg }}
+            style={{ backgroundColor: preset.hex }}
+          />
+        ))}
+        {customColors.map((hex) => (
+          <button
+            key={hex}
+            title={hex}
+            onClick={(e) => { e.stopPropagation(); onSetColor(hex); }}
+            className="w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 cursor-pointer hover:scale-110 transition-transform flex-shrink-0"
+            style={{ backgroundColor: hex }}
           />
         ))}
         <button

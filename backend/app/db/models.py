@@ -559,6 +559,7 @@ class Tenant(Base):
     aligo_sender = Column(String(20), nullable=True)  # 펜션별 발신번호
     aligo_testmode = Column(Boolean, default=True)  # True=테스트모드(실제 미발송), False=실제 발송
     chip_priority_keys = Column(Text, nullable=True)  # JSON array of template_keys for chip display order
+    custom_highlight_colors = Column(Text, nullable=True)  # JSON array of custom hex colors e.g. ["#FF5733","#33FF57"]
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI } from '../services/api';
+import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI, settingsAPI } from '../services/api';
 import { useTenantStore } from '@/stores/tenant-store';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
@@ -32,6 +32,16 @@ import {
   PanelRightClose,
 } from 'lucide-react';
 import GuestContextMenu from '../components/GuestContextMenu';
+import TableSettingsModal from '../components/TableSettingsModal';
+import {
+  PRESET_HIGHLIGHT_STYLES,
+  isCustomHexColor,
+  getCustomBgStyle,
+  getCustomTextClass,
+  loadRowColors,
+  saveRowColors,
+  type RowColorSettings,
+} from '@/lib/highlight-colors';
 
 interface SmsAssignment {
   id: number;
@@ -307,7 +317,7 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
   );
 };
 
-const InlineInput = ({ value, field, resId, className, placeholder, onSave, autoFocus }: {
+const InlineInput = ({ value, field, resId, className, placeholder, onSave, autoFocus, disabled }: {
   value: string;
   field: string;
   resId: number;
@@ -315,9 +325,17 @@ const InlineInput = ({ value, field, resId, className, placeholder, onSave, auto
   placeholder?: string;
   onSave: (resId: number, field: string, value: string) => void;
   autoFocus?: boolean;
+  disabled?: boolean;
 }) => {
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => setLocalValue(value), [value]);
+  if (disabled) {
+    return (
+      <span className={`w-full text-body truncate ${className || ''}`}>
+        {value || <span className="text-[#B0B8C1] dark:text-[#4E5968]">{placeholder}</span>}
+      </span>
+    );
+  }
   return (
     <input
       className={`bg-transparent border-none outline-none w-full text-body
@@ -426,9 +444,10 @@ const RoomAssignment = () => {
   const [templateLabels, setTemplateLabels] = useState<{template_key: string; name: string; short_label: string | null}[]>([]);
 
   const [roomGroups, setRoomGroups] = useState<Array<{id: number; name: string; sort_order: number; color?: string; room_ids: number[]}>>([]);
-  const [groupModalOpen, setGroupModalOpen] = useState(false);
-  const [dividers, setDividers] = useState<Set<number>>(new Set());
-  const [savingGroups, setSavingGroups] = useState(false);
+  const [tableSettingsOpen, setTableSettingsOpen] = useState(false);
+  const [customHighlightColors, setCustomHighlightColors] = useState<string[]>([]);
+  const [rowColors, setRowColors] = useState<RowColorSettings>(loadRowColors);
+  const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
 
   const [showStayGroupModal, setShowStayGroupModal] = useState(false);
   const [stayGroupChain, setStayGroupChain] = useState<Array<{id: number; customer_name: string; phone: string; check_in_date: string; check_out_date: string; stay_group_id?: string | null}>>([]);
@@ -497,6 +516,22 @@ const RoomAssignment = () => {
   useEffect(() => {
     localStorage.setItem('roomAssignment_colWidths', JSON.stringify(colWidths));
   }, [colWidths]);
+
+  // Load custom highlight colors from tenant settings
+  useEffect(() => {
+    settingsAPI.getHighlightColors().then(res => {
+      setCustomHighlightColors(res.data.colors || []);
+    }).catch(() => { /* ignore */ });
+  }, []);
+
+  // Dark mode detection for custom highlight inline styles
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   // 날짜 헤더 높이 측정 → 테이블 헤더 sticky top 계산
   useEffect(() => {
@@ -1710,25 +1745,13 @@ const RoomAssignment = () => {
     setDragOverTrash(false);
   }, []);
 
-  const HIGHLIGHT_COLORS: Record<string, { bg: string; hover: string; text?: string }> = {
-    yellow: { bg: 'bg-[#FFF8E1] dark:bg-[#FFF8E1]/15', hover: 'hover:bg-[#FFF0C0] dark:hover:bg-[#FFF8E1]/25' },
-    pink: { bg: 'bg-[#FFE8EE] dark:bg-[#FFE8EE]/15', hover: 'hover:bg-[#FFD6E0] dark:hover:bg-[#FFE8EE]/25' },
-    green: { bg: 'bg-[#E8F5E9] dark:bg-[#E8F5E9]/15', hover: 'hover:bg-[#D0ECD2] dark:hover:bg-[#E8F5E9]/25' },
-    blue: { bg: 'bg-[#E3F2FD] dark:bg-[#E3F2FD]/15', hover: 'hover:bg-[#CFEBFF] dark:hover:bg-[#E3F2FD]/25' },
-    purple: { bg: 'bg-[#F3E5F5] dark:bg-[#F3E5F5]/15', hover: 'hover:bg-[#E8D0ED] dark:hover:bg-[#F3E5F5]/25' },
-    'yellow-dark': { bg: 'bg-[#FFD54F] dark:bg-[#FFD54F]/25', hover: 'hover:bg-[#FFCA28] dark:hover:bg-[#FFD54F]/35', text: 'text-[#191F28] dark:text-white' },
-    'pink-dark': { bg: 'bg-[#F48FB1] dark:bg-[#F48FB1]/25', hover: 'hover:bg-[#F06292] dark:hover:bg-[#F48FB1]/35', text: 'text-[#191F28] dark:text-white' },
-    'green-dark': { bg: 'bg-[#81C784] dark:bg-[#81C784]/25', hover: 'hover:bg-[#66BB6A] dark:hover:bg-[#81C784]/35', text: 'text-[#191F28] dark:text-white' },
-    'blue-dark': { bg: 'bg-[#64B5F6] dark:bg-[#64B5F6]/25', hover: 'hover:bg-[#42A5F5] dark:hover:bg-[#64B5F6]/35', text: 'text-[#191F28] dark:text-white' },
-    'purple-dark': { bg: 'bg-[#CE93D8] dark:bg-[#CE93D8]/25', hover: 'hover:bg-[#BA68C8] dark:hover:bg-[#CE93D8]/35', text: 'text-[#191F28] dark:text-white' },
-  };
-
   const renderGuestRow = (res: Reservation, showGrip: boolean, zone?: string) => {
     const genderPeople = formatGenderPeople(res);
     const longStay = !!res.is_long_stay;
     const isSelected = interactionMode === 'select' && selectedGuestIds.has(res.id);
-    const highlightStyle = res.highlight_color ? HIGHLIGHT_COLORS[res.highlight_color] : null;
-    const hasCustomText = !!highlightStyle?.text;
+    const isCustomHex = isCustomHexColor(res.highlight_color);
+    const highlightStyle = !isCustomHex && res.highlight_color ? PRESET_HIGHLIGHT_STYLES[res.highlight_color] : null;
+    const hasCustomText = isCustomHex || !!highlightStyle?.text;
     const cellText = hasCustomText ? 'text-inherit' : 'text-[#191F28] dark:text-white';
 
     return (
@@ -1736,10 +1759,13 @@ const RoomAssignment = () => {
         className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-7'} transition-colors duration-150 ${
           isSelected
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
-            : highlightStyle
-              ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
-              : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
+            : isCustomHex
+              ? `${getCustomTextClass(res.highlight_color!)} hover:brightness-[0.97] dark:hover:brightness-110`
+              : highlightStyle
+                ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
+                : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
         } ${guestAreaCursor()}`}
+        style={isCustomHex && !isSelected ? getCustomBgStyle(res.highlight_color!, isDarkMode) : undefined}
         onContextMenu={(e) => onGuestContextMenu(e, res.id, zone)}
       >
         {showGrip && (
@@ -1771,22 +1797,22 @@ const RoomAssignment = () => {
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <span className="flex items-center gap-1">
-              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} />
+              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} disabled={selectionActive} />
               {res.has_unstable_booking && <span className="inline-block h-[6px] w-[6px] rounded-full bg-[#7B61FF] flex-shrink-0" title="언스테이블 파티 예약 확인" />}
             </span>
           </div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className={`${cellText} tabular-nums`} placeholder="연락처" />
+            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className={`${cellText} tabular-nums`} placeholder="연락처" disabled={selectionActive} />
           </div>
           <div className="overflow-hidden text-center px-1.5">
-            <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" />
+            <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" disabled={selectionActive} />
           </div>
           <div className="overflow-hidden text-center px-1.5">
-            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" />
+            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" disabled={selectionActive} />
           </div>
           <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-[#8B95A1] text-center px-1.5">{res.naver_room_type || <span className="text-[#B0B8C1] dark:text-[#4E5968]">-</span>}</div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" />
+            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" disabled={selectionActive} />
           </div>
           <div className="overflow-visible px-1.5">
             <SmsCell reservation={res} templateLabels={templateLabels} selectedDate={selectedDate.format('YYYY-MM-DD')} onToggle={handleSmsToggle} onAssign={handleSmsAssign} onRemove={handleSmsRemove} />
@@ -1819,12 +1845,23 @@ const RoomAssignment = () => {
     const hasGuests = guests.length > 0;
     const rowHeight = hasGuests ? 40 : 36;
     const stripeKey = groupInfo ? groupInfo.groupIndex : rowIndex;
-    const stripeBg = (!isDormitory && guests.length >= 2)
-      ? 'bg-[#FFF8E1] dark:bg-[#FFF8E1]/10'
-      : stripeKey % 2 === 0 ? 'bg-white dark:bg-[#1E1E24]' : 'bg-[#F8F9FA] dark:bg-[#17171C]';
+    const isOverbooking = !isDormitory && guests.length >= 2;
 
+    // Dynamic stripe colors from row color settings
+    const stripeBgStyle: React.CSSProperties = isOverbooking
+      ? { backgroundColor: isDarkMode ? `${rowColors.overbooking}1A` : rowColors.overbooking }
+      : stripeKey % 2 === 0
+        ? { backgroundColor: isDarkMode ? rowColors.evenDark : rowColors.even }
+        : { backgroundColor: isDarkMode ? rowColors.oddDark : rowColors.odd };
+
+    // Dynamic group border color
     const groupLast = groupInfo?.isLast;
-    const borderColor = groupLast ? 'border-b-[#D1D5DB] dark:border-b-[#4E5968]' : 'border-b-[#E5E8EB] dark:border-b-[#2C2C34]';
+    const groupColor = groupLast && groupInfo
+      ? roomGroups.find(g => g.id === groupInfo.group_id)?.color
+      : undefined;
+    const borderStyle: React.CSSProperties | undefined = groupLast
+      ? { borderBottomColor: isDarkMode ? (groupColor || '#4E5968') : (groupColor || '#D1D5DB') }
+      : { borderBottomColor: isDarkMode ? '#2C2C34' : '#E5E8EB' };
 
     return (
       <div
@@ -1832,16 +1869,16 @@ const RoomAssignment = () => {
         className={`group flex select-none transition-colors
           ${isDragOver
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30 dark:ring-[#3182F6]/30'
-            : stripeBg
+            : ''
           } ${selectionActive ? 'cursor-pointer' : ''}`}
-        style={{ minHeight: `${totalRows * rowHeight}px` }}
+        style={{ minHeight: `${totalRows * rowHeight}px`, ...(isDragOver ? {} : stripeBgStyle) }}
         data-drop-zone={`room-${room_id}`}
         onClick={interactionMode === 'select' ? onDropZoneClick : undefined}
         onMouseEnter={interactionMode === 'select' ? () => onZoneHover(`room-${room_id}`) : undefined}
         onMouseLeave={interactionMode === 'select' ? onZoneLeave : undefined}
       >
         {/* Room label - vertically centered, spans all rows */}
-        <div className={`flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b ${borderColor} ${stripeBg}`}>
+        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b" style={{ ...borderStyle, ...stripeBgStyle }}>
           <span className="font-semibold text-[#191F28] dark:text-white text-body">{room_number}</span>
           {roomInfoMap[room_number] && (
             <span className="text-caption text-[#B0B8C1] dark:text-[#8B95A1] truncate">{roomInfoMap[room_number]}</span>
@@ -1849,7 +1886,7 @@ const RoomAssignment = () => {
         </div>
 
         {/* Guest rows */}
-        <div className={`flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b ${borderColor}`}>
+        <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b" style={borderStyle}>
           {isDormitory ? (
             // Dormitory: show beds as rows, filled or empty
             Array.from({ length: totalRows }).map((_, i) => {
@@ -1887,7 +1924,7 @@ const RoomAssignment = () => {
         </div>
 
         {/* Next day column */}
-        <div className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b ${borderColor} ${stripeBg} transition-all duration-200`} style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
+        <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay, ...borderStyle, ...stripeBgStyle }}>
           <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
             {Array.from({ length: totalRows }).map((_, i) => {
               const nextGuest = nextGuests[i];
@@ -2189,35 +2226,10 @@ const RoomAssignment = () => {
               <Button
                 color="light"
                 size="sm"
-                onClick={() => {
-                  // Convert existing roomGroups → dividers
-                  const roomIds = activeRoomEntries.map(e => e.room_id);
-                  const groupMap = new Map<number, number>();
-                  roomGroups.forEach(g => g.room_ids.forEach(rid => groupMap.set(rid, g.id)));
-                  const newDividers = new Set<number>();
-                  // 그룹이 존재하면 상단/하단 경계 자동 추가
-                  if (roomGroups.length > 0) {
-                    newDividers.add(-1);
-                    newDividers.add(roomIds.length - 1);
-                  }
-                  roomIds.forEach((id, idx) => {
-                    if (idx < roomIds.length - 1) {
-                      const curGroup = groupMap.get(id);
-                      const nextGroup = groupMap.get(roomIds[idx + 1]);
-                      if (curGroup !== undefined && nextGroup !== undefined && curGroup !== nextGroup) {
-                        newDividers.add(idx);
-                      }
-                      if ((curGroup !== undefined) !== (nextGroup !== undefined)) {
-                        newDividers.add(idx);
-                      }
-                    }
-                  });
-                  setDividers(newDividers);
-                  setGroupModalOpen(true);
-                }}
+                onClick={() => setTableSettingsOpen(true)}
               >
                 <Layers className="h-3.5 w-3.5 mr-1.5" />
-                그룹 설정
+                테이블 설정
               </Button>
 
               <Button
@@ -2899,115 +2911,69 @@ const RoomAssignment = () => {
         </ModalFooter>
       </Modal>
 
-      {/* Group Settings Modal */}
-      <Modal show={groupModalOpen} onClose={() => setGroupModalOpen(false)} size="md">
-        <ModalHeader>그룹 설정</ModalHeader>
-        <ModalBody>
-          <div className="space-y-0">
-            {activeRoomEntries.map((entry, idx) => {
-              const renderDivider = (divIdx: number) => (
-                <div
-                  className="relative py-1.5 flex items-center justify-center cursor-pointer group/divider"
-                  onClick={() => {
-                    setDividers(prev => {
-                      const next = new Set(prev);
-                      if (next.has(divIdx)) next.delete(divIdx);
-                      else next.add(divIdx);
-                      return next;
-                    });
-                  }}
-                >
-                  {dividers.has(divIdx) ? (
-                    <>
-                      <div className="absolute inset-x-4 border-t-2 border-[#3182F6] dark:border-[#3182F6]" />
-                      <div className="absolute z-10 bg-[#3182F6] text-white rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
-                        <X className="h-3 w-3" />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="absolute inset-x-4 border-t border-dashed border-transparent group-hover/divider:border-[#D1D5DB] dark:group-hover/divider:border-[#4E5968] transition-colors" />
-                      <div className="absolute z-10 bg-[#E5E8EB] dark:bg-[#2C2C34] text-[#8B95A1] rounded-full h-5 w-5 flex items-center justify-center opacity-0 group-hover/divider:opacity-100 transition-opacity">
-                        <Plus className="h-3 w-3" />
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
+      {/* Table Settings Modal (replaces old Group Settings Modal) */}
+      <TableSettingsModal
+        show={tableSettingsOpen}
+        onClose={() => setTableSettingsOpen(false)}
+        customColors={customHighlightColors}
+        onSaveCustomColors={async (colors) => {
+          await settingsAPI.updateHighlightColors(colors);
+          setCustomHighlightColors(colors);
+          toast.success('커스텀 색상이 저장되었습니다');
+        }}
+        activeRoomEntries={activeRoomEntries}
+        roomGroups={roomGroups}
+        roomInfoMap={roomInfoMap}
+        onSaveDividers={async (dividers, dividerColors) => {
+          try {
+            // Delete all existing groups
+            for (const rg of roomGroups) {
+              await roomsAPI.deleteGroup(rg.id);
+            }
 
-              return (
-                <React.Fragment key={entry.room_id}>
-                  {/* Divider before first room */}
-                  {idx === 0 && renderDivider(-1)}
-                  {/* Room row */}
-                  <div className="flex items-center px-4 py-2.5 text-body">
-                    <span className="font-medium text-[#191F28] dark:text-white w-16">{entry.room_number}</span>
-                    <span className="text-[#8B95A1] dark:text-[#8B95A1] text-caption">{roomInfoMap[entry.room_number] || ''}</span>
-                    {entry.building_name && (
-                      <span className="ml-auto text-caption text-[#B0B8C1] dark:text-[#4E5968]">{entry.building_name}</span>
-                    )}
-                  </div>
-                  {/* Divider after each room (including last) */}
-                  {renderDivider(idx)}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button color="light" onClick={() => setGroupModalOpen(false)}>취소</Button>
-          <Button
-            color="blue"
-            disabled={savingGroups}
-            onClick={async () => {
-              setSavingGroups(true);
-              try {
-                // Delete all existing groups
-                for (const rg of roomGroups) {
-                  await roomsAPI.deleteGroup(rg.id);
-                }
+            // Convert dividers → groups
+            const roomIds = activeRoomEntries.map(e => e.room_id);
+            const groups: { name: string; room_ids: number[]; sort_order: number; color?: string }[] = [];
+            let current: number[] = [];
+            let groupIdx = 0;
 
-                // Convert dividers → groups
-                const roomIds = activeRoomEntries.map(e => e.room_id);
-                const groups: { name: string; room_ids: number[]; sort_order: number }[] = [];
-                let current: number[] = [];
-                let groupIdx = 0;
-
-                roomIds.forEach((id, i) => {
-                  current.push(id);
-                  if (dividers.has(i) || i === roomIds.length - 1) {
-                    const existingName = roomGroups[groupIdx]?.name;
-                    groups.push({
-                      name: existingName || `그룹 ${groupIdx + 1}`,
-                      room_ids: current,
-                      sort_order: groupIdx,
-                    });
-                    current = [];
-                    groupIdx++;
-                  }
+            roomIds.forEach((id, i) => {
+              current.push(id);
+              if (dividers.has(i) || i === roomIds.length - 1) {
+                const existingName = roomGroups[groupIdx]?.name;
+                groups.push({
+                  name: existingName || `그룹 ${groupIdx + 1}`,
+                  room_ids: current,
+                  sort_order: groupIdx,
+                  color: dividerColors.get(i) || undefined,
                 });
-
-                // Only create groups if there are dividers (more than 1 group)
-                if (groups.length > 1) {
-                  for (const g of groups) {
-                    await roomsAPI.createGroup(g);
-                  }
-                }
-
-                toast.success('그룹 설정이 저장되었습니다');
-                setGroupModalOpen(false);
-                await Promise.all([fetchRooms(), fetchRoomGroups()]);
-              } catch {
-                toast.error('그룹 설정 저장에 실패했습니다');
-              } finally {
-                setSavingGroups(false);
+                current = [];
+                groupIdx++;
               }
-            }}
-          >
-            {savingGroups ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
-          </Button>
-        </ModalFooter>
-      </Modal>
+            });
+
+            // Only create groups if there are dividers (more than 1 group)
+            if (groups.length > 1) {
+              for (const g of groups) {
+                await roomsAPI.createGroup(g);
+              }
+            }
+
+            toast.success('구분선 설정이 저장되었습니다');
+            setTableSettingsOpen(false);
+            await Promise.all([fetchRooms(), fetchRoomGroups()]);
+          } catch {
+            toast.error('구분선 설정 저장에 실패했습니다');
+          }
+        }}
+        rowColors={rowColors}
+        onSaveRowColors={(colors) => {
+          setRowColors(colors);
+          saveRowColors(colors);
+          toast.success('행 스타일이 저장되었습니다');
+          setTableSettingsOpen(false);
+        }}
+      />
 
       {/* Stay Group Link Modal */}
       <Modal show={showStayGroupModal} onClose={() => setShowStayGroupModal(false)} size="lg">
@@ -3151,6 +3117,7 @@ const RoomAssignment = () => {
           currentSection={contextMenuActions.currentSection}
           hasStayGroup={contextMenuActions.hasStayGroup}
           isUnstableCopy={contextMenuActions.isUnstableCopy}
+          customColors={customHighlightColors}
           onMoveToPool={contextMenuActions.onMoveToPool}
           onMoveToParty={contextMenuActions.onMoveToParty}
           onDelete={contextMenuActions.onDelete}
