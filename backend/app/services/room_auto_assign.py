@@ -16,7 +16,7 @@ from app.config import KST
 from sqlalchemy.orm import Session
 import logging
 
-from sqlalchemy import exists
+from sqlalchemy import exists, and_
 from sqlalchemy.orm import selectinload
 from app.db.models import Reservation, Room, RoomAssignment, ReservationStatus, TemplateSchedule, RoomBizItemLink
 from app.services import room_assignment
@@ -90,8 +90,6 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
             created_by=created_by,
         )
 
-    db.commit()
-
     result = {
         "target_date": target_date,
         "assigned": assigned_count,
@@ -103,6 +101,10 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
 
 def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservation]:
     """Get confirmed reservations with no assignment for target_date."""
+    tid = current_tenant_id.get()
+    if tid is None:
+        raise RuntimeError("_get_unassigned_reservations requires tenant context")
+
     unassigned = (
         db.query(Reservation)
         .filter(
@@ -115,7 +117,7 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
             ~Reservation.id.in_(
                 db.query(RoomAssignment.reservation_id).filter(
                     RoomAssignment.date == target_date,
-                    RoomAssignment.tenant_id == current_tenant_id.get(),
+                    RoomAssignment.tenant_id == tid,
                 )
             )
         )
@@ -183,7 +185,10 @@ def _assign_all_rooms(
 
         group_members = (
             db.query(Reservation.stay_group_id, RoomAssignment.room_id)
-            .join(RoomAssignment, RoomAssignment.reservation_id == Reservation.id)
+            .join(RoomAssignment, and_(
+                RoomAssignment.reservation_id == Reservation.id,
+                RoomAssignment.tenant_id == Reservation.tenant_id,
+            ))
             .filter(
                 Reservation.stay_group_id.in_(group_ids),
                 RoomAssignment.date.in_(check_dates),
@@ -258,10 +263,13 @@ def _assign_all_rooms(
                 # Regular room: booking_count만큼 배정 (2개 예약 = 2개 방)
                 rooms_needed = res.booking_count or 1
                 rooms_assigned = 0
+                assigned_room_ids = set()
                 for reg_room in candidate_rooms:
                     if rooms_assigned >= rooms_needed:
                         break
                     if reg_room.is_dormitory:
+                        continue
+                    if reg_room.id in assigned_room_ids:
                         continue
                     if room_assignment.check_capacity_all_dates(
                         db, reg_room.id, target_date, res.check_out_date,
@@ -273,6 +281,7 @@ def _assign_all_rooms(
                         )
                         db.flush()
                         assigned_results.append({"reservation_id": res.id, "customer_name": res.customer_name, "room_number": reg_room.room_number})
+                        assigned_room_ids.add(reg_room.id)
                         if res.stay_group_id:
                             stay_group_room_map[res.stay_group_id] = reg_room.id
                         rooms_assigned += 1

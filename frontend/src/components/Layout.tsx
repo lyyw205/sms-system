@@ -124,19 +124,6 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-// ── Page Title Map ──
-const PAGE_TITLES: Record<string, string> = {
-  '/': '대시보드',
-  '/reservations': '예약 관리',
-  '/rooms': '객실 배정',
-  '/rooms/manage': '객실 설정',
-  '/templates': '템플릿 설정',
-  '/users': '계정 설정',
-  '/settings': '연동 설정',
-  '/activity-logs': '활동 로그',
-  '/party-checkin': '파티 입장 체크',
-}
-
 // ── Role Badge ──
 const ROLE_BADGE_COLORS: Record<string, 'purple' | 'info' | 'gray'> = {
   superadmin: 'purple',
@@ -366,10 +353,8 @@ function MobileSidebar() {
 
 // ── Header ──
 function AppHeader({
-  pageTitle,
   isMobile,
 }: {
-  pageTitle: string
   isMobile: boolean
 }) {
   const navigate = useNavigate()
@@ -422,7 +407,6 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
 
-  const pageTitle = PAGE_TITLES[location.pathname] || ''
   const isStaff = user?.role === 'staff'
 
   const handleLogout = () => {
@@ -486,7 +470,7 @@ export default function Layout({ children }: LayoutProps) {
           !isMobile && (collapsed ? 'ml-[68px]' : 'ml-60'),
         )}
       >
-        <AppHeader pageTitle={pageTitle} isMobile={isMobile} />
+        <AppHeader isMobile={isMobile} />
         <main className="min-w-0 flex-1 p-4 md:p-6">
           {children}
         </main>

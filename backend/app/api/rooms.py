@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 from app.api.deps import get_tenant_scoped_db, get_current_tenant, _remap_active_field
 from app.db.models import Room, RoomGroup, NaverBizItem, User, Tenant, RoomAssignment, RoomBizItemLink, Building
+from app.db.tenant_context import current_tenant_id
 from app.factory import get_reservation_provider_for_tenant
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.rate_limit import limiter
@@ -360,7 +361,8 @@ async def create_room_group(
     db.flush()
 
     if data.room_ids:
-        db.query(Room).filter(Room.id.in_(data.room_ids)).update(
+        tid = current_tenant_id.get()
+        db.query(Room).filter(Room.id.in_(data.room_ids), Room.tenant_id == tid).update(
             {Room.room_group_id: group.id}, synchronize_session="fetch"
         )
 
@@ -392,13 +394,14 @@ async def update_room_group(
         group.color = data.color
 
     if data.room_ids is not None:
+        tid = current_tenant_id.get()
         # Clear old assignments
-        db.query(Room).filter(Room.room_group_id == group.id).update(
+        db.query(Room).filter(Room.room_group_id == group.id, Room.tenant_id == tid).update(
             {Room.room_group_id: None}, synchronize_session="fetch"
         )
         # Assign new
         if data.room_ids:
-            db.query(Room).filter(Room.id.in_(data.room_ids)).update(
+            db.query(Room).filter(Room.id.in_(data.room_ids), Room.tenant_id == tid).update(
                 {Room.room_group_id: group.id}, synchronize_session="fetch"
             )
 
@@ -422,7 +425,8 @@ async def delete_room_group(
         raise HTTPException(status_code=404, detail="그룹을 찾을 수 없습니다")
 
     # Clear room assignments
-    db.query(Room).filter(Room.room_group_id == group.id).update(
+    tid = current_tenant_id.get()
+    db.query(Room).filter(Room.room_group_id == group.id, Room.tenant_id == tid).update(
         {Room.room_group_id: None}, synchronize_session="fetch"
     )
     db.delete(group)
@@ -576,6 +580,7 @@ async def trigger_auto_assign(
 
     # 미배정자만 추가 배정 (기존 배정 유지, 로그는 auto_assign_rooms 내부에서 생성)
     result_today = auto_assign_rooms(db, today, created_by=current_user.username)
+    db.commit()
 
     return {
         "success": True,

@@ -10,7 +10,7 @@ from apscheduler.jobstores.base import JobLookupError
 from sqlalchemy.orm import Session
 
 from app.db.models import TemplateSchedule, Tenant
-from app.db.tenant_context import current_tenant_id
+from app.db.tenant_context import current_tenant_id, bypass_tenant_filter
 from app.scheduler.template_scheduler import TemplateScheduleExecutor
 
 logger = logging.getLogger(__name__)
@@ -82,15 +82,20 @@ class ScheduleManager:
         # Create executor function
         async def execute_job():
             from app.db.database import SessionLocal
+
+            # Phase 1: fetch schedule metadata with bypass (no tenant context yet)
+            bypass_token = bypass_tenant_filter.set(True)
             db_session = SessionLocal()
+            schedule_tenant_id = None
             try:
-                # Re-fetch schedule from fresh session
                 fresh_schedule = db_session.query(TemplateSchedule).filter(
                     TemplateSchedule.id == schedule_id_captured
                 ).first()
                 if not fresh_schedule:
                     logger.error(f"Schedule #{schedule_id_captured} not found")
                     return
+
+                schedule_tenant_id = fresh_schedule.tenant_id
 
                 # Check expiry
                 if fresh_schedule.expires_at and datetime.now(tz.utc) >= fresh_schedule.expires_at:
@@ -126,22 +131,17 @@ class ScheduleManager:
                             return
             finally:
                 db_session.close()
+                bypass_tenant_filter.reset(bypass_token)
 
+            # Phase 2: execute with proper tenant context
+            token = current_tenant_id.set(schedule_tenant_id) if schedule_tenant_id else None
             db_session = SessionLocal()
-            token = None
             try:
-                # Re-fetch schedule to get tenant_id for provider selection
-                exec_schedule = db_session.query(TemplateSchedule).filter(
-                    TemplateSchedule.id == schedule_id_captured
-                ).first()
                 tenant = None
-                if exec_schedule and exec_schedule.tenant_id:
+                if schedule_tenant_id:
                     tenant = db_session.query(Tenant).filter(
-                        Tenant.id == exec_schedule.tenant_id
+                        Tenant.id == schedule_tenant_id
                     ).first()
-                # Set tenant context so queries are auto-filtered
-                if tenant:
-                    token = current_tenant_id.set(tenant.id)
                 executor = TemplateScheduleExecutor(db_session, tenant=tenant)
                 await executor.execute_schedule(schedule_id_captured)
             finally:

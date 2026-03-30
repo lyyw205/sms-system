@@ -12,7 +12,6 @@ import logging
 from app.db.models import RoomAssignment, Reservation, Room
 from app.db.tenant_context import current_tenant_id
 from app.services.activity_logger import log_activity
-from app.templates.renderer import TemplateRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +111,8 @@ def assign_room(
 
     dates = _date_range(from_date, end_date)
     is_dorm = room_obj.is_dormitory
-    # 객실에 고정 비밀번호가 있으면 사용, 없으면 자동 생성
-    password = (room_obj.door_password if room_obj.door_password else
-                TemplateRenderer.generate_room_password(room_obj.room_number))
+    # 객실에 설정된 비밀번호 사용 (없으면 빈 문자열)
+    password = room_obj.door_password or ""
 
     # Concurrency guard for non-dormitory rooms
     if not is_dorm:
@@ -356,10 +354,12 @@ def reconcile_dates(db: Session, reservation: Reservation):
         logger.warning(f"reconcile_dates: reservation {reservation.id} has no valid dates, skipping")
         return
 
+    tid = current_tenant_id.get()
     orphaned = (
         db.query(RoomAssignment)
         .filter(
             RoomAssignment.reservation_id == reservation.id,
+            RoomAssignment.tenant_id == tid,
             ~RoomAssignment.date.in_(valid_dates),
         )
         .all()

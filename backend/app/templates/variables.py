@@ -140,9 +140,10 @@ def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot
     )
     db.add(snapshot)
     try:
+        db.begin_nested()  # SAVEPOINT: 실패 시 이 지점만 롤백, 외부 트랜잭션 유지
         db.flush()
     except Exception:
-        # UniqueViolation 등 — rollback 후 기존 레코드 재조회
+        # UniqueViolation 등 — SAVEPOINT만 롤백, 세션의 다른 변경사항은 보존
         db.rollback()
         existing = db.query(ParticipantSnapshot).filter(
             ParticipantSnapshot.date == target_date

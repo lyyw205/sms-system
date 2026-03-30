@@ -397,6 +397,11 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
     from app.services.consecutive_stay import compute_is_long_stay
     db_reservation.is_long_stay = compute_is_long_stay(db_reservation)
 
+    db.flush()
+    # Auto-generate chips for new reservation
+    from app.services.room_assignment import sync_sms_tags
+    sync_sms_tags(db, db_reservation.id)
+
     db.commit()
     db.refresh(db_reservation)
 
@@ -507,6 +512,8 @@ async def assign_room(
             req_date,
             end_date,
         )
+        # Reconcile chips after unassign (building/room filter changes)
+        room_assignment.sync_sms_tags(db, reservation_id)
     else:
         # Manual assignment from UI
         from_date = req_date or db_reservation.check_in_date
@@ -831,7 +838,6 @@ async def send_sms_by_tag(
         result = await manager.send_by_assignment(
             template_key=sms_data.template_key,
             date=sms_data.date,
-            sms_provider=sms_provider,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

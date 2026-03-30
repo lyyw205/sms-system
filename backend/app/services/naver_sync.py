@@ -5,12 +5,12 @@ Used by both the API endpoint and the scheduler job.
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 import logging
 
 import re
 
-from app.db.models import Reservation, ReservationStatus, NaverBizItem, RoomBizItemLink, Room
+from app.db.models import Reservation, ReservationStatus, ReservationSmsAssignment, NaverBizItem, RoomBizItemLink, Room
 from app.services import room_assignment
 from app.services.consecutive_stay import compute_is_long_stay
 from app.services.room_auto_assign import auto_assign_rooms
@@ -72,7 +72,9 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
 
     # Build dormitory map and capacity fallback from RoomBizItemLink → Room
     biz_dormitory_map: Dict[str, bool] = {}
-    links = db.query(RoomBizItemLink).join(Room).all()
+    links = db.query(RoomBizItemLink).join(
+        Room, and_(Room.id == RoomBizItemLink.room_id, Room.tenant_id == RoomBizItemLink.tenant_id)
+    ).all()
     for link in links:
         if link.biz_item_id not in biz_capacity_map:
             biz_capacity_map[link.biz_item_id] = link.room.base_capacity
@@ -212,8 +214,10 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                 assigned_total += result.get("assigned", 0)
             if dates:
                 logger.info(f"Auto-assigned {assigned_total} rooms after {'reconcile' if reconcile_date else 'sync'} (dates: {sorted(dates)})")
+                db.commit()
         except Exception as e:
             logger.error(f"Auto-assign after sync failed: {e}")
+            db.rollback()
 
     logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
 
@@ -291,8 +295,8 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
     existing.phone = res_data.get("phone", existing.phone)
-    existing.visitor_name = res_data.get("visitor_name")
-    existing.visitor_phone = res_data.get("visitor_phone")
+    existing.visitor_name = res_data.get("visitor_name", existing.visitor_name)
+    existing.visitor_phone = res_data.get("visitor_phone", existing.visitor_phone)
     existing.naver_biz_item_id = res_data.get("naver_biz_item_id", existing.naver_biz_item_id)
     existing.naver_room_type = res_data.get("room_type", existing.naver_room_type)
     existing.party_size = res_data.get("people_count", existing.party_size)
@@ -324,6 +328,11 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         existing.status = ReservationStatus.CANCELLED
         # Auto-unassign room on cancellation
         room_assignment.clear_all_for_reservation(db, existing.id)
+        # Delete unsent chips on cancellation
+        db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.reservation_id == existing.id,
+            ReservationSmsAssignment.sent_at.is_(None),
+        ).delete(synchronize_session='fetch')
         # Remove from consecutive stay group on cancellation
         if existing.stay_group_id:
             from app.services.consecutive_stay import unlink_from_group

@@ -6,7 +6,7 @@ Contains condition builders, filter parsing, and grouping.
 import json
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, and_, func
 
 from app.db.models import (
     Reservation,
@@ -55,7 +55,7 @@ def _condition_by_building(value, ctx):
     target_date = ctx.get("target_date")
     sub = (
         ctx["db"].query(RoomAssignment.reservation_id)
-        .join(Room, Room.id == RoomAssignment.room_id)
+        .join(Room, and_(Room.id == RoomAssignment.room_id, Room.tenant_id == RoomAssignment.tenant_id))
         .filter(
             RoomAssignment.date == target_date,
             Room.building_id == int(value),

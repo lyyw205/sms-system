@@ -28,6 +28,8 @@ import {
   Check,
   MousePointer,
   Minus,
+  PanelRightOpen,
+  PanelRightClose,
 } from 'lucide-react';
 import GuestContextMenu from '../components/GuestContextMenu';
 
@@ -347,6 +349,8 @@ const RoomAssignment = () => {
   // Track which section unassigned reservations belong to: 'party' or 'unassigned'
   const [sectionOverrides, setSectionOverrides] = useState<Record<number, 'party' | 'unassigned'>>({});
   const [nextDayReservations, setNextDayReservations] = useState<Reservation[]>([]);
+  const [nextDayExpanded, setNextDayExpanded] = useState(false);
+  const NEXT_DAY_EXPANDED_WIDTH = 280;
   const [rooms, setRooms] = useState<any[]>([]);
   const [animDirection, setAnimDirection] = useState<'none' | 'left' | 'right'>('none');
   const [loading, setLoading] = useState(false);
@@ -1706,17 +1710,17 @@ const RoomAssignment = () => {
     setDragOverTrash(false);
   }, []);
 
-  const HIGHLIGHT_COLORS: Record<string, { bg: string; hover: string }> = {
+  const HIGHLIGHT_COLORS: Record<string, { bg: string; hover: string; text?: string }> = {
     yellow: { bg: 'bg-[#FFF8E1] dark:bg-[#FFF8E1]/15', hover: 'hover:bg-[#FFF0C0] dark:hover:bg-[#FFF8E1]/25' },
     pink: { bg: 'bg-[#FFE8EE] dark:bg-[#FFE8EE]/15', hover: 'hover:bg-[#FFD6E0] dark:hover:bg-[#FFE8EE]/25' },
     green: { bg: 'bg-[#E8F5E9] dark:bg-[#E8F5E9]/15', hover: 'hover:bg-[#D0ECD2] dark:hover:bg-[#E8F5E9]/25' },
     blue: { bg: 'bg-[#E3F2FD] dark:bg-[#E3F2FD]/15', hover: 'hover:bg-[#CFEBFF] dark:hover:bg-[#E3F2FD]/25' },
     purple: { bg: 'bg-[#F3E5F5] dark:bg-[#F3E5F5]/15', hover: 'hover:bg-[#E8D0ED] dark:hover:bg-[#F3E5F5]/25' },
-    'yellow-dark': { bg: 'bg-[#FFD54F] dark:bg-[#FFD54F]/25', hover: 'hover:bg-[#FFCA28] dark:hover:bg-[#FFD54F]/35' },
-    'pink-dark': { bg: 'bg-[#F48FB1] dark:bg-[#F48FB1]/25', hover: 'hover:bg-[#F06292] dark:hover:bg-[#F48FB1]/35' },
-    'green-dark': { bg: 'bg-[#81C784] dark:bg-[#81C784]/25', hover: 'hover:bg-[#66BB6A] dark:hover:bg-[#81C784]/35' },
-    'blue-dark': { bg: 'bg-[#64B5F6] dark:bg-[#64B5F6]/25', hover: 'hover:bg-[#42A5F5] dark:hover:bg-[#64B5F6]/35' },
-    'purple-dark': { bg: 'bg-[#CE93D8] dark:bg-[#CE93D8]/25', hover: 'hover:bg-[#BA68C8] dark:hover:bg-[#CE93D8]/35' },
+    'yellow-dark': { bg: 'bg-[#FFD54F] dark:bg-[#FFD54F]/25', hover: 'hover:bg-[#FFCA28] dark:hover:bg-[#FFD54F]/35', text: 'text-[#191F28] dark:text-white' },
+    'pink-dark': { bg: 'bg-[#F48FB1] dark:bg-[#F48FB1]/25', hover: 'hover:bg-[#F06292] dark:hover:bg-[#F48FB1]/35', text: 'text-[#191F28] dark:text-white' },
+    'green-dark': { bg: 'bg-[#81C784] dark:bg-[#81C784]/25', hover: 'hover:bg-[#66BB6A] dark:hover:bg-[#81C784]/35', text: 'text-[#191F28] dark:text-white' },
+    'blue-dark': { bg: 'bg-[#64B5F6] dark:bg-[#64B5F6]/25', hover: 'hover:bg-[#42A5F5] dark:hover:bg-[#64B5F6]/35', text: 'text-[#191F28] dark:text-white' },
+    'purple-dark': { bg: 'bg-[#CE93D8] dark:bg-[#CE93D8]/25', hover: 'hover:bg-[#BA68C8] dark:hover:bg-[#CE93D8]/35', text: 'text-[#191F28] dark:text-white' },
   };
 
   const renderGuestRow = (res: Reservation, showGrip: boolean, zone?: string) => {
@@ -1724,6 +1728,8 @@ const RoomAssignment = () => {
     const longStay = !!res.is_long_stay;
     const isSelected = interactionMode === 'select' && selectedGuestIds.has(res.id);
     const highlightStyle = res.highlight_color ? HIGHLIGHT_COLORS[res.highlight_color] : null;
+    const hasCustomText = !!highlightStyle?.text;
+    const cellText = hasCustomText ? 'text-inherit' : 'text-[#191F28] dark:text-white';
 
     return (
       <div key={res.id}
@@ -1731,7 +1737,7 @@ const RoomAssignment = () => {
           isSelected
             ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
             : highlightStyle
-              ? `${highlightStyle.bg} ${highlightStyle.hover}`
+              ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
               : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
         } ${guestAreaCursor()}`}
         onContextMenu={(e) => onGuestContextMenu(e, res.id, zone)}
@@ -1765,22 +1771,22 @@ const RoomAssignment = () => {
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <span className="flex items-center gap-1">
-              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className="font-medium text-[#191F28] dark:text-white" placeholder="이름" autoFocus={res.id === quickAddedId} />
+              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} />
               {res.has_unstable_booking && <span className="inline-block h-[6px] w-[6px] rounded-full bg-[#7B61FF] flex-shrink-0" title="언스테이블 파티 예약 확인" />}
             </span>
           </div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className="text-[#8B95A1] dark:text-[#8B95A1] tabular-nums" placeholder="연락처" />
+            <InlineInput value={res.phone} field="phone" resId={res.id} onSave={handleFieldSave} className={`${cellText} tabular-nums`} placeholder="연락처" />
           </div>
           <div className="overflow-hidden text-center px-1.5">
-            <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-white font-medium text-center" placeholder="-" />
+            <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" />
           </div>
           <div className="overflow-hidden text-center px-1.5">
-            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className="text-[#4E5968] dark:text-white font-medium text-center" placeholder="-" />
+            <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" />
           </div>
           <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-[#8B95A1] text-center px-1.5">{res.naver_room_type || <span className="text-[#B0B8C1] dark:text-[#4E5968]">-</span>}</div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className="text-[#191F28] dark:text-white" placeholder="" />
+            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" />
           </div>
           <div className="overflow-visible px-1.5">
             <SmsCell reservation={res} templateLabels={templateLabels} selectedDate={selectedDate.format('YYYY-MM-DD')} onToggle={handleSmsToggle} onAssign={handleSmsAssign} onRemove={handleSmsRemove} />
@@ -1881,18 +1887,27 @@ const RoomAssignment = () => {
         </div>
 
         {/* Next day column */}
-        <div className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b ${borderColor} ${stripeBg}`} style={{ width: colWidths.nextDay }}>
+        <div className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b ${borderColor} ${stripeBg} transition-all duration-200`} style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
           <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
             {Array.from({ length: totalRows }).map((_, i) => {
               const nextGuest = nextGuests[i];
               const gp = nextGuest ? formatGenderPeople(nextGuest) : '';
               return (
-                <div key={`next-${i}`} className={`flex items-center justify-center ${hasGuests ? 'h-10' : 'h-9'} px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
+                <div key={`next-${i}`} className={`flex items-center ${nextDayExpanded ? 'justify-start' : 'justify-center'} ${hasGuests ? 'h-10' : 'h-9'} px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
                   {nextGuest ? (
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{nextGuest.customer_name}</span>
-                      {gp && <span className="flex-shrink-0 text-caption text-[#8B95A1] dark:text-[#4E5968]">{gp}</span>}
-                    </div>
+                    nextDayExpanded ? (
+                      <div className="grid grid-cols-4 w-full gap-0.5 items-center">
+                        <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1] text-center">{nextGuest.customer_name}</span>
+                        <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1] tabular-nums text-center">{nextGuest.phone?.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') || ''}</span>
+                        <span className="truncate text-caption text-[#8B95A1] dark:text-[#4E5968] text-center">{nextGuest.party_type || '-'}</span>
+                        <span className="truncate text-caption text-[#8B95A1] dark:text-[#4E5968] text-center">{gp || '-'}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="truncate text-caption text-[#4E5968] dark:text-[#8B95A1]">{nextGuest.customer_name}</span>
+                        {gp && <span className="flex-shrink-0 text-caption text-[#8B95A1] dark:text-[#4E5968]">{gp}</span>}
+                      </div>
+                    )
                   ) : null}
                 </div>
               );
@@ -2304,9 +2319,31 @@ const RoomAssignment = () => {
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">메모<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.notes; setResizeCol('notes'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">문자<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.sms; setResizeCol('sms'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                 </div>
-                <div className="relative flex-shrink-0 px-2 text-center border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] flex items-center justify-center self-stretch" style={{ width: colWidths.nextDay }}>
-                  <div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.nextDay; setResizeCol('nextDay'); }} className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:left-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" />
-                  <span className="text-caption font-semibold text-[#8B95A1] dark:text-[#8B95A1]">{selectedDate.add(1, 'day').format('M/D')}</span>
+                <div className="relative flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] flex flex-col justify-center self-stretch transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
+                  {!nextDayExpanded && (
+                    <div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.nextDay; setResizeCol('nextDay'); }} className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:left-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" />
+                  )}
+                  <div className="flex items-center justify-center gap-1 px-2">
+                    {!nextDayExpanded && (
+                      <button onClick={() => setNextDayExpanded(true)} className="text-[#8B95A1] hover:text-[#3182F6] transition-colors cursor-pointer" title="펼치기">
+                        <PanelRightOpen className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <span className="text-caption font-semibold text-[#8B95A1] dark:text-[#8B95A1]">{selectedDate.add(1, 'day').format('M/D')}</span>
+                    {nextDayExpanded && (
+                      <button onClick={() => setNextDayExpanded(false)} className="text-[#8B95A1] hover:text-[#3182F6] transition-colors cursor-pointer" title="접기">
+                        <PanelRightClose className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {nextDayExpanded && (
+                    <div className="grid grid-cols-4 px-1 mt-0.5">
+                      <span className="text-[10px] font-medium text-[#8B95A1] text-center">이름</span>
+                      <span className="text-[10px] font-medium text-[#8B95A1] text-center">전화번호</span>
+                      <span className="text-[10px] font-medium text-[#8B95A1] text-center">파티</span>
+                      <span className="text-[10px] font-medium text-[#8B95A1] text-center">성별</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2406,7 +2443,7 @@ const RoomAssignment = () => {
                 </div>
 
                 {/* Next day column - empty */}
-                <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" style={{ width: colWidths.nextDay }} />
+                <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
               </div>
 
               {/* Party-Only */}
@@ -2443,7 +2480,7 @@ const RoomAssignment = () => {
                 </div>
 
                 {/* Next day column - empty */}
-                <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" style={{ width: colWidths.nextDay }} />
+                <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
               </div>
 
               {/* Unstable */}
@@ -2463,7 +2500,7 @@ const RoomAssignment = () => {
                   </div>
 
                   {/* Next day column - empty */}
-                  <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700" style={{ width: colWidths.nextDay }} />
+                  <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
                 </div>
               )}
             </div>

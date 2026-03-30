@@ -266,6 +266,16 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         setattr(db_template, field, value)
 
     db_template.updated_at = datetime.now(timezone.utc)
+
+    # 템플릿 비활성화 시 연관 칩 정리
+    if 'is_active' in update_data and not update_data['is_active']:
+        from app.db.models import ReservationSmsAssignment
+        db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.template_key == db_template.template_key,
+            ReservationSmsAssignment.sent_at.is_(None),
+            ~ReservationSmsAssignment.assigned_by.in_(['manual', 'excluded']),
+        ).delete(synchronize_session='fetch')
+
     db.commit()
     db.refresh(db_template)
 

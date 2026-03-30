@@ -1,47 +1,38 @@
 # HANDOFF
 
-## Current [1774678131]
-- **Task**: Timezone 통일 + 코드 잔재 정리 + 스킬 업그레이드
+## Current [1774833840]
+- **Task**: 멀티테넌트 격리 검증 파이프라인 (ooo-tenant-check) 전체 실행
 - **Completed**:
-  - **Timezone 통일** (13개 파일, commit `71fcefb`)
-    - `config.py`에 `today_kst()` / `today_kst_date()` 헬퍼 추가
-    - 백엔드 5개 파일의 `date.today()` 17곳 → KST 헬퍼로 교체
-    - `activity_logs.py` 날짜 필터 + 통계 엔드포인트 KST→UTC 변환 수정
-    - 프론트 `normalizeUtcString()` 유틸 추가 (date-only 보호 포함)
-    - 6개 페이지에서 UTC-naive 파싱 정규화 적용
-  - **코드 잔재 정리** (6개 파일, -74줄, commit `07ce15e`)
-    - 28개 커밋 일괄 점검 (architect + critic 교차 검증)
-    - 죽은 함수 `matches_schedule()` 삭제, 미사용 import 6건, 죽은 state/function 4건
-    - `modal.tsx` onClose prop은 UI 라이브러리 호환성으로 유지 판단
-  - **스킬 업그레이드** (3개 스킬)
-    - `ooo-change-validator`: Phase 4 교차 검증 토론 (architect + critic) 추가
-    - `ooo-code-cleaner`: Phase 3B 교차 검증 (architect + critic) 추가
-    - `ooo-e2e-sync`: Phase 2.3 기존 항목 중복 체크 추가
-  - **노션 투두 추가**: #8 객실 이동 로그 시간별 묶기, #9 수동배정 인원 제한 허용
-  - **이은지 예약 SMS 칩 조사**: `party_alert` 칩이 수동(manual) 할당된 것 확인, 타 예약에서 번진 것 아님
+  - **분석**: 5개 전문가 에이전트 병렬 실행 (데이터 격리, API, 스케줄러, 인증/캐시, DB 스키마)
+  - **Phase 1 (CRITICAL 6건)**: `.update()` tenant_id 누락 4곳(rooms.py), reconcile_dates 필터(room_assignment.py), JOIN tenant 동등(naver_sync.py, room_auto_assign.py), consecutive_stay tenant 가드, deps.py fail-closed 인증
+  - **Phase 2 (HIGH 5건)**: Scheduler API 크로스테넌트 차단(scheduler.py), filters.py building JOIN, sms_sender.py JOIN, schedule_manager.py Phase1/2 bypass 분리, room_auto_assign None 가드
+  - **Phase 3 (MEDIUM 3건)**: 활동로그 소스 라벨 조건부(unstable 있을 때만 [스테이블]), event_bus publish tenant_id 필수화, bypass_tenant_filter reset nested try/finally 4곳
 - **Next Steps**:
-  - SMS 테스트 실행 (3/28부터 매일 체크리스트 확인)
-  - TODO #1: ParticipantSnapshot 시간대별 갱신
-  - TODO #7: 객실 배정 드래그 중 자동 스크롤
-  - TODO #8: 객실 이동 로그 시간별 묶기
-  - TODO #9: 수동배정 시 일반실 인원 제한 허용
-  - TODO #5: 모바일 버튼 레이아웃 정리
-  - TODO #6: PWA 설정 (iOS 탭 전환 방지)
+  - M4: UniqueConstraint에 tenant_id 추가 (5개 모델) — Alembic 마이그레이션 필요, PostgreSQL 전환 시 처리
+  - C5: load_template_schedules bypass 범위 축소 — ScheduleManager 구조 변경 필요
+  - 언스테이블 네이버 쿠키 재입력 (만료됨)
+  - 실제 동기화 테스트
 - **Blockers**: None
 - **Related Files**:
-  - `backend/app/config.py` — today_kst() / today_kst_date() 헬퍼
-  - `backend/app/scheduler/template_scheduler.py` — KST 통일 적용
-  - `frontend/src/lib/utils.ts` — normalizeUtcString() 유틸
-  - `~/.claude/skills/ooo-change-validator/SKILL.md` — 교차 검증 Phase 4 추가
-  - `~/.claude/skills/ooo-code-cleaner/SKILL.md` — Phase 3B 교차 검증 추가
-  - `~/.claude/skills/ooo-e2e-sync/SKILL.md` — Phase 2.3 중복 체크 추가
+  - `backend/app/api/rooms.py` — C1: .update() tenant_id 추가
+  - `backend/app/api/deps.py` — C7: fail-closed 인증
+  - `backend/app/api/scheduler.py` — H5: 크로스테넌트 Job 제어 차단
+  - `backend/app/scheduler/jobs.py` — M1/M3: 로그 라벨 + bypass reset
+  - `backend/app/scheduler/schedule_manager.py` — H6: Phase1/2 bypass 분리
+  - `backend/app/services/naver_sync.py` — C3: JOIN tenant 동등
+  - `backend/app/services/room_auto_assign.py` — C4/H7: JOIN + None 가드
+  - `backend/app/services/consecutive_stay.py` — C6: tenant_id 파라미터
+  - `backend/app/services/filters.py` — H1: building JOIN tenant 동등
+  - `backend/app/services/sms_sender.py` — H3: JOIN tenant 동등
+  - `backend/app/services/event_bus.py` — M2: tenant_id 필수화
+  - `backend/app/services/room_assignment.py` — C2: reconcile_dates tenant_id
 
-## Past 1 [1774619519]
-- **Task**: 도미토리 bed_order + 커스텀 드래그 전환 + UX 개선 + SMS 테스트 데이터
-- **Completed**: bed_order 도입, HTML5→pointer 드래그 전환, sticky 헤더/stripe/구분선 UX, SMS 테스트 예약자 11건 생성, Click-Select 계획서 작성
-- **Note**: commits f911c86..5b236cd
+## Past 1 [1774800841]
+- **Task**: 언스테이블 파티 업체 통합 (Phase 0~7 + 추가 수정)
+- **Completed**: DB 스키마, Settings UI, 네이버 동기화 source 분기, 객실배정 언스테이블 행, 컨텍스트 메뉴 복사, 통계 카드, 템플릿 스케줄 필터, 파티 체크인 탭 분리, 보라색 점, 테넌트별 UI 격리
+- **Note**: commits daca540, c09a06a, ec7bbba
 
-## Past 2 [1774603943]
-- **Task**: SMS 칩 배정 로직 통합 + column_match AND 수정 + 도미토리 인원수 버그 수정 + 객실 그룹 UX 개선
-- **Completed**: chip_reconciler 통합, column_match AND 수정, 네이버 API USEDATE 수정, sync reconcile_date 파라미터, is_long_stay 리팩토링, dead code 정리
-- **Note**: commits a2da705..432318f
+## Past 2 [1774678131]
+- **Task**: Timezone 통일 + 코드 잔재 정리 + 스킬 업그레이드
+- **Completed**: today_kst() 헬퍼, 17곳 KST 교체, normalizeUtcString() 유틸, 죽은 코드 -74줄, 스킬 3개 교차검증 추가
+- **Note**: commits 71fcefb, 07ce15e

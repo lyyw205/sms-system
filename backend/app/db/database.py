@@ -325,6 +325,13 @@ def init_db():
             if result.rowcount > 0:
                 print(f"AUTO-MIGRATE: Migrated {result.rowcount} schedules from stay_filter='last_only' to target_mode='last_day'")
 
+        # reservation_sms_assignments: schedule_id
+        if "reservation_sms_assignments" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("reservation_sms_assignments")]
+            if "schedule_id" not in cols:
+                conn.execute(text("ALTER TABLE reservation_sms_assignments ADD COLUMN schedule_id INTEGER"))
+                print("AUTO-MIGRATE: Added schedule_id column to reservation_sms_assignments table")
+
         # reservation_daily_info: notes
         if "reservation_daily_info" in inspector.get_table_names():
             cols = [c["name"] for c in inspector.get_columns("reservation_daily_info")]

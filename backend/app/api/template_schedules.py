@@ -79,7 +79,7 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
 class TemplateScheduleCreate(BaseModel):
     template_id: int
     schedule_name: str
-    schedule_type: str  # 'daily', 'weekly', 'hourly', 'interval'
+    schedule_type: Literal['daily', 'weekly', 'hourly', 'interval']
     hour: Optional[int] = None
     minute: Optional[int] = None
     day_of_week: Optional[str] = None
@@ -109,7 +109,7 @@ class TemplateScheduleCreate(BaseModel):
 class TemplateScheduleUpdate(BaseModel):
     template_id: Optional[int] = None
     schedule_name: Optional[str] = None
-    schedule_type: Optional[str] = None
+    schedule_type: Optional[Literal['daily', 'weekly', 'hourly', 'interval']] = None
     hour: Optional[int] = None
     minute: Optional[int] = None
     day_of_week: Optional[str] = None
@@ -288,6 +288,12 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(db_schedule)
 
+    # Auto-generate chips for matching reservations
+    if db_schedule.is_active:
+        from app.services.chip_reconciler import reconcile_chips_for_schedule
+        reconcile_chips_for_schedule(db, db_schedule)
+        db.commit()
+
     # Add to scheduler if active
     if db_schedule.is_active:
         try:
@@ -334,7 +340,7 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     db_schedule.updated_at = datetime.now(timezone.utc)
 
     # Reconcile chips when filter-affecting fields change
-    _FILTER_FIELDS = {'filters', 'target_mode', 'date_target', 'schedule_category'}
+    _FILTER_FIELDS = {'filters', 'target_mode', 'date_target', 'schedule_category', 'is_active', 'template_id'}
     if _FILTER_FIELDS & set(update_data.keys()):
         from app.services.chip_reconciler import reconcile_chips_for_schedule
         db.flush()
@@ -368,7 +374,19 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
     except Exception as e:
         print(f"Warning: Failed to remove schedule from APScheduler: {e}")
 
+    # Delete chips owned by this schedule (other schedules' chips are preserved)
+    # Note: FK ondelete=SET NULL would clear schedule_id, but we want to
+    # actively remove unsent chips before the schedule row is deleted.
+    from app.db.models import ReservationSmsAssignment
+    db.query(ReservationSmsAssignment).filter(
+        ReservationSmsAssignment.schedule_id == schedule_id,
+        ReservationSmsAssignment.sent_at.is_(None),
+        ~ReservationSmsAssignment.assigned_by.in_(['manual', 'excluded']),
+    ).delete(synchronize_session='fetch')
+
     db.delete(schedule)
+    db.flush()
+
     db.commit()
 
     return {"success": True, "message": "스케줄이 삭제되었습니다"}

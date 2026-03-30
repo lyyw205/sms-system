@@ -261,7 +261,6 @@ export default function PartyCheckin() {
                         >
                           {guest.customer_name}
                         </span>
-                        {guest.is_long_stay && <span className="text-caption text-[#8B95A1] ml-1">연박 {(guest.stay_group_order ?? 0) + 1}일차</span>}
                       </div>
                     </td>
 

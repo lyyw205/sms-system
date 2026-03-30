@@ -4,7 +4,7 @@ Simple in-process event bus using asyncio.Queue for SSE clients.
 import asyncio
 import json
 import logging
-from typing import Dict, Optional, Set
+from typing import Dict, Set
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +33,15 @@ def unsubscribe(q: asyncio.Queue, tenant_id: int) -> None:
     logger.debug(f"SSE client unsubscribed for tenant {tenant_id} (total: {total})")
 
 
-def publish(event_type: str, data: dict, tenant_id: Optional[int] = None) -> None:
+def publish(event_type: str, data: dict, tenant_id: int) -> None:
     """
-    Broadcast an event to SSE clients.
-    If tenant_id is provided, only broadcast to that tenant's queues.
-    If tenant_id is None, broadcast to all queues (backward compatibility).
+    Send an event to SSE clients of a specific tenant.
     Drops the event for any client whose queue is full.
     """
     if not _queues:
         return
     payload = json.dumps({"event": event_type, "data": data})
-
-    if tenant_id is not None:
-        target_queues = list(_queues.get(tenant_id, set()))
-    else:
-        # Broadcast to all tenants
-        target_queues = [q for s in _queues.values() for q in list(s)]
+    target_queues = list(_queues.get(tenant_id, set()))
 
     for q in target_queues:
         try:

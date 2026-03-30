@@ -53,8 +53,12 @@ async def get_current_tenant_id(
             # Invalid/expired token — let downstream auth deps handle the 401.
             pass
 
-    # Verify user has access to this tenant (skip check for SUPERADMIN and unauthenticated).
-    if current_user is not None and current_user.role != UserRole.SUPERADMIN:
+    # Fail-closed: require authentication for tenant access
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="인증이 필요합니다")
+
+    # Verify user has access to this tenant (SUPERADMIN bypasses check).
+    if current_user.role != UserRole.SUPERADMIN:
         mapping = db.query(UserTenantRole).filter(
             UserTenantRole.user_id == current_user.id,
             UserTenantRole.tenant_id == tenant.id,
@@ -102,12 +106,15 @@ async def get_tenant_scoped_db(
     Note: async generator avoids ContextVar cross-thread issues
     that occur with sync generators in FastAPI's thread pool.
     """
-    current_tenant_id.set(tenant_id)
-    db = SessionLocal()
+    token = current_tenant_id.set(tenant_id)
     try:
-        yield db
-    except Exception:
-        db.rollback()
-        raise
+        db = SessionLocal()
+        try:
+            yield db
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     finally:
-        db.close()
+        current_tenant_id.reset(token)

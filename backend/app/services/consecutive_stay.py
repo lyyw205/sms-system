@@ -19,6 +19,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.models import Reservation, ReservationStatus
+from app.db.tenant_context import current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def compute_is_long_stay(res) -> bool:
     return False
 
 
-def detect_and_link_consecutive_stays(db: Session) -> dict:
+def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dict:
     """
     Scan all CONFIRMED reservations and link consecutive stays.
 
@@ -48,13 +49,21 @@ def detect_and_link_consecutive_stays(db: Session) -> dict:
     Idempotent: re-scans every time. Unlinks reservations that are
     no longer consecutive. Preserves existing group IDs where valid.
 
+    Args:
+        tenant_id: explicit tenant scope. Falls back to ContextVar if omitted.
+
     Returns:
         dict with counts: {"linked": N, "unlinked": M, "groups": G}
     """
+    tid = tenant_id or current_tenant_id.get()
+    if tid is None:
+        raise RuntimeError("detect_and_link_consecutive_stays requires tenant context")
+
     # Fetch all CONFIRMED reservations with check_out_date
     reservations = (
         db.query(Reservation)
         .filter(
+            Reservation.tenant_id == tid,
             Reservation.status == ReservationStatus.CONFIRMED,
             Reservation.check_out_date.isnot(None),
             Reservation.phone.isnot(None),

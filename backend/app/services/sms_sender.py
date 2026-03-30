@@ -4,7 +4,7 @@ Ported from stable-clasp-main/01_sns.js
 (Renamed from campaigns/tag_manager.py; TagCampaignManager → SmsSender)
 """
 from typing import Dict, Any, Optional
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import logging
@@ -117,7 +117,6 @@ class SmsSender:
         self,
         template_key: str,
         date: str,
-        sms_provider,
     ) -> Dict[str, Any]:
         """
         Send SMS to all reservations with unsent assignment for a given template_key and date.
@@ -140,7 +139,10 @@ class SmsSender:
             raise ValueError(f"Template not found: {template_key}")
 
         assignments = self.db.query(ReservationSmsAssignment).join(
-            Reservation, ReservationSmsAssignment.reservation_id == Reservation.id
+            Reservation, and_(
+                ReservationSmsAssignment.reservation_id == Reservation.id,
+                ReservationSmsAssignment.tenant_id == Reservation.tenant_id,
+            )
         ).filter(
             ReservationSmsAssignment.template_key == template_key,
             ReservationSmsAssignment.date == date,
@@ -173,35 +175,36 @@ class SmsSender:
             for r in self.db.query(Reservation).filter(Reservation.id.in_(reservation_ids)).all()
         }
 
-        for assignment in assignments:
-            reservation = reservations_by_id.get(assignment.reservation_id)
-            if not reservation:
-                failed_count += 1
-                continue
-            try:
-                result = await send_single_sms(
-                    db=self.db,
-                    sms_provider=sms_provider,
-                    reservation=reservation,
-                    template_key=template_key,
-                    date=date,
-                    created_by="schedule",
-                    skip_commit=True,
-                    custom_vars=template.get_buffer_vars(),
-                )
-                if result.get("success"):
-                    sent_count += 1
-                    assignment.sent_at = datetime.now(timezone.utc)
-                    self.db.commit()
-                else:
+        try:
+            for assignment in assignments:
+                reservation = reservations_by_id.get(assignment.reservation_id)
+                if not reservation:
                     failed_count += 1
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Failed to send SMS to reservation #{reservation.id}: {e}")
-
-        activity_log.success_count = sent_count
-        activity_log.failed_count = failed_count
-        self.db.commit()
+                    continue
+                try:
+                    result = await send_single_sms(
+                        db=self.db,
+                        sms_provider=self.sms_provider,
+                        reservation=reservation,
+                        template_key=template_key,
+                        date=date,
+                        created_by="schedule",
+                        skip_commit=True,
+                        custom_vars=template.get_buffer_vars(),
+                    )
+                    if result.get("success"):
+                        sent_count += 1
+                        assignment.sent_at = datetime.now(timezone.utc)
+                        self.db.commit()
+                    else:
+                        failed_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Failed to send SMS to reservation #{reservation.id}: {e}")
+        finally:
+            activity_log.success_count = sent_count
+            activity_log.failed_count = failed_count
+            self.db.commit()
 
         return {
             "sent_count": sent_count,

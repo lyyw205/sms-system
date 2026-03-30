@@ -59,11 +59,13 @@ async def sync_naver_reservations_job():
 
     # Fetch all active tenants without tenant context restriction
     token_bypass = bypass_tenant_filter.set(True)
-    db = SessionLocal()
     try:
-        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        db = SessionLocal()
+        try:
+            tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        finally:
+            db.close()
     finally:
-        db.close()
         bypass_tenant_filter.reset(token_bypass)
 
     for tenant in tenants:
@@ -89,18 +91,20 @@ async def load_template_schedules():
     logger.info("Loading template schedules")
 
     bypass_token = bypass_tenant_filter.set(True)
-    db = SessionLocal()
     try:
-        from .schedule_manager import ScheduleManager
-        schedule_manager = ScheduleManager(scheduler)
-        schedule_manager.sync_all_schedules(db)
+        db = SessionLocal()
+        try:
+            from .schedule_manager import ScheduleManager
+            schedule_manager = ScheduleManager(scheduler)
+            schedule_manager.sync_all_schedules(db)
 
-        logger.info("Template schedules loaded successfully")
+            logger.info("Template schedules loaded successfully")
 
-    except Exception as e:
-        logger.error(f"Error loading template schedules: {e}")
+        except Exception as e:
+            logger.error(f"Error loading template schedules: {e}")
+        finally:
+            db.close()
     finally:
-        db.close()
         bypass_tenant_filter.reset(bypass_token)
 
 
@@ -119,10 +123,11 @@ async def sync_status_log_job():
     period_end = f"{current_hour:02d}:00"
 
     def _log_status(db, tenant):
+        source_label = "[스테이블] " if tenant.unstable_business_id else ""
         log_activity(
             db,
             type="naver_sync",
-            title=f"[스테이블] 네이버 예약 동기화 : 자동 실행 ({period_start}~{period_end})",
+            title=f"{source_label}네이버 예약 동기화 : 자동 실행 ({period_start}~{period_end})",
             detail={"period_start": period_start, "period_end": period_end},
             created_by="scheduler",
         )
@@ -165,11 +170,13 @@ async def reconcile_today_reservations_job():
     logger.info(f"Running daily reconciliation for {today} and {tomorrow} (all tenants)")
 
     token_bypass = bypass_tenant_filter.set(True)
-    db = SessionLocal()
     try:
-        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        db = SessionLocal()
+        try:
+            tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        finally:
+            db.close()
     finally:
-        db.close()
         bypass_tenant_filter.reset(token_bypass)
 
     for tenant in tenants:
@@ -186,10 +193,11 @@ async def reconcile_today_reservations_job():
                     logger.info(f"[{tenant.slug}] Reconcile {target_date}: +{added} reservations")
 
             if total_added > 0:
+                source_label = "[스테이블] " if tenant.unstable_business_id else ""
                 log_activity(
                     db,
                     type="naver_reconcile",
-                    title=f"[스테이블] 네이버 예약 대사 : 스케줄 ({today}~{tomorrow})",
+                    title=f"{source_label}네이버 예약 대사 : 스케줄 ({today}~{tomorrow})",
                     detail={"today": today, "tomorrow": tomorrow, "added": total_added},
                     target_count=total_added,
                     success_count=total_added,
@@ -246,11 +254,13 @@ async def sync_unstable_reservations_job():
     logger.info("Running Unstable reservations sync job")
 
     token_bypass = bypass_tenant_filter.set(True)
-    db = SessionLocal()
     try:
-        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        db = SessionLocal()
+        try:
+            tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        finally:
+            db.close()
     finally:
-        db.close()
         bypass_tenant_filter.reset(token_bypass)
 
     for tenant in tenants:

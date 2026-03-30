@@ -67,6 +67,7 @@ interface RoomForm {
   dormitory: boolean;
   bed_capacity: number;
   door_password: string;
+  no_door_password: boolean;
   building_id: number | null;
 }
 
@@ -93,6 +94,7 @@ const EMPTY_ROOM_FORM: RoomForm = {
   dormitory: false,
   bed_capacity: 1,
   door_password: '',
+  no_door_password: false,
   building_id: null,
 };
 
@@ -273,6 +275,7 @@ const RoomSettings = () => {
       dormitory: room.dormitory || false,
       bed_capacity: room.bed_capacity || 1,
       door_password: room.door_password || '',
+      no_door_password: !room.door_password,
       building_id: room.building_id ?? null,
     });
     setDialogOpen(true);
@@ -696,7 +699,7 @@ const RoomSettings = () => {
                     {room.door_password ? (
                       <span className="tabular-nums font-medium">{room.door_password}</span>
                     ) : (
-                      <span className="text-caption text-[#B0B8C1] dark:text-gray-600">자동</span>
+                      <span className="text-caption text-[#B0B8C1] dark:text-gray-600">없음</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -858,13 +861,33 @@ const RoomSettings = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="default-password">객실 비밀번호</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="default-password" className="mb-0">객실 비밀번호</Label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.no_door_password}
+                    onChange={(e) => setForm((f) => ({
+                      ...f,
+                      no_door_password: e.target.checked,
+                      door_password: e.target.checked ? '' : f.door_password,
+                    }))}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-caption text-[#8B95A1]">비밀번호 없음</span>
+                </label>
+              </div>
               <TextInput
                 id="default-password"
-                placeholder="비어있으면 자동 생성"
+                placeholder="객실 도어락 비밀번호"
                 value={form.door_password}
                 onChange={(e) => setForm((f) => ({ ...f, door_password: e.target.value }))}
+                disabled={form.no_door_password}
+                color={!form.no_door_password && !form.door_password ? 'failure' : undefined}
               />
+              {!form.no_door_password && !form.door_password && (
+                <p className="text-caption text-[#F04452]">비밀번호를 입력하거나 &quot;비밀번호 없음&quot;을 체크하세요</p>
+              )}
             </div>
 
             <div className="space-y-2">

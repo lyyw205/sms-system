@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import enum
 
 
+
 def utc_now():
     return datetime.now(timezone.utc)
 
@@ -221,10 +222,12 @@ class ReservationSmsAssignment(TenantMixin, Base):
     assigned_at = Column(DateTime, default=utc_now)
     sent_at = Column(DateTime, nullable=True)  # null=pending, value=sent
     assigned_by = Column(String(20), default="auto")  # 'auto', 'manual', 'schedule'
+    schedule_id = Column(Integer, ForeignKey("template_schedules.id", ondelete="SET NULL"), nullable=True)
 
     date = Column(String(20), nullable=False, default='')  # YYYY-MM-DD, 발송 대상 날짜
 
     reservation = relationship("Reservation", backref="sms_assignments")
+    schedule = relationship("TemplateSchedule")
 
     __table_args__ = (
         UniqueConstraint("reservation_id", "template_key", "date", name="uq_res_sms_template_date"),
@@ -551,8 +554,6 @@ class Tenant(Base):
     name = Column(String(100), nullable=False)  # '한담 펜션', '스테이블 펜션'
     naver_business_id = Column(String(50), nullable=True)
     naver_cookie = Column(Text, nullable=True)
-    naver_email = Column(String(200), nullable=True)
-    naver_password = Column(String(200), nullable=True)
     unstable_business_id = Column(String(50), nullable=True)  # 언스테이블 네이버 business_id
     unstable_cookie = Column(Text, nullable=True)              # 언스테이블 네이버 쿠키
     aligo_sender = Column(String(20), nullable=True)  # 펜션별 발신번호

@@ -53,8 +53,9 @@ def reconcile_chips_for_reservation(
             TemplateSchedule.is_active == True
         ).all()
 
-    # Compute expected (template_key, date) pairs
+    # Compute expected (template_key, date) pairs with schedule_id tracking
     expected_pairs: Set[Tuple[str, str]] = set()
+    expected_schedule_map: dict = {}  # (template_key, date) -> schedule_id
     for schedule in schedules:
         if not schedule.template or not schedule.template.is_active:
             continue
@@ -67,13 +68,15 @@ def reconcile_chips_for_reservation(
             dates = get_schedule_dates(schedule, reservation)
             for d in dates:
                 expected_pairs.add((template_key, d))
+                if (template_key, d) not in expected_schedule_map:
+                    expected_schedule_map[(template_key, d)] = schedule.id
 
     # Get current chips for this reservation
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.reservation_id == reservation_id,
     ).all()
 
-    _sync_chips(db, expected_pairs, existing, reservation_id=reservation_id)
+    _sync_chips(db, expected_pairs, existing, reservation_id=reservation_id, schedule_map=expected_schedule_map)
 
 
 def reconcile_chips_for_schedule(
@@ -90,32 +93,35 @@ def reconcile_chips_for_schedule(
     Returns:
         Number of new chips created.
     """
-    if not schedule.template or not schedule.template.is_active:
+    if not schedule.template:
         return 0
-    if (schedule.schedule_category or 'standard') == 'event':
-        return 0
-
     template_key = schedule.template.template_key
 
-    # Resolve target date
-    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
+    # 비활성 스케줄/템플릿/이벤트: 자기가 만든 칩만 삭제
+    if not schedule.template.is_active or not schedule.is_active or (schedule.schedule_category or 'standard') == 'event':
+        existing = db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.template_key == template_key,
+            ReservationSmsAssignment.schedule_id == schedule.id,
+        ).all()
+        return _sync_chips_for_schedule(db, set(), existing, template_key, schedule.id)
 
-    # Build matching reservations query with structural filters only
+    # 활성: 자기 기준으로 expected 계산
+    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
     matching_reservations = _get_matching_reservations(db, schedule, target_date)
 
-    # Compute expected (reservation_id, date) pairs
     expected_pairs: Set[Tuple[int, str]] = set()
     for reservation in matching_reservations:
         dates = get_schedule_dates(schedule, reservation)
         for d in dates:
             expected_pairs.add((reservation.id, d))
 
-    # Get ALL existing chips for this template_key (across all reservations)
+    # 자기가 만든 칩만 대상으로 diff
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.template_key == template_key,
+        ReservationSmsAssignment.schedule_id == schedule.id,
     ).all()
 
-    return _sync_chips_for_schedule(db, expected_pairs, existing, template_key)
+    return _sync_chips_for_schedule(db, expected_pairs, existing, template_key, schedule.id)
 
 
 def _reservation_matches_schedule(
@@ -186,11 +192,13 @@ def _sync_chips(
     expected_pairs: Set[Tuple[str, str]],
     existing: list,
     reservation_id: int,
+    schedule_map: Optional[dict] = None,
 ) -> int:
     """Diff-based chip sync for a single reservation.
 
     expected_pairs: set of (template_key, date)
     existing: list of ReservationSmsAssignment for this reservation
+    schedule_map: optional dict of (template_key, date) -> schedule_id
 
     Returns number of chips created.
     """
@@ -208,6 +216,7 @@ def _sync_chips(
                 date=d,
                 assigned_by='auto',
                 sent_at=None,
+                schedule_id=schedule_map.get((key, d)) if schedule_map else None,
             ))
             created += 1
 
@@ -225,11 +234,13 @@ def _sync_chips_for_schedule(
     expected_pairs: Set[Tuple[int, str]],
     existing: list,
     template_key: str,
+    schedule_id: Optional[int] = None,
 ) -> int:
     """Diff-based chip sync for a single schedule (across all reservations).
 
     expected_pairs: set of (reservation_id, date)
-    existing: list of ReservationSmsAssignment for this template_key
+    existing: list of ReservationSmsAssignment for this schedule
+    schedule_id: the schedule that owns these chips
 
     Returns number of chips created.
     """
@@ -241,14 +252,22 @@ def _sync_chips_for_schedule(
     # Create missing chips (skip excluded)
     for (res_id, d) in expected_pairs:
         if (res_id, d) not in existing_pairs and (res_id, d) not in excluded_pairs:
-            db.add(ReservationSmsAssignment(
-                reservation_id=res_id,
-                template_key=template_key,
-                date=d,
-                assigned_by='schedule',
-                sent_at=None,
-            ))
-            created += 1
+            # Check if another schedule already created a chip for same unique key
+            already_exists = db.query(ReservationSmsAssignment).filter(
+                ReservationSmsAssignment.reservation_id == res_id,
+                ReservationSmsAssignment.template_key == template_key,
+                ReservationSmsAssignment.date == d,
+            ).first()
+            if not already_exists:
+                db.add(ReservationSmsAssignment(
+                    reservation_id=res_id,
+                    template_key=template_key,
+                    date=d,
+                    assigned_by='schedule',
+                    sent_at=None,
+                    schedule_id=schedule_id,
+                ))
+                created += 1
 
     # Delete stale chips (only unprotected)
     for a in existing:
