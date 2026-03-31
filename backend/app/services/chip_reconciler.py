@@ -115,10 +115,13 @@ def reconcile_chips_for_schedule(
         for d in dates:
             expected_pairs.add((reservation.id, d))
 
-    # 자기가 만든 칩만 대상으로 diff
+    # 자기가 만든 칩 중 날짜 스코프 내의 것만 대상으로 diff
+    # → per-reservation이 만든 미래 날짜 칩을 stale로 잘못 삭제하는 것을 방지
+    scope_dates = {d for (_, d) in expected_pairs} | {target_date}
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.template_key == template_key,
         ReservationSmsAssignment.schedule_id == schedule.id,
+        ReservationSmsAssignment.date.in_(scope_dates),
     ).all()
 
     return _sync_chips_for_schedule(db, expected_pairs, existing, template_key, schedule.id)

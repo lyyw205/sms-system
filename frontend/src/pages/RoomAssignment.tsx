@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import api, { reservationsAPI, roomsAPI, templatesAPI, templateSchedulesAPI, smsAssignmentsAPI, stayGroupAPI, settingsAPI } from '../services/api';
+import api, { reservationsAPI, roomsAPI, templatesAPI, smsAssignmentsAPI, stayGroupAPI, settingsAPI } from '../services/api';
 import { useTenantStore } from '@/stores/tenant-store';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
@@ -470,7 +470,7 @@ const RoomAssignment = () => {
     if (field === 'notes') {
       try {
         await reservationsAPI.updateDailyInfo(resId, { date: selectedDate.format('YYYY-MM-DD'), notes: value });
-        setReservations(prev => prev.map(r => r.id === resId ? { ...r, notes: value } : r));
+        fetchReservations(selectedDate);
       } catch {
         toast.error('저장 실패');
       }
@@ -653,9 +653,6 @@ const RoomAssignment = () => {
     setLoading(true);
     try {
       const dateStr = date.format('YYYY-MM-DD');
-
-      // autoAssign은 백그라운드로 분리 (UI 블로킹 안 함)
-      templateSchedulesAPI.autoAssign(dateStr).catch(() => {});
 
       // 당일 먼저 로딩
       const current = await reservationsAPI.getAll({ date: dateStr, limit: 200 });

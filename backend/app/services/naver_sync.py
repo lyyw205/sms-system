@@ -166,20 +166,42 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
 
     added_count = 0
     updated_count = 0
+    new_reservation_ids = []  # 칩 생성 대상: 새 예약 ID
+    date_changed_ids = []  # 칩 재계산 대상: 날짜 변경 예약 ID
 
     for res_data in reservations:
         external_id = res_data.get("external_id") or res_data.get("naver_booking_id")
         existing = existing_map.get(external_id) if external_id else None
 
         if existing:
+            old_dates = (existing.check_in_date, existing.check_out_date)
             _update_reservation(db, existing, res_data)
+            new_dates = (existing.check_in_date, existing.check_out_date)
+            if old_dates != new_dates:
+                date_changed_ids.append(existing.id)
             updated_count += 1
         else:
             new_res = _create_reservation(res_data)
             db.add(new_res)
+            db.flush()  # ID 즉시 할당 (commit 후 N+1 lazy reload 방지)
+            new_reservation_ids.append(new_res.id)
             added_count += 1
 
     db.commit()
+
+    # 새 예약 + 날짜변경 예약에 대해 칩 생성/재계산
+    chip_target_ids = new_reservation_ids + date_changed_ids
+    if chip_target_ids:
+        try:
+            from app.services.chip_reconciler import reconcile_chips_for_reservation
+            from app.db.models import TemplateSchedule
+            active_schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
+            for res_id in chip_target_ids:
+                reconcile_chips_for_reservation(db, res_id, schedules=active_schedules)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Chip reconciliation after sync failed: {e}")
+            db.rollback()
 
     # 연박 감지: 새/갱신 예약에 대해 연속 투숙 링크
     if added_count > 0 or updated_count > 0:

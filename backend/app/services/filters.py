@@ -108,11 +108,12 @@ def _condition_by_column_match(value, ctx):
     if column not in _COLUMN_MATCH_COLUMNS:
         return None
 
-    # For party_type: resolve effective value as daily info override OR reservation fallback
-    if column == 'party_type':
+    # For party_type / notes: resolve effective value as daily info override OR reservation fallback
+    if column in ('party_type', 'notes'):
         target_date = ctx.get('target_date')
+        daily_col = getattr(ReservationDailyInfo, column)
         daily_sub = (
-            ctx['db'].query(ReservationDailyInfo.party_type)
+            ctx['db'].query(daily_col)
             .filter(
                 ReservationDailyInfo.reservation_id == Reservation.id,
                 ReservationDailyInfo.date == target_date,
@@ -120,7 +121,7 @@ def _condition_by_column_match(value, ctx):
             .correlate(Reservation)
             .scalar_subquery()
         )
-        effective = func.coalesce(daily_sub, Reservation.party_type)
+        effective = func.coalesce(daily_sub, getattr(Reservation, column))
         if operator == 'is_empty':
             return effective.is_(None) | (effective == '')
         elif operator == 'is_not_empty':

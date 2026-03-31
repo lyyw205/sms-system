@@ -197,17 +197,21 @@ def calculate_template_variables(
         # Lookup Building name via Room → Building relationship
         if room_obj and room_obj.building_id:
             building_obj = db.query(Building).filter(Building.id == room_obj.building_id).first()
-            variables['building'] = building_obj.name if building_obj else ''
+            building_name = building_obj.name if building_obj else ''
         elif not room_obj:
             # Fallback: look up by reservation.room_number (denormalized)
             fallback_room = db.query(Room).filter(Room.room_number == effective_room_number).first()
             if fallback_room and fallback_room.building_id:
                 building_obj = db.query(Building).filter(Building.id == fallback_room.building_id).first()
-                variables['building'] = building_obj.name if building_obj else ''
+                building_name = building_obj.name if building_obj else ''
             else:
-                variables['building'] = ''
+                building_name = ''
         else:
-            variables['building'] = ''
+            building_name = ''
+        # room_number 첫 글자가 A/B면 동 이름으로 치환 (본관 A동/B동 구분)
+        if effective_room_number and effective_room_number[0] in ('A', 'B'):
+            building_name = f"{effective_room_number[0]}동"
+        variables['building'] = building_name
         # Extract room number part: "본관 101호" → "101호", or just use as-is
         import re
         num_match = re.search(r'(\d[\d\-]*호?)', effective_room_number)

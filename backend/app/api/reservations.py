@@ -138,7 +138,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
                     for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
                     if s.template
                 }
-            source = [a for a in source if (a.date or '') == filter_date or ((a.date or '') < filter_date and a.sent_at is not None and a.template_key not in daily_keys)]
+            source = [a for a in source if (a.date or '') == filter_date or ((a.date or '') < filter_date and a.sent_at is not None and a.template_key not in daily_keys) or ((a.date or '') > filter_date and a.sent_at is None and a.template_key not in daily_keys)]
         assignments = [
             SmsAssignmentResponse(
                 template_key=a.template_key,
@@ -428,7 +428,7 @@ async def update_reservation(
 
     section_changed = "section" in update_data and update_data["section"] != db_reservation.section
     # column_match 필터 대상 필드 변경 감지
-    _SMS_TAG_FIELDS = {"section", "party_type", "gender", "naver_room_type", "notes"}
+    _SMS_TAG_FIELDS = {"section", "party_type", "gender", "naver_room_type", "notes", "check_in_date", "check_out_date"}
     sms_fields_changed = section_changed or bool(_SMS_TAG_FIELDS & update_data.keys())
 
     # Log section change for debugging (room_move 로그와 연계)
@@ -609,8 +609,8 @@ async def update_daily_info(
 
     db.flush()
 
-    # party_type 변경 시에만 칩 재계산 (필터 매칭이 달라질 수 있음)
-    if "party_type" in sent_fields:
+    # party_type 또는 notes 변경 시 칩 재계산 (column_match 필터 매칭이 달라질 수 있음)
+    if "party_type" in sent_fields or "notes" in sent_fields:
         from app.services.room_assignment import sync_sms_tags
         sync_sms_tags(db, reservation_id)
     db.commit()
