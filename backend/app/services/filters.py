@@ -157,7 +157,10 @@ FILTER_BUILDERS = {
 }
 
 
-def apply_structural_filters(db: Session, query, schedule, target_date: str):
+def apply_structural_filters(
+    db: Session, query, schedule, target_date: str,
+    *, only_date_independent: bool = False,
+):
     """Apply structural filters (building/assignment/room/column_match) to a query.
 
     Standalone version of TemplateScheduleExecutor._apply_structural_filters.
@@ -168,6 +171,8 @@ def apply_structural_filters(db: Session, query, schedule, target_date: str):
         query: SQLAlchemy query to filter
         schedule: TemplateSchedule instance (needs .filters attribute)
         target_date: Resolved date string (YYYY-MM-DD)
+        only_date_independent: True이면 날짜 의존 필터(building/room/column_match의
+            party_type·notes)를 스킵. 후보 예약 조회용.
 
     Returns:
         Filtered query
@@ -178,8 +183,22 @@ def apply_structural_filters(db: Session, query, schedule, target_date: str):
 
     filter_groups, has_unassigned = _build_filter_groups(filters)
 
+    # 날짜 의존 필터 타입 (building, room은 RoomAssignment.date 사용)
+    _DATE_DEPENDENT_TYPES = {"building", "room"}
+    # column_match 중 ReservationDailyInfo를 사용하는 날짜 의존 컬럼
+    _DATE_DEPENDENT_COLUMNS = {"party_type", "notes"}
+
     for group_key, values in filter_groups.items():
         filter_type = group_key.split(':')[0] if group_key.startswith('column_match:') else group_key
+
+        if only_date_independent:
+            if filter_type in _DATE_DEPENDENT_TYPES:
+                continue
+            if filter_type == "column_match" and values:
+                column = values[0].split(':')[0] if values[0] else ''
+                if column in _DATE_DEPENDENT_COLUMNS:
+                    continue
+
         builder = FILTER_BUILDERS.get(filter_type)
         if not builder:
             continue

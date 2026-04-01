@@ -1,12 +1,18 @@
 """
-Unified SMS chip (ReservationSmsAssignment) reconciliation.
+칩(ReservationSmsAssignment) reconcile 모듈.
 
-Single source of truth for chip create/delete logic, replacing the
-previous split between sync_sms_tags (reservation-centric) and
-auto_assign_for_schedule (schedule-centric).
+칩 = "이 예약자에게 / 이 날짜에 / 이 템플릿 SMS를 보낼 예정" 이라는 기록.
 
-Both entry points use the same matching source (apply_structural_filters)
-and the same diff+protect logic (_sync_chips).
+두 가지 reconcile 경로:
+  - reservation-centric: 1 예약 × N 스케줄 × M 날짜 (예약 생성/수정/배정 시)
+  - schedule-centric:    1 스케줄 × N 예약 × M 날짜 (스케줄 생성/수정/실행 시)
+
+핵심 로직:
+  1. get_schedule_dates(schedule, reservation) → 칩이 필요한 날짜 목록
+  2. _reservation_matches_schedule(db, schedule, reservation, date) → 그 날 필터 통과?
+  3. _sync_chips(expected, existing) → diff: 없는 칩 생성, 불필요 칩 삭제
+
+칩 보호: assigned_by='manual'/'excluded' 또는 sent_at 있으면 삭제 안 됨.
 """
 import logging
 from typing import List, Optional, Set, Tuple
@@ -48,6 +54,17 @@ def reconcile_chips_for_reservation(
     if not reservation:
         return
 
+    # 취소된 예약: 기존 미발송 칩만 정리하고 리턴 (새 칩 생성 안 함)
+    if reservation.status == ReservationStatus.CANCELLED:
+        existing = db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.reservation_id == reservation_id,
+            ReservationSmsAssignment.sent_at.is_(None),
+            ~ReservationSmsAssignment.assigned_by.in_(_PROTECTED_ASSIGNED_BY),
+        ).all()
+        for a in existing:
+            db.delete(a)
+        return
+
     if schedules is None:
         schedules = db.query(TemplateSchedule).filter(
             TemplateSchedule.is_active == True
@@ -63,10 +80,10 @@ def reconcile_chips_for_reservation(
         if (schedule.schedule_category or 'standard') == 'event':
             continue
 
-        if _reservation_matches_schedule(db, schedule, reservation_id):
-            template_key = schedule.template.template_key
-            dates = get_schedule_dates(schedule, reservation)
-            for d in dates:
+        template_key = schedule.template.template_key
+        dates = get_schedule_dates(schedule, reservation)
+        for d in dates:
+            if _reservation_matches_schedule(db, schedule, reservation, d):
                 expected_pairs.add((template_key, d))
                 if (template_key, d) not in expected_schedule_map:
                     expected_schedule_map[(template_key, d)] = schedule.id
@@ -85,8 +102,8 @@ def reconcile_chips_for_schedule(
 ) -> int:
     """Reconcile chips for a single schedule against all matching reservations.
 
-    Finds all reservations that match the schedule's structural filters,
-    computes expected chips, and syncs (create missing, delete stale).
+    Finds candidate reservations (date-independent filters), then checks
+    date-dependent filters per-date for each candidate.
 
     Does NOT commit — caller owns the transaction.
 
@@ -105,19 +122,23 @@ def reconcile_chips_for_schedule(
         ).all()
         return _sync_chips_for_schedule(db, set(), existing, template_key, schedule.id)
 
-    # 활성: 자기 기준으로 expected 계산
+    # 활성: 후보 예약 조회 (날짜 무관 필터만) + per-date 필터링
     target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
-    matching_reservations = _get_matching_reservations(db, schedule, target_date)
+    candidates = _get_candidate_reservations(db, schedule, target_date)
 
+    # scope_dates: 후보 예약의 전체 스케줄 날짜 범위 (필터링 전)
+    # → stale 칩 삭제 누락 방지
+    scope_dates: set = {target_date}
     expected_pairs: Set[Tuple[int, str]] = set()
-    for reservation in matching_reservations:
-        dates = get_schedule_dates(schedule, reservation)
-        for d in dates:
-            expected_pairs.add((reservation.id, d))
 
-    # 자기가 만든 칩 중 날짜 스코프 내의 것만 대상으로 diff
-    # → per-reservation이 만든 미래 날짜 칩을 stale로 잘못 삭제하는 것을 방지
-    scope_dates = {d for (_, d) in expected_pairs} | {target_date}
+    for reservation in candidates:
+        dates = get_schedule_dates(schedule, reservation)
+        scope_dates.update(dates)  # 필터링 전에 scope에 추가
+        for d in dates:
+            if _reservation_matches_schedule(db, schedule, reservation, d):
+                expected_pairs.add((reservation.id, d))
+
+    # scope_dates 범위 내 자기 칩만 diff 대상
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.template_key == template_key,
         ReservationSmsAssignment.schedule_id == schedule.id,
@@ -130,36 +151,44 @@ def reconcile_chips_for_schedule(
 def _reservation_matches_schedule(
     db: Session,
     schedule: TemplateSchedule,
-    reservation_id: int,
+    reservation: Reservation,
+    target_date: str,
 ) -> bool:
-    """Check if a single reservation matches a schedule's structural filters.
+    """Check if a reservation matches a schedule's structural filters for a specific date.
 
-    Uses apply_structural_filters on a single-row query for consistency
-    with the batch path.
+    For checkout dates (no RoomAssignment), falls back to check_out - 1 day
+    for building/room filters.
     """
-    target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
+    from datetime import datetime, timedelta
 
-    query = db.query(Reservation).filter(Reservation.id == reservation_id)
-    query = apply_structural_filters(db, query, schedule, target_date)
+    # checkout일 fallback: checkout일에는 RoomAssignment 없으므로
+    # check_out - 1일의 배정을 기준으로 체크
+    effective_date = target_date
+    if reservation.check_out_date == target_date:
+        prev_day = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        if prev_day >= (reservation.check_in_date or target_date):
+            effective_date = prev_day
+
+    query = db.query(Reservation).filter(Reservation.id == reservation.id)
+    query = apply_structural_filters(db, query, schedule, effective_date)
     return query.first() is not None
 
 
-def _get_matching_reservations(
+def _get_candidate_reservations(
     db: Session,
     schedule: TemplateSchedule,
     target_date: str,
 ) -> List[Reservation]:
-    """Get all reservations matching a schedule's structural filters.
+    """Get candidate reservations using only date-independent filters.
 
-    Applies only structural filters (building/assignment/room/column_match).
-    Does NOT apply send-time filters (exclude_sent, once_per_stay, etc.).
+    Applies date range filter + assignment/gender/naver_room_type only.
+    Building/room/column_match(party_type, notes) are deferred to per-date check.
     """
     query = db.query(Reservation).filter(
         Reservation.status == ReservationStatus.CONFIRMED,
     )
 
     # Date range: include reservations active on target_date
-    # For checkout-based: target checkout date
     date_target_val = schedule.date_target
     if date_target_val and date_target_val.endswith('_checkout'):
         query = query.filter(
@@ -184,8 +213,8 @@ def _get_matching_reservations(
         else:
             query = query.filter(Reservation.check_in_date == target_date)
 
-    # Apply structural filters (building/assignment/room/column_match)
-    query = apply_structural_filters(db, query, schedule, target_date)
+    # 날짜 무관 필터만 적용 (assignment, gender, naver_room_type 등)
+    query = apply_structural_filters(db, query, schedule, target_date, only_date_independent=True)
 
     return query.all()
 

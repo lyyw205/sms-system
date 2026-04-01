@@ -48,6 +48,7 @@ class ReservationUpdate(BaseModel):
     gender: Optional[str] = None
     male_count: Optional[int] = None
     female_count: Optional[int] = None
+    gender_manual: Optional[bool] = None  # True: 수동 편집 보호, False: 동기화 재계산 허용
     party_size: Optional[int] = None
     party_type: Optional[str] = None
     naver_room_type: Optional[str] = None  # Original reservation room type
@@ -130,7 +131,11 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
     if db is not None and hasattr(res, 'sms_assignments'):
         source = [a for a in res.sms_assignments if a.assigned_by != 'excluded']
         if filter_date is not None:
-            # daily_keys가 미전달이면 fallback 조회 (단건 호출 대응)
+            # [Phase 6: 칩 날짜 필터링] — 조회 날짜 기준으로 어떤 칩을 UI에 보여줄지 결정
+            # (1) date == 조회일: 정확히 그 날 칩
+            # (2) date < 조회일 AND 발송완료 AND !daily: 과거 발송 완료 칩 (예: 어제 보낸 객실안내)
+            # (3) date > 조회일 AND 미발송 AND !daily: 미래 미발송 칩 (예: 내일 보낼 후킹SMS)
+            # daily 스케줄은 그 날만 표시 (연박자 각 날에 같은 칩 중복 방지)
             if daily_keys is None:
                 from app.db.models import TemplateSchedule
                 daily_keys = {
@@ -449,8 +454,22 @@ async def update_reservation(
             created_by=current_user.username,
         )
 
+    # 수동으로 성별 인원 편집 시 gender_manual 플래그 자동 세팅
+    # (명시적으로 gender_manual을 전달한 경우는 그 값을 존중)
+    if ("male_count" in update_data or "female_count" in update_data) and "gender_manual" not in update_data:
+        update_data["gender_manual"] = True
+
+    # 날짜 변경 감지 (orphan RoomAssignment 정리용)
+    old_dates = (db_reservation.check_in_date, db_reservation.check_out_date)
+
     for field, value in update_data.items():
         setattr(db_reservation, field, value)
+
+    # 날짜 변경 시 orphan RoomAssignment 정리 (네이버 동기화와 동일)
+    new_dates = (db_reservation.check_in_date, db_reservation.check_out_date)
+    if old_dates != new_dates:
+        db.flush()
+        room_assignment.reconcile_dates(db, db_reservation)
 
     # SMS 태그 재계산 (섹션 또는 필터 대상 필드 변경 시)
     if sms_fields_changed:

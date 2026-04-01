@@ -48,7 +48,13 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, from_date: str = None, reconcile_date: str = None, source: str = "stable") -> Dict[str, Any]:
     """
-    Fetch reservations from Naver and upsert into DB.
+    [Phase 1~5 메인 함수] 네이버 예약 수신 → DB 저장 → 칩 생성 → 연박 감지 → 자동 배정.
+
+    Phase 1: reservation_provider.get_reservations() — 네이버 API에서 예약 가져오기
+    Phase 2: enrichment(biz_name/people_count/gender) + _create_reservation/_update_reservation
+    Phase 3: reconcile_chips_for_reservation (1차) — 방 미배정 상태, building 칩 미생성
+    Phase 4: detect_and_link_consecutive_stays — 연박 그룹 링크
+    Phase 5: auto_assign_rooms → assign_room() → reconcile (2차) — building 칩 생성
 
     Args:
         from_date: Optional start date (YYYY-MM-DD) for historical sync.
@@ -93,7 +99,8 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     if len(reservations) != len(raw_reservations):
         logger.info(f"Deduplicated: {len(raw_reservations)} → {len(reservations)}")
 
-    # Enrich res_data with DB-based names and capacity
+    # ── Phase 2: enrichment ──
+    # 네이버 상품ID → DB 매핑(상품명, 도미토리 여부, 기준인원, 섹션 힌트)으로 변환
     for res_data in reservations:
         bid = res_data.get("naver_biz_item_id", "")
 
@@ -132,6 +139,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             if biz_dormitory_map.get(bid, False):
                 # 도미토리: bookingCount = 인원 (인원수 옵션 무시)
                 res_data["people_count"] = res_data.get("booking_count") or 1
+                res_data["_is_dormitory"] = True
             else:
                 # 일반실: 인원수 옵션 우선, 없으면 기준인원(base_capacity)
                 pc = res_data.get("people_count")
@@ -164,6 +172,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             if row.naver_booking_id:
                 existing_map[row.naver_booking_id] = row
 
+    # ── Phase 2 계속: DB 저장 (신규 → _create_reservation, 기존 → _update_reservation) ──
     added_count = 0
     updated_count = 0
     new_reservation_ids = []  # 칩 생성 대상: 새 예약 ID
@@ -189,21 +198,13 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
 
     db.commit()
 
-    # 새 예약 + 날짜변경 예약에 대해 칩 생성/재계산
+    # ── Phase 3: 칩 reconcile은 Phase 5(자동배정) 이후 1회로 통합 ──
+    # 이전에는 여기서 1차 reconcile 했으나, RoomAssignment 없는 상태에서
+    # building 필터 칩이 생성 안 되고 Phase 5에서 다시 돌려야 해서 2중 실행이었음.
+    # 이제 Phase 5 이후 칩 reconcile 1회로 통합하여 연산 50% 감소.
     chip_target_ids = new_reservation_ids + date_changed_ids
-    if chip_target_ids:
-        try:
-            from app.services.chip_reconciler import reconcile_chips_for_reservation
-            from app.db.models import TemplateSchedule
-            active_schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
-            for res_id in chip_target_ids:
-                reconcile_chips_for_reservation(db, res_id, schedules=active_schedules)
-            db.commit()
-        except Exception as e:
-            logger.error(f"Chip reconciliation after sync failed: {e}")
-            db.rollback()
 
-    # 연박 감지: 새/갱신 예약에 대해 연속 투숙 링크
+    # ── Phase 4: 연박 감지 (같은 이름+전화의 연속 날짜 예약 → stay_group으로 링크) ──
     if added_count > 0 or updated_count > 0:
         try:
             from app.services.consecutive_stay import detect_and_link_consecutive_stays
@@ -211,13 +212,19 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             db.commit()
             if stay_result["linked"] > 0 or stay_result["unlinked"] > 0:
                 logger.info(f"Consecutive stay detection after sync: {stay_result}")
+            # ── Phase 4-b: 연박 그룹 bed_order 정합성 체크 ──
+            # 새로 연결된 그룹에서 같은 방인데 bed_order가 다른 경우 통일
+            if stay_result["linked"] > 0:
+                _align_bed_orders_for_groups(db)
+                db.flush()
         except Exception as e:
             logger.error(f"Consecutive stay detection failed: {e}")
             db.rollback()
 
-    # 새 예약이 추가되었으면 자동 배정 실행
-    # reconcile 경로: 오늘 포함 (reconciliation은 오늘 체크인 누락분 보완 목적)
-    # 일반 sync 경로: 내일 이후만 (오늘은 수동 배정 유지)
+    # ── Phase 5: 자동 객실 배정 ──
+    # auto_assign_rooms → assign_room() → ★ 칩 reconcile (2차)
+    # 이번에는 RoomAssignment 있으므로 building 필터 통과 → 칩 생성됨
+    # reconcile 경로: 오늘 포함 / 일반 sync 경로: 내일 이후만 (오늘은 수동 배정 유지)
     if added_count > 0:
         try:
             today = datetime.now(KST).strftime("%Y-%m-%d")
@@ -241,6 +248,22 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             logger.error(f"Auto-assign after sync failed: {e}")
             db.rollback()
 
+    # ── Phase 5 이후: ★ 칩 reconcile (통합 1회) ──
+    # Phase 5 자동배정 완료 후 RoomAssignment가 확정된 상태에서 칩 생성.
+    # building/room 필터 포함 모든 스케줄 칩이 한 번에 정확하게 생성됨.
+    # 자동배정 실패 예약도 여기서 building 무관 칩(hook, 후기 등)이 생성됨.
+    if chip_target_ids:
+        try:
+            from app.services.chip_reconciler import reconcile_chips_for_reservation
+            from app.db.models import TemplateSchedule
+            active_schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
+            for res_id in chip_target_ids:
+                reconcile_chips_for_reservation(db, res_id, schedules=active_schedules)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Chip reconciliation after sync failed: {e}")
+            db.rollback()
+
     logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
 
     return {
@@ -252,8 +275,65 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     }
 
 
+def _align_bed_orders_for_groups(db: Session):
+    """연박 그룹 내 같은 방 배정의 bed_order를 통일한다.
+
+    그룹 내 먼저 배정된 멤버의 bed_order를 기준으로,
+    같은 방에 배정된 다른 멤버의 bed_order를 맞춘다.
+    """
+    from app.db.models import RoomAssignment, Room
+    from sqlalchemy import and_
+
+    # stay_group이 있는 예약 중 도미토리 배정이 있는 것만
+    grouped = (
+        db.query(Reservation)
+        .filter(Reservation.stay_group_id.isnot(None))
+        .all()
+    )
+    if not grouped:
+        return
+
+    # 그룹별로 묶기
+    groups: Dict[str, list] = {}
+    for res in grouped:
+        groups.setdefault(res.stay_group_id, []).append(res)
+
+    updated = 0
+    for group_id, members in groups.items():
+        member_ids = [m.id for m in members]
+
+        # 이 그룹의 모든 RoomAssignment (도미토리만)
+        assignments = (
+            db.query(RoomAssignment)
+            .join(Room, and_(Room.id == RoomAssignment.room_id, Room.tenant_id == RoomAssignment.tenant_id))
+            .filter(
+                RoomAssignment.reservation_id.in_(member_ids),
+                Room.is_dormitory == True,
+            )
+            .all()
+        )
+        if not assignments:
+            continue
+
+        # room_id별로 그룹 내 bed_order 수집
+        room_orders: Dict[int, int] = {}  # room_id → 기준 bed_order
+        for a in assignments:
+            if a.room_id not in room_orders and a.bed_order and a.bed_order > 0:
+                room_orders[a.room_id] = a.bed_order
+
+        # 같은 방인데 bed_order가 다른 경우 통일
+        for a in assignments:
+            ref = room_orders.get(a.room_id)
+            if ref and a.bed_order != ref:
+                a.bed_order = ref
+                updated += 1
+
+    if updated > 0:
+        logger.info(f"Aligned {updated} bed_orders for stay groups")
+
+
 def _init_gender_counts(res_data: Dict[str, Any]) -> tuple:
-    """Derive initial male_count/female_count from Naver gender + people_count."""
+    """성별 인원 계산: gender="남" → (people_count, 0), "여" → (0, people_count), 그 외 → (None, None)."""
     # 언스테이블: customFormInputJson 파싱 결과 우선
     if "_unstable_male" in res_data:
         return (res_data["_unstable_male"], res_data["_unstable_female"])
@@ -313,7 +393,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
 
 
 def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, Any]):
-    """Update an existing Reservation with fresh Naver API data."""
+    """[Phase 2] 기존 예약 갱신. 성별 인원은 gender_manual=False일 때만 재계산."""
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
     existing.phone = res_data.get("phone", existing.phone)
@@ -336,11 +416,19 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     existing.cancelled_at = _parse_datetime(res_data.get("cancelled_at")) if res_data.get("cancelled_at") is not None else existing.cancelled_at
     if res_data.get("gender"):
         existing.gender = res_data["gender"]
-    # Only set male_count/female_count if not already manually edited
-    if existing.male_count is None and existing.female_count is None:
-        male_count, female_count = _init_gender_counts(res_data)
-        existing.male_count = male_count
-        existing.female_count = female_count
+    # 성별 인원 재계산: 도미토리는 매 동기화마다, 일반실은 초기화 시에만
+    if not existing.gender_manual:
+        is_dormitory = res_data.get("_is_dormitory", False)
+        if is_dormitory:
+            # 도미토리: booking_count + gender로 항상 재계산
+            male_count, female_count = _init_gender_counts(res_data)
+            existing.male_count = male_count
+            existing.female_count = female_count
+        elif existing.male_count is None and existing.female_count is None:
+            # 일반실: 최초 세팅 시에만
+            male_count, female_count = _init_gender_counts(res_data)
+            existing.male_count = male_count
+            existing.female_count = female_count
 
     # Update status based on Naver status
     naver_status = res_data.get("status", "confirmed")

@@ -48,10 +48,16 @@ scheduler = AsyncIOScheduler()
 
 async def sync_naver_reservations_job():
     """
-    Sync reservations from Naver Smart Place API
-    Runs every 5 minutes, 24h. Iterates over all active tenants.
+    [Phase 1 진입점] 5분마다 네이버 예약 동기화.
 
-    Ported from: stable-clasp-main/03_trigger.js:1-16 (processTodayAuto)
+    전체 흐름:
+      Phase 1: 네이버 API 호출 → 예약 데이터 수신
+      Phase 2: enrichment(상품명/인원/성별) + DB 저장 (Reservation INSERT/UPDATE)
+      Phase 3: ★ 칩 reconcile (1차) — 아직 방 미배정이라 building 필터 칩은 미생성
+      Phase 4: 연박 감지 → stay_group 링크
+      Phase 5: 자동 객실 배정 → assign_room() 내부에서 ★ 칩 reconcile (2차) → building 필터 통과
+
+    모든 Phase는 sync_naver_to_db() 내부에서 순차 실행됨.
     """
     logger.info("Running Naver reservations sync job (all tenants)")
 

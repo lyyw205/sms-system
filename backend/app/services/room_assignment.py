@@ -219,7 +219,9 @@ def assign_room(
     # Update section field
     reservation.section = 'room'
 
-    # skip_sms_sync=True이면 태그 동기화를 건너뜀 (일괄 처리 시 사용)
+    # ★ 칩 reconcile (2차): 방 배정 후 재실행
+    # 이제 RoomAssignment 있으므로 building/room 필터 통과 → 칩 생성됨
+    # skip_sms_sync=True이면 건너뜀 (일괄 처리 시 사용)
     if not skip_sms_sync:
         db.flush()
         sync_sms_tags(db, reservation_id)

@@ -110,6 +110,7 @@ class Reservation(TenantMixin, Base):
     # Room occupant counts (mixed gender support)
     male_count = Column(Integer, nullable=True)   # 남성 투숙 인원
     female_count = Column(Integer, nullable=True) # 여성 투숙 인원
+    gender_manual = Column(Boolean, default=False) # True: 수동 편집됨 → 동기화 시 재계산 안 함
 
     # Party/dormitory fields
     party_size = Column("party_participants", Integer, default=0)
