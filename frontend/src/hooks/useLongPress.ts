@@ -3,7 +3,7 @@ import type React from 'react';
 
 /** CSS styles to apply on elements that use long-press (prevent native touch behaviors) */
 export const TOUCH_STYLE: React.CSSProperties = {
-  touchAction: 'pan-y pinch-zoom',
+  touchAction: 'manipulation',
   WebkitUserSelect: 'none',
   userSelect: 'none',
   WebkitTouchCallout: 'none',
@@ -66,14 +66,29 @@ export function useLongPress({
     return () => document.removeEventListener('contextmenu', suppress, true);
   }, []);
 
+  const rowEl = useRef<HTMLElement | null>(null);
+  const lockedInput = useRef<HTMLElement | null>(null);
+
+  const restoreTouchAction = useCallback(() => {
+    if (rowEl.current) {
+      rowEl.current.style.touchAction = '';
+      rowEl.current = null;
+    }
+    if (lockedInput.current) {
+      lockedInput.current.style.touchAction = '';
+      lockedInput.current = null;
+    }
+  }, []);
+
   const cleanup = useCallback(() => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    restoreTouchAction();
     startPos.current = null;
     target.current = null;
-  }, []);
+  }, [restoreTouchAction]);
 
   /**
    * Returns capture-phase pointer event handlers bound to a specific row.
@@ -87,14 +102,29 @@ export function useLongPress({
       if (el.closest('button, a, select, [role="button"], [data-interactive]')) return;
 
       e.preventDefault();
+      // Immediately blur input to prevent cursor flash during long-press wait
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.blur();
+      }
       triggered.current = false;
       target.current = el;
       startPos.current = { x: e.clientX, y: e.clientY };
+
+      // Temporarily lock touch-action to none on both row and target element
+      // Input elements have their own touch handling that overrides parent's touch-action
+      const row = (e.currentTarget as HTMLElement);
+      row.style.touchAction = 'none';
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.style.touchAction = 'none';
+        lockedInput.current = el;
+      }
+      rowEl.current = row;
 
       const pointerEvent = e;
       timer.current = setTimeout(() => {
         triggered.current = true;
         target.current = null;
+        restoreTouchAction();
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         window.getSelection()?.removeAllRanges();
         if (navigator.vibrate) navigator.vibrate(50);
@@ -116,9 +146,14 @@ export function useLongPress({
         clearTimeout(timer.current);
         timer.current = null;
       }
+      restoreTouchAction();
       // Short tap compensation: restore focus/click that preventDefault blocked
       if (!triggered.current && target.current && onShortTapRef.current) {
         onShortTapRef.current(target.current, e, resId, showGrip);
+      } else if (triggered.current) {
+        // Long-press was triggered — prevent browser from focusing the input on touch-up
+        e.preventDefault();
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       }
       startPos.current = null;
       target.current = null;
@@ -127,7 +162,7 @@ export function useLongPress({
     onPointerCancelCapture: () => {
       cleanup();
     },
-  }), [disabled, delay, moveThreshold, cleanup]);
+  }), [disabled, delay, moveThreshold, cleanup, restoreTouchAction]);
 
   return { handlers };
 }
