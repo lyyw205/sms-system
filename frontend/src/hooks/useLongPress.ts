@@ -3,7 +3,7 @@ import type React from 'react';
 
 /** CSS styles to apply on elements that use long-press (prevent native touch behaviors) */
 export const TOUCH_STYLE: React.CSSProperties = {
-  touchAction: 'manipulation',
+  touchAction: 'pan-y pinch-zoom',
   WebkitUserSelect: 'none',
   userSelect: 'none',
   WebkitTouchCallout: 'none',
