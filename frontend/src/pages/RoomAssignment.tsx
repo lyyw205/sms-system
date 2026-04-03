@@ -1938,10 +1938,10 @@ const RoomAssignment = () => {
         } cursor-pointer`}
         style={{ ...(isCustomHex && !isSelected ? getCustomBgStyle(res.highlight_color!, isDarkMode) : {}), touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
         onContextMenu={(e) => onGuestContextMenu(e, res.id, zone)}
-        onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
-        onPointerMove={onGuestLongPressMove}
-        onPointerUp={(e) => onGuestLongPressEnd(e, res.id, showGrip)}
-        onPointerCancel={() => onGuestLongPressEnd()}
+        onPointerDownCapture={(e) => onGuestLongPressDown(e, res.id)}
+        onPointerMoveCapture={onGuestLongPressMove}
+        onPointerUpCapture={(e) => onGuestLongPressEnd(e, res.id, showGrip)}
+        onPointerCancelCapture={() => onGuestLongPressEnd()}
         onClick={(e: any) => {
           if (e.pointerType === 'touch') return; // 터치는 pointerUp에서 처리
           if (showGrip && !(e.target as HTMLElement).closest('input, textarea, select, [data-interactive], button, a, [role="button"]')) {
@@ -2142,10 +2142,10 @@ const RoomAssignment = () => {
                         <div
                           className="flex-1 grid items-center py-1"
                           style={{ gridTemplateColumns: NEXT_GUEST_COLS, touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}
-                          onPointerDown={(e) => onGuestLongPressDown(e, nextGuest.id)}
-                          onPointerMove={onGuestLongPressMove}
-                          onPointerUp={onGuestLongPressEnd}
-                          onPointerCancel={onGuestLongPressEnd}
+                          onPointerDownCapture={(e) => onGuestLongPressDown(e, nextGuest.id)}
+                          onPointerMoveCapture={onGuestLongPressMove}
+                          onPointerUpCapture={onGuestLongPressEnd}
+                          onPointerCancelCapture={onGuestLongPressEnd}
                           onContextMenu={(e) => onGuestContextMenu(e, nextGuest.id)}
                         >
                           <div className="overflow-hidden px-1">
@@ -2693,10 +2693,10 @@ const RoomAssignment = () => {
                                   </span>
                                 </div>
                                 <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: NEXT_GUEST_COLS, touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}
-                                  onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
-                                  onPointerMove={onGuestLongPressMove}
-                                  onPointerUp={onGuestLongPressEnd}
-                                  onPointerCancel={onGuestLongPressEnd}
+                                  onPointerDownCapture={(e) => onGuestLongPressDown(e, res.id)}
+                                  onPointerMoveCapture={onGuestLongPressMove}
+                                  onPointerUpCapture={onGuestLongPressEnd}
+                                  onPointerCancelCapture={onGuestLongPressEnd}
                                   onContextMenu={(e) => onGuestContextMenu(e, res.id)}
                                 >
                                   <div className="overflow-hidden px-1">
@@ -2807,10 +2807,10 @@ const RoomAssignment = () => {
                                   </span>
                                 </div>
                                 <div className="flex-1 grid items-center py-1" style={{ gridTemplateColumns: NEXT_GUEST_COLS, touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}
-                                  onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
-                                  onPointerMove={onGuestLongPressMove}
-                                  onPointerUp={onGuestLongPressEnd}
-                                  onPointerCancel={onGuestLongPressEnd}
+                                  onPointerDownCapture={(e) => onGuestLongPressDown(e, res.id)}
+                                  onPointerMoveCapture={onGuestLongPressMove}
+                                  onPointerUpCapture={onGuestLongPressEnd}
+                                  onPointerCancelCapture={onGuestLongPressEnd}
                                   onContextMenu={(e) => onGuestContextMenu(e, res.id)}
                                 >
                                   <div className="overflow-hidden px-1">
