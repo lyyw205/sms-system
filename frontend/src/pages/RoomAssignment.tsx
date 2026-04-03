@@ -1382,16 +1382,24 @@ const RoomAssignment = () => {
     }
   }, []);
 
-  const onGuestLongPressEnd = useCallback(() => {
+  const onGuestLongPressEnd = useCallback((e?: React.PointerEvent, resId?: number, showGrip?: boolean) => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-    // 짧은 탭이었으면 input 수동 포커스 (preventDefault로 차단된 기본 포커스 보완)
-    if (!longPressTriggered.current && longPressTarget.current) {
+    // 짧은 탭이었으면 기본 동작 수동 보완 (preventDefault로 차단된 포커스/클릭)
+    if (!longPressTriggered.current && longPressTarget.current && e) {
       const t = longPressTarget.current;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) {
         t.focus();
+      } else if (showGrip && resId !== undefined) {
+        // 원(grip) 영역이나 비-input 영역 탭 → 선택 토글
+        setSelectedGuestIds(prev => {
+          const next = new Set(prev);
+          if (next.has(resId) && next.size === 1) next.clear();
+          else { next.clear(); next.add(resId); }
+          return next;
+        });
       }
     }
     longPressStart.current = null;
@@ -1928,12 +1936,16 @@ const RoomAssignment = () => {
                 ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
                 : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
         } cursor-pointer`}
-        style={isCustomHex && !isSelected ? getCustomBgStyle(res.highlight_color!, isDarkMode) : undefined}
+        style={{ ...(isCustomHex && !isSelected ? getCustomBgStyle(res.highlight_color!, isDarkMode) : {}), touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' } as React.CSSProperties}
         onContextMenu={(e) => onGuestContextMenu(e, res.id, zone)}
+        onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
+        onPointerMove={onGuestLongPressMove}
+        onPointerUp={(e) => onGuestLongPressEnd(e, res.id, showGrip)}
+        onPointerCancel={() => onGuestLongPressEnd()}
         onClick={(e: any) => {
+          if (e.pointerType === 'touch') return; // 터치는 pointerUp에서 처리
           if (showGrip && !(e.target as HTMLElement).closest('input, textarea, select, [data-interactive], button, a, [role="button"]')) {
             if (selectionActive && !selectedGuestIds.has(res.id)) {
-              // 선택 활성 상태에서 다른 게스트 클릭 → 배정으로 버블링 (onDropZoneClick)
               return;
             }
             onGripClick(e, res.id);
@@ -1959,10 +1971,6 @@ const RoomAssignment = () => {
         <div
           className="flex-1 grid items-center py-1"
           style={{ gridTemplateColumns: GUEST_COLS, touchAction: 'manipulation', WebkitUserSelect: 'none', userSelect: 'none' }}
-          onPointerDown={(e) => onGuestLongPressDown(e, res.id)}
-          onPointerMove={onGuestLongPressMove}
-          onPointerUp={onGuestLongPressEnd}
-          onPointerCancel={onGuestLongPressEnd}
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <span className="flex items-center gap-1">
