@@ -1354,8 +1354,9 @@ const RoomAssignment = () => {
     longPressStart.current = { x: e.clientX, y: e.clientY };
     longPressTimer.current = setTimeout(() => {
       longPressTriggered.current = true;
-      // 포커스된 input이 있으면 blur하여 키보드 닫기
+      // 포커스된 input blur + 브라우저 텍스트 선택 해제
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      window.getSelection()?.removeAllRanges();
       if (navigator.vibrate) navigator.vibrate(50);
 
       const targetIds =
