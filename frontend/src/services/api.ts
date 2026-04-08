@@ -278,6 +278,18 @@ export const eventSmsAPI = {
   }) => api.post('/api/event-sms/send', params),
 };
 
+// Sales Report API
+export const salesReportAPI = {
+  get: (params: {
+    date_from: string;
+    date_to: string;
+    category?: string | null;
+    biz_item_name?: string | null;
+    item_name?: string | null;
+    group_by?: string;
+  }) => api.get('/api/sales-report', { params }),
+};
+
 // Onsite Sales API
 export const onsiteSalesAPI = {
   getList: (date: string) => api.get('/api/onsite-sales', { params: { date } }),

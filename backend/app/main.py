@@ -15,6 +15,7 @@ from app.rate_limit import limiter
 from app.api import messages, reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin, events, tenants
 from app.api.event_sms import router as event_sms_router
 from app.api.onsite_sales import router as onsite_sales_router
+from app.api.sales_report import router as sales_report_router
 from app.config import settings as app_settings
 from app.db.database import init_db, get_db
 from app.scheduler.jobs import start_scheduler, stop_scheduler
@@ -123,6 +124,7 @@ app.include_router(events.router)
 app.include_router(tenants.router)
 app.include_router(event_sms_router)
 app.include_router(onsite_sales_router)
+app.include_router(sales_report_router)
 
 
 @app.get("/")

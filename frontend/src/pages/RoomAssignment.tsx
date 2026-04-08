@@ -30,7 +30,10 @@ import {
   PanelRightClose,
   ChevronsLeft,
   ChevronsRight,
+  Menu,
+  Undo2,
 } from 'lucide-react';
+import { useIsMobile } from '../hooks/use-mobile';
 import GuestContextMenu from '../components/GuestContextMenu';
 import TableSettingsModal from '../components/TableSettingsModal';
 
@@ -385,6 +388,9 @@ const RoomAssignment = () => {
   // ===== Select mode state =====
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<number>>(new Set());
   const selectionActive = selectedGuestIds.size > 0;
+  const isMobile = useIsMobile();
+  const [mobileContextMenuOpen, setMobileContextMenuOpen] = useState(false);
+  const mobileContextBtnRef = useRef<HTMLButtonElement>(null);
 
   // Selection mode toast
   useEffect(() => {
@@ -820,40 +826,44 @@ const RoomAssignment = () => {
     });
   }, [reservations, nextDayReservations]);
 
+  // Undo last room assignment
+  const handleUndo = useCallback(() => {
+    if (undoInProgress.current) return;
+    undoInProgress.current = true;
+    setUndoStack(prev => {
+      if (prev.length === 0) { undoInProgress.current = false; return prev; }
+      const last = prev[prev.length - 1];
+      reservationsAPI.assignRoom(last.resId, {
+        room_id: last.prevRoomId,
+        date: last.date,
+        apply_subsequent: false,
+      }).then(async () => {
+        if (last.prevRoomId === null && last.prevSection) {
+          await reservationsAPI.update(last.resId, { section: last.prevSection });
+        }
+        toast.success(`되돌리기: ${last.customerName} → ${last.prevRoomId ? last.prevRoomNumber : '미배정'}`);
+        fetchReservations(selectedDate);
+      }).catch(() => {
+        toast.error('되돌리기 실패');
+      }).finally(() => {
+        undoInProgress.current = false;
+      });
+      return prev.slice(0, -1);
+    });
+  }, [selectedDate, fetchReservations]);
+
   // Keyboard shortcuts: ESC to clear selection, Ctrl+Z to undo room assignment
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelectedGuestIds(new Set());
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        if (undoInProgress.current) return;
-        undoInProgress.current = true;
-        setUndoStack(prev => {
-          if (prev.length === 0) { undoInProgress.current = false; return prev; }
-          const last = prev[prev.length - 1];
-          // Restore previous room assignment
-          reservationsAPI.assignRoom(last.resId, {
-            room_id: last.prevRoomId,
-            date: last.date,
-            apply_subsequent: false,
-          }).then(async () => {
-            if (last.prevRoomId === null && last.prevSection) {
-              await reservationsAPI.update(last.resId, { section: last.prevSection });
-            }
-            toast.success(`되돌리기: ${last.customerName} → ${last.prevRoomId ? last.prevRoomNumber : '미배정'}`);
-            fetchReservations(selectedDate);
-          }).catch(() => {
-            toast.error('되돌리기 실패');
-          }).finally(() => {
-            undoInProgress.current = false;
-          });
-          return prev.slice(0, -1);
-        });
+        handleUndo();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDate, fetchReservations]);
+  }, [handleUndo]);
 
 
   const loadTargets = () => {
@@ -1356,6 +1366,11 @@ const RoomAssignment = () => {
     };
   }, [contextMenu]);
 
+  // Sync mobileContextMenuOpen with contextMenu state
+  useEffect(() => {
+    if (!contextMenu) setMobileContextMenuOpen(false);
+  }, [contextMenu]);
+
   const handleAddPartyGuest = () => {
     setEditingId(null);
     setFormValues({
@@ -1762,15 +1777,6 @@ const RoomAssignment = () => {
       return next;
     });
 
-    // Mobile: auto-show context menu at row bottom-right on select
-    if (isTouch && row) {
-      if (newTargetIds.length > 0) {
-        const rect = row.getBoundingClientRect();
-        setContextMenu({ x: rect.right - 8, y: rect.bottom, targetIds: newTargetIds });
-      } else {
-        setContextMenu(null);
-      }
-    }
   }, [findReservation]);
 
   const onDropZoneClick = useCallback((e: React.MouseEvent) => {
@@ -2971,6 +2977,74 @@ const RoomAssignment = () => {
               </button>
             </div>
           </Tooltip>
+          <Tooltip content={isMobile ? '되돌리기' : '되돌리기 (Ctrl+Z)'} placement="top">
+            <div className="inline-block">
+              <button
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                className="h-10 w-10 flex items-center justify-center rounded-full bg-white dark:bg-[#2C2C34] border border-[#E5E8EB] dark:border-gray-700 text-[#4E5968] dark:text-gray-300 hover:bg-[#F2F4F6] dark:hover:bg-[#35353E] active:bg-[#E5E8EB] disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <Undo2 className="h-[18px] w-[18px]" />
+              </button>
+            </div>
+          </Tooltip>
+          {selectionActive && isMobile && (
+            <>
+              <div className="w-px h-6 bg-[#E5E8EB] dark:bg-gray-700" />
+              <Tooltip content="컨텍스트 메뉴" placement="top">
+                <div className="inline-block">
+                  <button
+                    ref={mobileContextBtnRef}
+                    onClick={() => {
+                      if (mobileContextMenuOpen) {
+                        setContextMenu(null);
+                        setMobileContextMenuOpen(false);
+                      } else {
+                        const ids = [...selectedGuestIds];
+                        if (ids.length === 0) return;
+                        const rect = mobileContextBtnRef.current!.getBoundingClientRect();
+                        setContextMenu({ x: rect.left, y: rect.top - 8, targetIds: ids });
+                        setMobileContextMenuOpen(true);
+                      }
+                    }}
+                    className={`h-10 w-10 flex items-center justify-center rounded-full border transition-colors cursor-pointer ${
+                      mobileContextMenuOpen
+                        ? 'bg-[#3182F6] border-[#3182F6] text-white'
+                        : 'bg-white dark:bg-[#2C2C34] border-[#E5E8EB] dark:border-gray-700 text-[#4E5968] dark:text-gray-300 hover:bg-[#F2F4F6] dark:hover:bg-[#35353E] active:bg-[#E5E8EB]'
+                    }`}
+                  >
+                    <Menu className="h-[18px] w-[18px]" />
+                  </button>
+                </div>
+              </Tooltip>
+              <Tooltip content="게스트 삭제" placement="top">
+                <div className="inline-block">
+                  <button
+                    onClick={() => {
+                      const ids = [...selectedGuestIds];
+                      if (ids.length === 0) return;
+                      if (ids.length > 1) {
+                        showConfirm('게스트 일괄 삭제', `${ids.length}명을 삭제하시겠습니까?`, async () => {
+                          for (const id of ids) {
+                            try { await reservationsAPI.delete(id); } catch { /* skip */ }
+                          }
+                          toast.success(`${ids.length}명 삭제 완료`);
+                          setSelectedGuestIds(new Set());
+                          fetchReservations(selectedDate);
+                        });
+                      } else {
+                        handleDeleteGuest(ids[0]);
+                        setSelectedGuestIds(new Set());
+                      }
+                    }}
+                    className="h-10 w-10 flex items-center justify-center rounded-full bg-[#F04452]/10 text-[#F04452] border border-[#F04452]/20 hover:bg-[#F04452]/20 active:bg-[#F04452]/30 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-[18px] w-[18px]" />
+                  </button>
+                </div>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
 
@@ -3526,7 +3600,8 @@ const RoomAssignment = () => {
           onExtendStay={contextMenuActions.onExtendStay}
           onCancelExtendStay={contextMenuActions.onCancelExtendStay}
           onChangeDates={contextMenuActions.onChangeDates}
-          onClose={() => setContextMenu(null)}
+          hideDelete={isMobile && mobileContextMenuOpen}
+          onClose={() => { setContextMenu(null); setMobileContextMenuOpen(false); }}
         />
       )}
     </div>

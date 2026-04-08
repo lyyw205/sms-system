@@ -395,6 +395,14 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
         naver_room_type=reservation.naver_room_type,  # Original reservation room type
         section=reservation.section or 'unassigned',
     )
+    # Calculate visit_count based on phone number
+    if reservation.phone:
+        phone = reservation.phone.strip()
+        past_count = db.query(Reservation).filter(
+            Reservation.phone == phone,
+        ).count()
+        db_reservation.visit_count = past_count + 1
+
     db.add(db_reservation)
     db.flush()
 

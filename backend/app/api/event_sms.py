@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
+from sqlalchemy import or_, and_
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.auth.dependencies import get_current_user
 from app.db.models import Reservation, ReservationStatus, User
@@ -59,7 +60,18 @@ async def search_reservations(
     )
 
     if req.gender:
-        query = query.filter(Reservation.gender == req.gender)
+        if req.gender == '남':
+            query = query.filter(or_(
+                Reservation.gender == '남',
+                and_(Reservation.male_count.isnot(None), Reservation.male_count > 0,
+                     (Reservation.female_count.is_(None) | (Reservation.female_count == 0))),
+            ))
+        elif req.gender == '여':
+            query = query.filter(or_(
+                Reservation.gender == '여',
+                and_(Reservation.female_count.isnot(None), Reservation.female_count > 0,
+                     (Reservation.male_count.is_(None) | (Reservation.male_count == 0))),
+            ))
 
     if req.exclude_age_groups:
         query = query.filter(

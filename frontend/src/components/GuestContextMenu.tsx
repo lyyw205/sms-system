@@ -20,6 +20,7 @@ interface GuestContextMenuProps {
   onExtendStay?: () => void;
   onCancelExtendStay?: () => void;
   onChangeDates?: () => void;
+  hideDelete?: boolean;
   onClose: () => void;
 }
 
@@ -40,6 +41,7 @@ export default function GuestContextMenu({
   onExtendStay,
   onCancelExtendStay,
   onChangeDates,
+  hideDelete,
   onClose,
 }: GuestContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -241,7 +243,7 @@ export default function GuestContextMenu({
         </button>
       </div>
 
-      {!isUnstableCopy && (
+      {!isUnstableCopy && !hideDelete && (
         <>
           <div className="border-t border-[#E5E8EB] dark:border-gray-800 my-1" />
 

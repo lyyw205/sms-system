@@ -26,6 +26,7 @@ import {
   PartyPopper,
   X,
   ChevronsUpDown,
+  BarChart3,
 } from 'lucide-react'
 
 // ── Theme Context ──
@@ -114,6 +115,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/rooms/manage', label: '객실 설정', icon: <Settings2 size={18} /> },
       { path: '/templates', label: '템플릿 설정', icon: <FileText size={18} /> },
       { path: '/event-sms', label: '이벤트 문자', icon: <Megaphone size={18} /> },
+      { path: '/sales-report', label: '현장 매출 조회', icon: <BarChart3 size={18} /> },
     ],
     requiredRoles: ['superadmin', 'admin'],
   },
