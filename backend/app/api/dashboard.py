@@ -38,7 +38,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
 
     # Gender stats (7 days: today + 6 days forward) — 연박자 중간일도 포함
     from datetime import timedelta
-    from sqlalchemy import or_
+    from sqlalchemy import or_, and_
     today = datetime.now(KST).date()
     date_strs = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
     gender_daily = []
@@ -47,8 +47,12 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
             func.coalesce(func.sum(Reservation.male_count), 0).label("male"),
             func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
         ).select_from(Reservation).filter(
-            Reservation.check_in_date <= d,
-            or_(Reservation.check_out_date > d, Reservation.check_out_date.is_(None)),
+            or_(
+                # 연박: check_in <= d < check_out
+                and_(Reservation.check_in_date <= d, Reservation.check_out_date > d),
+                # check_out 없는 예약(수동 등): 체크인 당일만
+                and_(Reservation.check_in_date == d, Reservation.check_out_date.is_(None)),
+            ),
             Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
         ).first()
         gender_daily.append({
