@@ -191,7 +191,7 @@ class MessageTemplate(TenantMixin, Base):
     male_buffer = Column(Integer, default=0)           # 남성 인원 버퍼 (+N명)
     female_buffer = Column(Integer, default=0)          # 여성 인원 버퍼 (+N명)
     gender_ratio_buffers = Column(Text, nullable=True)  # JSON: {"male_high": {"m": 2, "f": 6}, "female_high": {"m": 6, "f": 6}}
-    round_unit = Column(Integer, default=0)             # 반올림 단위 (0=미사용, 10=10명 단위)
+    round_unit = Column(Integer, default=10)             # 반올림 단위 (0=미사용, 10=10명 단위)
     round_mode = Column(String, default='ceil')          # 반올림 모드: ceil(올림), round(반올림), floor(내림)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

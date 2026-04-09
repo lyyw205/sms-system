@@ -193,7 +193,7 @@ def init_db():
                 conn.execute(text("ALTER TABLE message_templates ADD COLUMN gender_ratio_buffers TEXT"))
                 print("AUTO-MIGRATE: Added gender_ratio_buffers column to message_templates table")
             if "round_unit" not in cols:
-                conn.execute(text("ALTER TABLE message_templates ADD COLUMN round_unit INTEGER DEFAULT 0"))
+                conn.execute(text("ALTER TABLE message_templates ADD COLUMN round_unit INTEGER DEFAULT 10"))
                 print("AUTO-MIGRATE: Added round_unit column to message_templates table")
             if "round_mode" not in cols:
                 conn.execute(text("ALTER TABLE message_templates ADD COLUMN round_mode VARCHAR(10) DEFAULT 'ceil'"))
