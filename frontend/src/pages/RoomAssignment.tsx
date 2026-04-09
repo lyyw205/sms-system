@@ -86,6 +86,7 @@ interface Reservation {
   bed_order?: number;
   highlight_color?: string | null;
   has_unstable_booking?: boolean;
+  cancelled_at?: string | null;
 }
 
 
@@ -700,8 +701,13 @@ const RoomAssignment = () => {
   const reservationsRef = useRef<Reservation[]>([]);
   const nextDayRef = useRef<Reservation[]>([]);
 
-  const filterActive = useCallback((data: any[]) =>
-    data.filter((r: Reservation) => r.status !== 'cancelled'), []);
+  const filterActive = useCallback((data: any[], dateStr: string) => {
+    return data.filter((r: Reservation) => {
+      if (r.status !== 'cancelled') return true;
+      // 당일 체크인 취소는 유지
+      return r.check_in_date === dateStr;
+    });
+  }, []);
 
   const fetchReservations = useCallback(async (date: Dayjs) => {
     setLoading(true);
@@ -710,15 +716,16 @@ const RoomAssignment = () => {
 
       // 당일 먼저 로딩
       const current = await reservationsAPI.getAll({ date: dateStr, limit: 200 });
-      const curr = filterActive(current.data.items ?? current.data);
+      const curr = filterActive(current.data.items ?? current.data, dateStr);
       setReservations(curr);
       reservationsRef.current = curr;
       prevDateRef.current = date;
       setLoading(false);
 
       // 다음날 백그라운드 fetch
-      reservationsAPI.getAll({ date: date.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
-        .then(res => { const d = filterActive(res.data.items ?? res.data); setNextDayReservations(d); nextDayRef.current = d; })
+      const nextDateStr = date.add(1, 'day').format('YYYY-MM-DD');
+      reservationsAPI.getAll({ date: nextDateStr, limit: 200 })
+        .then(res => { const d = filterActive(res.data.items ?? res.data, nextDateStr); setNextDayReservations(d); nextDayRef.current = d; })
         .catch(() => { setNextDayReservations([]); nextDayRef.current = []; });
     } catch {
       toast.error('예약 목록을 불러오지 못했습니다.');
@@ -1860,26 +1867,30 @@ const RoomAssignment = () => {
   const renderGuestRow = (res: Reservation, showGrip: boolean, zone?: string) => {
     const genderPeople = formatGenderPeople(res);
     const longStay = !!res.is_long_stay;
+    const isCancelled = res.status === 'cancelled';
     const isSelected = selectedGuestIds.has(res.id);
     const isCustomHex = isCustomHexColor(res.highlight_color);
     const highlightStyle = !isCustomHex && res.highlight_color ? PRESET_HIGHLIGHT_STYLES[res.highlight_color] : null;
     const hasCustomText = isCustomHex || !!highlightStyle?.text;
-    const cellText = hasCustomText ? 'text-inherit' : 'text-[#191F28] dark:text-white';
+    const cellText = isCancelled ? 'text-[#F04452] line-through opacity-60' : hasCustomText ? 'text-inherit' : 'text-[#191F28] dark:text-white';
 
     return (
       <div key={res.id}
-        className={`group/guest flex items-center h-10 ${showGrip ? '' : 'pl-10'} transition-colors duration-150 ${
-          isSelected
-            ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
-            : isCustomHex
-              ? `${getCustomTextClass(res.highlight_color!)} hover:brightness-[0.97] dark:hover:brightness-110`
-              : highlightStyle
-                ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
-                : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
+        className={`group/guest flex items-center h-10 ${showGrip && !isCancelled ? '' : 'pl-10'} transition-colors duration-150 ${
+          isCancelled
+            ? 'bg-[#FFEBEE] dark:bg-[#F04452]/10'
+            : isSelected
+              ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/15 ring-1 ring-inset ring-[#3182F6]/30'
+              : isCustomHex
+                ? `${getCustomTextClass(res.highlight_color!)} hover:brightness-[0.97] dark:hover:brightness-110`
+                : highlightStyle
+                  ? `${highlightStyle.bg} ${highlightStyle.hover} ${highlightStyle.text || ''}`
+                  : longStay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15 hover:bg-[#FFE4CC] dark:hover:bg-[#FF9500]/20' : 'hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/8'
         } cursor-pointer`}
         style={isCustomHex && !isSelected ? getCustomBgStyle(res.highlight_color!, isDarkMode) : undefined}
-        onContextMenu={(e) => onGuestContextMenu(e, res.id, zone)}
+        onContextMenu={(e) => { if (!isCancelled) onGuestContextMenu(e, res.id, zone); }}
         onClick={(e: React.MouseEvent) => {
+          if (isCancelled) return;
           if (showGrip && !(e.target as HTMLElement).closest('input, textarea, select, [data-interactive], button, a, [role="button"]')) {
             if (selectionActive && !selectedGuestIds.has(res.id)) {
               return;
@@ -1888,7 +1899,7 @@ const RoomAssignment = () => {
           }
         }}
       >
-        {showGrip && (
+        {showGrip && !isCancelled && (
           <div
             className={`flex items-center justify-center w-10 px-0.5 flex-shrink-0 cursor-pointer text-[#B0B8C1] dark:text-[#4E5968] transition-all duration-200 ${
               isSelected
@@ -1910,7 +1921,12 @@ const RoomAssignment = () => {
         >
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <span className="flex items-center gap-1">
-              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} disabled={selectionActive} />
+              <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} disabled={selectionActive || isCancelled} />
+              {isCancelled && res.cancelled_at && (
+                <span className="text-tiny text-[#F04452] whitespace-nowrap flex-shrink-0">
+                  {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
+                </span>
+              )}
               {res.has_unstable_booking && <span className="inline-block h-[6px] w-[6px] rounded-full bg-[#7B61FF] flex-shrink-0" title="언스테이블 파티 예약 확인" />}
             </span>
           </div>
@@ -2141,7 +2157,8 @@ const RoomAssignment = () => {
         dataPromise = reservationsAPI.getAll({ date: newDate.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
           .catch(() => ({ data: { items: [] } }))
           .then((res: any) => {
-            const nextData = filterActive(res.data.items ?? res.data);
+            const nextDateStr2 = newDate.add(1, 'day').format('YYYY-MM-DD');
+            const nextData = filterActive(res.data.items ?? res.data, nextDateStr2);
             reservationsRef.current = newCurrent;
             nextDayRef.current = nextData;
             setReservations(newCurrent);
@@ -2151,12 +2168,13 @@ const RoomAssignment = () => {
         // 폴백: 당일 먼저
         dataPromise = reservationsAPI.getAll({ date: dateStr, limit: 200 })
           .then((res) => {
-            const curr = filterActive(res.data.items ?? res.data);
+            const curr = filterActive(res.data.items ?? res.data, dateStr);
             reservationsRef.current = curr;
             setReservations(curr);
             // 다음날 백그라운드
-            reservationsAPI.getAll({ date: newDate.add(1, 'day').format('YYYY-MM-DD'), limit: 200 })
-              .then(r => { const d = filterActive(r.data.items ?? r.data); setNextDayReservations(d); nextDayRef.current = d; })
+            const nextDateStr2 = newDate.add(1, 'day').format('YYYY-MM-DD');
+            reservationsAPI.getAll({ date: nextDateStr2, limit: 200 })
+              .then(r => { const d = filterActive(r.data.items ?? r.data, nextDateStr2); setNextDayReservations(d); nextDayRef.current = d; })
               .catch(() => { setNextDayReservations([]); nextDayRef.current = []; });
           })
           .catch(() => { toast.error('예약 목록을 불러오지 못했습니다.'); });

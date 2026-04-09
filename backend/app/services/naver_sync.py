@@ -15,6 +15,7 @@ from app.services import room_assignment
 from app.services.consecutive_stay import compute_is_long_stay
 from app.services.room_auto_assign import auto_assign_rooms
 from app.config import KST
+from app.db.tenant_context import current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -442,8 +443,18 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         existing.status = ReservationStatus.CONFIRMED
     elif naver_status == "cancelled":
         existing.status = ReservationStatus.CANCELLED
-        # Auto-unassign room on cancellation
-        room_assignment.clear_all_for_reservation(db, existing.id)
+        # 당일 취소: 오늘 이후 날짜의 객실 배정만 해제 (과거 배정은 유지)
+        # → 예약자는 미배정 풀에 빨간 행으로 표시됨
+        today_str = datetime.now(KST).strftime("%Y-%m-%d")
+        from app.db.models import RoomAssignment as RA
+        tid = current_tenant_id.get()
+        db.query(RA).filter(
+            RA.reservation_id == existing.id,
+            RA.tenant_id == tid,
+            RA.date >= today_str,
+        ).delete(synchronize_session="fetch")
+        existing.room_number = None
+        existing.room_password = None
         # Delete unsent chips on cancellation
         db.query(ReservationSmsAssignment).filter(
             ReservationSmsAssignment.reservation_id == existing.id,

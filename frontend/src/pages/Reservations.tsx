@@ -759,7 +759,9 @@ export default function Reservations() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFEBEE] dark:bg-[#F04452]/10">
               <Trash2 className="h-6 w-6 text-[#F04452] dark:text-red-400" />
             </div>
-            <h3 className="mb-2 text-heading font-semibold text-[#191F28] dark:text-white">예약을 삭제하시겠습니까?</h3>
+            <h3 className="mb-2 text-heading font-semibold text-[#191F28] dark:text-white">
+              <span className="text-[#3182F6]">{reservations.find(r => r.id === deleteId)?.customer_name ?? '해당'}</span>님의 예약을 삭제하시겠습니까?
+            </h3>
             <p className="mb-5 text-body text-gray-500">이 작업은 되돌릴 수 없습니다. 예약 정보가 영구적으로 삭제됩니다.</p>
             <div className="flex justify-center gap-3">
               <Button color="failure" onClick={handleDelete} disabled={deleting}>
