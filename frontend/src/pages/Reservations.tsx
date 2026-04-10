@@ -52,6 +52,7 @@ interface Reservation {
   stay_group_id?: string | null;
   stay_group_order?: number | null;
   is_long_stay?: boolean;
+  section?: string | null;
 }
 
 interface FormState {
