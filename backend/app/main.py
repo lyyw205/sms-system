@@ -82,6 +82,12 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
+@app.get("/sentry-debug")
+async def trigger_error():
+    """Sentry 연동 테스트용 (의도적 500 에러)"""
+    division_by_zero = 1 / 0
+
+
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
