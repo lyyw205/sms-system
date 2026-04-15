@@ -268,7 +268,6 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
         # Surcharge reconcile for synced reservations
         try:
             from app.services.surcharge import reconcile_surcharge_batch
-            from app.config import KST
             today_str = datetime.now(KST).strftime("%Y-%m-%d")
             reconcile_surcharge_batch(db, chip_target_ids, today_str)
         except Exception as e:
