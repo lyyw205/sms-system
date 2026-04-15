@@ -153,6 +153,8 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
                 sent_at=a.sent_at,
                 assigned_by=a.assigned_by,
                 date=a.date or '',
+                send_status=a.send_status,
+                send_error=a.send_error,
             )
             for a in source
         ]
