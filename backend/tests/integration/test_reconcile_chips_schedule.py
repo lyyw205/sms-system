@@ -145,3 +145,45 @@ class TestReconcileChipsForSchedule:
         ).all()
         assert len(remaining) == 1
         assert remaining[0].assigned_by == 'manual'
+
+
+from app.services.chip_reconciler import reconcile_chips_for_reservation  # noqa: E402
+
+
+class TestCustomScheduleExclusion:
+    def test_standard_reconcile_does_not_delete_custom_chips(self, db):
+        """chip_reconciler가 custom_schedule 소속 칩을 삭제하지 않는다."""
+        tpl = _make_template(db, key="tpl_custom")
+        # custom_schedule 타입 스케줄 생성
+        custom_sched = TemplateSchedule(
+            tenant_id=1, template_id=tpl.id, schedule_name="custom test",
+            schedule_type="daily", hour=13, minute=0,
+            schedule_category="custom_schedule",
+            custom_type="surcharge_1", is_active=True,
+        )
+        db.add(custom_sched)
+        db.flush()
+
+        res = _make_reservation(db, check_in=today_kst())
+
+        # custom_schedule 소속 칩 생성 (assigned_by='auto')
+        chip = ReservationSmsAssignment(
+            tenant_id=1,
+            reservation_id=res.id,
+            template_key=tpl.template_key,
+            date=today_kst(),
+            assigned_by='auto',
+            schedule_id=custom_sched.id,
+        )
+        db.add(chip)
+        db.flush()
+
+        # standard reconcile 실행
+        reconcile_chips_for_reservation(db, res.id)
+        db.flush()
+
+        remaining = db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.reservation_id == res.id,
+            ReservationSmsAssignment.schedule_id == custom_sched.id,
+        ).all()
+        assert len(remaining) == 1, "custom_schedule 칩은 standard reconcile에서 삭제되면 안 됨"
