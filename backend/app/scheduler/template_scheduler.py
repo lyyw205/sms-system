@@ -167,6 +167,14 @@ class TemplateScheduleExecutor:
                         failed_count += 1
                         error_msg = result.get('error', 'unknown')
                         logger.error(f"Failed to send SMS to {reservation.phone}: {error_msg}")
+
+                        from app.services.sms_tracking import record_sms_failed
+                        record_sms_failed(
+                            self.db, reservation.id, template_key,
+                            error=error_msg, date=target_date or '',
+                        )
+                        self.db.flush()
+
                         send_results.append({
                             "customer_name": reservation.customer_name,
                             "phone": reservation.phone,
@@ -267,6 +275,7 @@ class TemplateScheduleExecutor:
             .filter(
                 ReservationSmsAssignment.schedule_id == schedule.id,
                 ReservationSmsAssignment.sent_at.is_(None),
+                or_(ReservationSmsAssignment.send_status.is_(None), ReservationSmsAssignment.send_status != 'failed'),
             )
             .all()
         )
@@ -375,17 +384,20 @@ class TemplateScheduleExecutor:
         # Apply structural filters (building/assignment/room/column_match)
         query = self._apply_structural_filters(query, schedule, target_date)
 
-        # Apply exclude_sent filter via join table
+        # Apply exclude_sent filter via join table (sent 또는 failed 모두 제외)
         if exclude_sent and schedule.exclude_sent:
             from sqlalchemy import exists
-            sent_conditions = (
+            done_conditions = (
                 (ReservationSmsAssignment.reservation_id == Reservation.id) &
                 (ReservationSmsAssignment.template_key == schedule.template.template_key) &
-                (ReservationSmsAssignment.sent_at.isnot(None))
+                (or_(
+                    ReservationSmsAssignment.sent_at.isnot(None),
+                    ReservationSmsAssignment.send_status == 'failed',
+                ))
             )
             if target_date:
-                sent_conditions = sent_conditions & (ReservationSmsAssignment.date == target_date)
-            query = query.filter(~exists().where(sent_conditions))
+                done_conditions = done_conditions & (ReservationSmsAssignment.date == target_date)
+            query = query.filter(~exists().where(done_conditions))
 
         results = query.all()
 
@@ -481,16 +493,19 @@ class TemplateScheduleExecutor:
         if schedule.stay_filter == 'exclude':
             results = [r for r in results if not r.is_long_stay]
 
-        # 6) exclude_sent — 이벤트 전용 (날짜 무관)
+        # 6) exclude_sent — 이벤트 전용 (날짜 무관, sent 또는 failed 모두 제외)
         if exclude_sent and schedule.exclude_sent:
-            already_sent_ids = {
+            already_done_ids = {
                 row.reservation_id for row in
                 self.db.query(ReservationSmsAssignment.reservation_id).filter(
                     ReservationSmsAssignment.template_key == schedule.template.template_key,
-                    ReservationSmsAssignment.sent_at.isnot(None),
+                    or_(
+                        ReservationSmsAssignment.sent_at.isnot(None),
+                        ReservationSmsAssignment.send_status == 'failed',
+                    ),
                 ).all()
             }
-            results = [r for r in results if r.id not in already_sent_ids]
+            results = [r for r in results if r.id not in already_done_ids]
 
         return results
 

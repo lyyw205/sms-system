@@ -55,6 +55,8 @@ interface SmsAssignment {
   sent_at: string | null;
   assigned_by: string;
   date: string;
+  send_status?: string | null;
+  send_error?: string | null;
 }
 
 interface Reservation {
@@ -238,15 +240,23 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
         <div className="flex items-center gap-1 flex-nowrap">
           {assignments.map((a) => {
             const isSent = !!a.sent_at;
+            const isFailed = a.send_status === 'failed';
             const isPastChip = isSent && a.date < selectedDate;
+            const chipTitle = isFailed
+              ? `${getFullName(a.template_key)} — 발송 실패: ${a.send_error || '알 수 없는 오류'}`
+              : isPastChip
+                ? `${getFullName(a.template_key)} (${a.date} 발송완료)`
+                : getFullName(a.template_key);
             return (
               <span
                 key={a.template_key}
-                title={isPastChip ? `${getFullName(a.template_key)} (${a.date} 발송완료)` : getFullName(a.template_key)}
+                title={chipTitle}
                 className={`inline-flex items-center px-1.5 py-1 rounded text-[11px] leading-tight font-medium whitespace-nowrap cursor-pointer transition-all
-                  ${isSent
-                    ? 'bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]/30 dark:bg-[#3182F6]/20 dark:text-[#3182F6] dark:border-[#3182F6]/30'
-                    : 'bg-[#F2F4F6] text-[#8B95A1] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-[#8B95A1] dark:border-[#2C2C34]'
+                  ${isFailed
+                    ? 'bg-[#FFEBEE] text-[#F04452] border border-[#F04452]/30 dark:bg-[#F04452]/20 dark:text-[#F04452] dark:border-[#F04452]/30'
+                    : isSent
+                      ? 'bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]/30 dark:bg-[#3182F6]/20 dark:text-[#3182F6] dark:border-[#3182F6]/30'
+                      : 'bg-[#F2F4F6] text-[#8B95A1] border border-[#E5E8EB] dark:bg-[#2C2C34] dark:text-[#8B95A1] dark:border-[#2C2C34]'
                   }`}
                 onClick={(e) => { e.stopPropagation(); onToggle(reservation.id, a.template_key); }}
               >

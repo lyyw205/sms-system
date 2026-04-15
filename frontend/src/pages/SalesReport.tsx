@@ -55,21 +55,6 @@ function fmt(n: number): string {
   return n.toLocaleString('ko-KR');
 }
 
-function SalesChips({ sales, auction, unit = '원' }: { sales: number; auction: number; unit?: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-flex items-center gap-1">
-        <span className="rounded bg-[#E8F3FF] px-1.5 py-0.5 text-tiny font-medium text-[#3182F6] dark:bg-[#3182F6]/15">판매</span>
-        <span>{fmt(sales)}</span>
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <span className="rounded bg-[#FFF4E5] px-1.5 py-0.5 text-tiny font-medium text-[#FF9500] dark:bg-[#FF9500]/15">경매</span>
-        <span>{fmt(auction)}</span>
-      </span>
-      <span className="text-[#B0B8C1] font-normal">{unit}</span>
-    </span>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -196,35 +181,43 @@ export default function SalesReport() {
         <div className="overflow-x-auto">
           <Table className="table-fixed">
             <colgroup>
-              <col className="w-10" />
-              <col className="w-[20%]" />
+              <col className="w-[3%]" />
+              <col className="w-[15%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
               <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[18%]" />
-              <col className="w-[14%]" />
-              <col className="w-[14%]" />
             </colgroup>
             <TableHead>
               <TableRow>
-                <TableHeadCell></TableHeadCell>
-                <TableHeadCell>진행자</TableHeadCell>
-                <TableHeadCell className="text-center">진행일</TableHeadCell>
-                <TableHeadCell className="text-center">총 게스트</TableHeadCell>
-                <TableHeadCell className="text-right">총 매출(원)</TableHeadCell>
-                <TableHeadCell className="text-right">인당 평균(원)</TableHeadCell>
-                <TableHeadCell className="text-right">일 평균</TableHeadCell>
+                <TableHeadCell rowSpan={2} className="text-center align-middle border-r border-[#E5E8EB] dark:border-gray-700" style={{ padding: '0 4px' }}></TableHeadCell>
+                <TableHeadCell rowSpan={2} className="text-center align-middle border-r border-[#E5E8EB] dark:border-gray-700">진행자</TableHeadCell>
+                <TableHeadCell rowSpan={2} className="text-center align-middle border-r border-[#E5E8EB] dark:border-gray-700">진행일</TableHeadCell>
+                <TableHeadCell rowSpan={2} className="text-center align-middle border-r border-[#E5E8EB] dark:border-gray-700">총 게스트</TableHeadCell>
+                <TableHeadCell colSpan={2} className="text-center border-b-0 align-middle border-r border-[#E5E8EB] dark:border-gray-700">총 매출</TableHeadCell>
+                <TableHeadCell colSpan={2} className="text-center border-b-0 align-middle border-r border-[#E5E8EB] dark:border-gray-700">인당 평균</TableHeadCell>
+                <TableHeadCell rowSpan={2} className="text-center align-middle">일 평균</TableHeadCell>
+              </TableRow>
+              <TableRow>
+                <TableHeadCell className="text-center text-caption font-normal text-[#3182F6] bg-[#F2F4F6] dark:bg-[#2C2C34]">현장판매(원)</TableHeadCell>
+                <TableHeadCell className="text-center text-caption font-normal text-[#FF9500] bg-[#F2F4F6] dark:bg-[#2C2C34] border-r border-[#E5E8EB] dark:border-gray-700">경매(원)</TableHeadCell>
+                <TableHeadCell className="text-center text-caption font-normal text-[#3182F6] bg-[#F2F4F6] dark:bg-[#2C2C34]">현장판매(원)</TableHeadCell>
+                <TableHeadCell className="text-center text-caption font-normal text-[#FF9500] bg-[#F2F4F6] dark:bg-[#2C2C34] border-r border-[#E5E8EB] dark:border-gray-700">경매(원)</TableHeadCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
+                  <TableCell colSpan={9} className="text-center py-12">
                     <Spinner size="md" />
                   </TableCell>
                 </TableRow>
               ) : data.hosts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-[#8B95A1]">
+                  <TableCell colSpan={9} className="text-center py-12 text-[#8B95A1]">
                     <div className="flex flex-col items-center gap-2">
                       <Users size={32} className="text-[#B0B8C1]" />
                       조회 결과가 없습니다
@@ -242,19 +235,21 @@ export default function SalesReport() {
                           className="cursor-pointer hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
                           onClick={() => toggleHost(host.host_username)}
                         >
-                          <TableCell className="w-8 text-[#8B95A1]">
-                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          <TableCell className="text-[#8B95A1]" style={{ padding: '0 4px' }}>
+                            <div className="flex items-center justify-center">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</div>
                           </TableCell>
-                          <TableCell className="font-semibold text-[#191F28] dark:text-white">{host.host_username}</TableCell>
+                          <TableCell className="text-center font-semibold text-[#191F28] dark:text-white">{host.host_username}</TableCell>
                           <TableCell className="text-center tabular-nums">{host.days_count}<span className="text-[#B0B8C1] ml-0.5">일</span></TableCell>
                           <TableCell className="text-center tabular-nums">{fmt(host.total_participants)}<span className="text-[#B0B8C1] ml-0.5">명</span></TableCell>
-                          <TableCell className="text-right tabular-nums font-medium">
-                            <SalesChips sales={host.total_sales} auction={host.total_auction} unit="" />
+                          <TableCell className="text-center tabular-nums font-medium text-[#3182F6]">{fmt(host.total_sales)}</TableCell>
+                          <TableCell className="text-center tabular-nums font-medium text-[#FF9500]">{fmt(host.total_auction)}</TableCell>
+                          <TableCell className="text-center tabular-nums font-medium text-[#3182F6]">
+                            {host.total_participants > 0 ? fmt(Math.round(host.total_sales / host.total_participants)) : '-'}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums font-medium text-[#3182F6]">
-                            {host.total_participants > 0 ? <SalesChips sales={Math.round(host.total_sales / host.total_participants)} auction={Math.round(host.total_auction / host.total_participants)} unit="" /> : '-'}
+                          <TableCell className="text-center tabular-nums font-medium text-[#FF9500]">
+                            {host.total_participants > 0 ? fmt(Math.round(host.total_auction / host.total_participants)) : '-'}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums font-medium">
+                          <TableCell className="text-center tabular-nums font-medium">
                             {fmt(host.daily_avg)}
                           </TableCell>
                         </TableRow>
@@ -262,18 +257,20 @@ export default function SalesReport() {
                         {/* 날짜별 상세 (펼침) */}
                         {isExpanded && <>
                           {host.dates.map((dd) => (
-                            <TableRow key={`${host.host_username}|${dd.date}`} className="bg-[#FAFBFC] dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]">
-                              <TableCell className="py-2"></TableCell>
-                              <TableCell className="py-2"></TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">{dd.date}</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">{dd.participants}명</TableCell>
-                              <TableCell className="text-right text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">
-                                <SalesChips sales={dd.sales_total} auction={dd.auction_amount ?? 0} unit="" />
+                            <TableRow key={`${host.host_username}|${dd.date}`} className="hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]" style={{ height: '36px' }}>
+                              <TableCell style={{ padding: '4px', background: '#F8F9FB' }}></TableCell>
+                              <TableCell style={{ padding: '4px', background: '#F8F9FB' }}></TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{dd.date}</TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{dd.participants}명</TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{fmt(dd.sales_total)}</TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{fmt(dd.auction_amount ?? 0)}</TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
+                                {dd.participants > 0 ? fmt(Math.round(dd.sales_total / dd.participants)) : '-'}
                               </TableCell>
-                              <TableCell className="text-right text-caption tabular-nums text-[#3182F6] py-2">
-                                {dd.participants > 0 ? <SalesChips sales={Math.round(dd.sales_total / dd.participants)} auction={Math.round((dd.auction_amount ?? 0) / dd.participants)} unit="" /> : '-'}
+                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
+                                {dd.participants > 0 ? fmt(Math.round((dd.auction_amount ?? 0) / dd.participants)) : '-'}
                               </TableCell>
-                              <TableCell className="text-right py-2">
+                              <TableCell className="text-center" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
                                 {dd.items.length > 0 && (
                                   <Button color="light" size="xs" onClick={() => setDetailModal({ open: true, host: host.host_username, dd })}>
                                     <Eye className="h-3.5 w-3.5 mr-1" />상세
@@ -312,7 +309,7 @@ export default function SalesReport() {
               {/* 판매 기록 */}
               <div className="divide-y divide-[#F2F4F6] rounded-xl border border-[#E5E8EB] dark:divide-gray-800 dark:border-gray-800">
                 {detailModal.dd.items.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between px-4 py-3">
+                  <div key={idx} className="flex items-center justify-between px-4 py-2">
                     <div className="flex items-center gap-3 flex-1">
                       {item.created_at && <span className="shrink-0 whitespace-nowrap text-tiny text-[#8B95A1] dark:text-gray-500 tabular-nums">{(() => { const d = new Date(item.created_at); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}</span>}
                       <span className="text-body font-medium text-[#191F28] dark:text-white">{item.item_name}</span>
@@ -324,11 +321,11 @@ export default function SalesReport() {
                 ))}
               </div>
 
-              {/* 총액 */}
+              {/* 총액 (판매 + 경매) */}
               <div className="flex items-center justify-between rounded-xl bg-[#F8F9FA] px-4 py-3 dark:bg-[#1E1E24]">
                 <span className="text-body font-semibold text-[#191F28] dark:text-white">총액</span>
                 <span className="tabular-nums text-heading font-bold text-[#3182F6]">
-                  {fmt(detailModal.dd.items.reduce((sum, i) => sum + i.amount, 0))}<span className="ml-0.5 text-body font-normal text-[#B0B8C1]">원</span>
+                  {fmt(detailModal.dd.items.reduce((sum, i) => sum + i.amount, 0) + (detailModal.dd.auction_amount ?? 0))}<span className="ml-0.5 text-body font-normal text-[#B0B8C1]">원</span>
                 </span>
               </div>
             </div>

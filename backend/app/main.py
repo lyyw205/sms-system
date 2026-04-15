@@ -1,6 +1,7 @@
 """
 FastAPI application entry point
 """
+import os
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -116,8 +117,11 @@ async def startup_event():
     logging.info("Database initialized")
 
     # Start scheduler for automated tasks
-    start_scheduler()
-    logging.info("Scheduler started")
+    if os.getenv("DISABLE_SCHEDULER"):
+        logging.info("Scheduler disabled (DISABLE_SCHEDULER set)")
+    else:
+        start_scheduler()
+        logging.info("Scheduler started")
 
 
 @app.on_event("shutdown")

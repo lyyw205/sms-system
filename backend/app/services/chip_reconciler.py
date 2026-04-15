@@ -254,10 +254,10 @@ def _sync_chips(
             ))
             created += 1
 
-    # Delete stale chips (only unprotected)
+    # Delete stale chips (only unprotected, skip failed)
     for a in existing:
         if (a.template_key, a.date) not in expected_pairs:
-            if a.sent_at is None and a.assigned_by not in _PROTECTED_ASSIGNED_BY:
+            if a.sent_at is None and a.assigned_by not in _PROTECTED_ASSIGNED_BY and a.send_status != 'failed':
                 db.delete(a)
 
     return created
@@ -303,10 +303,10 @@ def _sync_chips_for_schedule(
                 ))
                 created += 1
 
-    # Delete stale chips (only unprotected)
+    # Delete stale chips (only unprotected, skip failed)
     for a in existing:
         if (a.reservation_id, a.date) not in expected_pairs:
-            if a.sent_at is None and a.assigned_by not in _PROTECTED_ASSIGNED_BY:
+            if a.sent_at is None and a.assigned_by not in _PROTECTED_ASSIGNED_BY and a.send_status != 'failed':
                 db.delete(a)
 
     return created

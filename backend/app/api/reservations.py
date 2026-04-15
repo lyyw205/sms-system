@@ -75,6 +75,8 @@ class SmsAssignmentResponse(BaseModel):
     sent_at: Optional[datetime] = None
     assigned_by: str = "auto"
     date: str = ''
+    send_status: Optional[str] = None
+    send_error: Optional[str] = None
 
     class Config:
         from_attributes = True

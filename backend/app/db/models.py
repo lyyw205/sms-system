@@ -223,6 +223,8 @@ class ReservationSmsAssignment(TenantMixin, Base):
     assigned_at = Column(DateTime, default=utc_now)
     sent_at = Column(DateTime, nullable=True)  # null=pending, value=sent
     assigned_by = Column(String(20), default="auto")  # 'auto', 'manual', 'schedule'
+    send_status = Column(String(10), nullable=True)  # null=미발송, 'sent'=성공, 'failed'=실패
+    send_error = Column(String(500), nullable=True)  # 실패 시 에러 메시지
     schedule_id = Column(Integer, ForeignKey("template_schedules.id", ondelete="SET NULL"), nullable=True)
 
     date = Column(String(20), nullable=False, default='')  # YYYY-MM-DD, 발송 대상 날짜

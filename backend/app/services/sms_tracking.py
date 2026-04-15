@@ -19,16 +19,8 @@ def record_sms_sent(
     date: str = "",
 ) -> None:
     """
-    SMS 발송 기록을 ReservationSmsAssignment에 upsert.
-
-    Args:
-        db: DB 세션
-        reservation_id: 예약 ID
-        template_key: 템플릿 키 (예: 'room_guide', 'party_guide')
-        sms_type_label: 레거시 파라미터 (무시됨, 호출부 호환용으로 유지)
-        assigned_by: 'auto' 또는 'schedule'
+    SMS 발송 성공 기록을 ReservationSmsAssignment에 upsert.
     """
-    # ReservationSmsAssignment upsert
     existing = (
         db.query(ReservationSmsAssignment)
         .filter(
@@ -41,11 +33,49 @@ def record_sms_sent(
 
     if existing:
         existing.sent_at = datetime.now(timezone.utc)
+        existing.send_status = 'sent'
+        existing.send_error = None
     else:
         db.add(ReservationSmsAssignment(
             reservation_id=reservation_id,
             template_key=template_key,
             assigned_by=assigned_by,
             sent_at=datetime.now(timezone.utc),
+            send_status='sent',
+            date=date,
+        ))
+
+
+def record_sms_failed(
+    db: Session,
+    reservation_id: int,
+    template_key: str,
+    error: str,
+    date: str = "",
+) -> None:
+    """
+    SMS 발송 실패 기록. 칩에 send_status='failed'와 에러 메시지를 기록.
+    다음 스케줄 실행 시 재시도하지 않음.
+    """
+    existing = (
+        db.query(ReservationSmsAssignment)
+        .filter(
+            ReservationSmsAssignment.reservation_id == reservation_id,
+            ReservationSmsAssignment.template_key == template_key,
+            ReservationSmsAssignment.date == date,
+        )
+        .first()
+    )
+
+    if existing:
+        existing.send_status = 'failed'
+        existing.send_error = (error or 'unknown')[:500]
+    else:
+        db.add(ReservationSmsAssignment(
+            reservation_id=reservation_id,
+            template_key=template_key,
+            assigned_by='auto',
+            send_status='failed',
+            send_error=(error or 'unknown')[:500],
             date=date,
         ))
