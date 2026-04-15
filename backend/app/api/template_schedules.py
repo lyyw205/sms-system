@@ -63,6 +63,7 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "send_condition_ratio": schedule.send_condition_ratio,
         "send_condition_operator": schedule.send_condition_operator,
         "schedule_category": schedule.schedule_category or "standard",
+        "custom_type": schedule.custom_type,
         "hours_since_booking": schedule.hours_since_booking,
         "gender_filter": schedule.gender_filter,
         "max_checkin_days": schedule.max_checkin_days,
@@ -99,11 +100,12 @@ class TemplateScheduleCreate(BaseModel):
     send_condition_ratio: Optional[float] = None
     send_condition_operator: Optional[Literal['gte', 'lte']] = None
     # Event schedule fields
-    schedule_category: Optional[Literal['standard', 'event']] = 'standard'
+    schedule_category: Optional[Literal['standard', 'event', 'custom_schedule']] = 'standard'
     hours_since_booking: Optional[int] = None
     gender_filter: Optional[Literal['male', 'female']] = None
     max_checkin_days: Optional[int] = None
     expires_after_days: Optional[int] = None
+    custom_type: Optional[str] = None
 
 
 class TemplateScheduleUpdate(BaseModel):
@@ -129,11 +131,12 @@ class TemplateScheduleUpdate(BaseModel):
     send_condition_ratio: Optional[float] = None
     send_condition_operator: Optional[Literal['gte', 'lte']] = None
     # Event schedule fields
-    schedule_category: Optional[Literal['standard', 'event']] = None
+    schedule_category: Optional[Literal['standard', 'event', 'custom_schedule']] = None
     hours_since_booking: Optional[int] = None
     gender_filter: Optional[Literal['male', 'female']] = None
     max_checkin_days: Optional[int] = None
     expires_after_days: Optional[int] = None
+    custom_type: Optional[str] = None
 
 
 class TemplateScheduleResponse(BaseModel):
@@ -163,6 +166,7 @@ class TemplateScheduleResponse(BaseModel):
     send_condition_operator: Optional[str] = None
     # Event schedule fields
     schedule_category: str = 'standard'
+    custom_type: Optional[str] = None
     hours_since_booking: Optional[int] = None
     gender_filter: Optional[str] = None
     max_checkin_days: Optional[int] = None
@@ -193,6 +197,13 @@ class TargetPreview(BaseModel):
     check_in_date: str
     check_in_time: str
     room_number: Optional[str]
+
+
+@router.get("/custom-types")
+def get_custom_types():
+    """커스텀 스케줄 로직 타입 목록 반환 (프론트엔드 드롭다운용)."""
+    from app.services.custom_schedule_registry import get_custom_types
+    return get_custom_types()
 
 
 @router.get("", response_model=List[TemplateScheduleResponse])
@@ -277,6 +288,7 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         send_condition_ratio=schedule.send_condition_ratio,
         send_condition_operator=schedule.send_condition_operator,
         schedule_category=schedule.schedule_category or 'standard',
+        custom_type=schedule.custom_type,
         hours_since_booking=schedule.hours_since_booking,
         gender_filter=schedule.gender_filter,
         max_checkin_days=schedule.max_checkin_days,

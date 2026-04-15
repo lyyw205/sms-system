@@ -71,6 +71,13 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
     for res_id in assigned_reservation_ids:
         room_assignment.sync_sms_tags(db, res_id, schedules=schedules)
 
+    # Surcharge batch reconcile (추가 인원 요금)
+    try:
+        from app.services.surcharge import reconcile_surcharge_batch
+        reconcile_surcharge_batch(db, assigned_reservation_ids, target_date)
+    except Exception as e:
+        logger.warning(f"Surcharge batch reconcile failed: {e}")
+
     # Summary activity log (like template scheduler)
     if assigned_count > 0:
         from app.services.activity_logger import log_activity

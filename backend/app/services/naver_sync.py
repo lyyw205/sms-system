@@ -265,6 +265,15 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             logger.error(f"Chip reconciliation after sync failed: {e}")
             db.rollback()
 
+        # Surcharge reconcile for synced reservations
+        try:
+            from app.services.surcharge import reconcile_surcharge_batch
+            from app.config import KST
+            today_str = datetime.now(KST).strftime("%Y-%m-%d")
+            reconcile_surcharge_batch(db, chip_target_ids, today_str)
+        except Exception as e:
+            logger.warning(f"Surcharge batch reconcile after sync failed: {e}")
+
     logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
 
     return {

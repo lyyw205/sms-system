@@ -192,10 +192,14 @@ class TemplateScheduleExecutor:
             schedule.last_run_at = datetime.now(timezone.utc)
 
             # 활동 로그 기록 (대상자 상세 포함)
+            if (schedule.schedule_category or 'standard') == 'custom_schedule':
+                schedule_label = f"커스텀({schedule.custom_type or '미지정'})"
+            else:
+                schedule_label = '스케줄 수동 발송' if manual else '스케줄 자동 발송'
             log_activity(
                 self.db,
                 type="sms_send",
-                title=f"SMS 발송 : {'스케줄 수동 발송' if manual else '스케줄 자동 발송'}",
+                title=f"SMS 발송 : {schedule_label}",
                 detail={
                     "schedule_id": schedule.id,
                     "template_key": schedule.template.template_key,
@@ -252,7 +256,32 @@ class TemplateScheduleExecutor:
         """
         if (schedule.schedule_category or 'standard') == 'event':
             return self._get_targets_event(schedule, exclude_sent=exclude_sent)
+        if (schedule.schedule_category or 'standard') == 'custom_schedule':
+            return self._get_targets_custom(schedule)
         return self._get_targets_standard(schedule, exclude_sent=exclude_sent)
+
+    def _get_targets_custom(self, schedule: TemplateSchedule) -> List[Reservation]:
+        """custom_schedule 대상 조회: 해당 스케줄의 pending 칩이 있는 예약 반환."""
+        pending_chips = (
+            self.db.query(ReservationSmsAssignment)
+            .filter(
+                ReservationSmsAssignment.schedule_id == schedule.id,
+                ReservationSmsAssignment.sent_at.is_(None),
+            )
+            .all()
+        )
+        if not pending_chips:
+            return []
+
+        res_ids = list({chip.reservation_id for chip in pending_chips})
+        return (
+            self.db.query(Reservation)
+            .filter(
+                Reservation.id.in_(res_ids),
+                Reservation.status == ReservationStatus.CONFIRMED,
+            )
+            .all()
+        )
 
     def _apply_structural_filters(self, query, schedule: TemplateSchedule, target_date: str):
         """Apply structural filters — delegates to standalone function in filters.py."""

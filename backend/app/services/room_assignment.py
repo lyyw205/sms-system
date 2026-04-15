@@ -236,6 +236,14 @@ def assign_room(
         db.flush()
         sync_sms_tags(db, reservation_id)
 
+        # Surcharge reconcile (추가 인원 요금)
+        try:
+            from app.services.surcharge import reconcile_surcharge
+            for d in dates:
+                reconcile_surcharge(db, reservation_id, d, room_id=room_id)
+        except Exception as e:
+            logger.warning(f"Surcharge reconcile failed for res={reservation_id}: {e}")
+
     return assignments
 
 
@@ -297,6 +305,15 @@ def unassign_room(
     sync_denormalized_field(db, reservation)
 
     # section과 SMS 태그는 호출자가 관리 (PUT endpoint → sync_sms_tags)
+
+    # Surcharge 칩 정리 (방 해제 시)
+    try:
+        from app.services.surcharge import _delete_all_surcharge_chips
+        cleanup_dates = dates if from_date else _date_range(reservation.check_in_date, reservation.check_out_date)
+        for d in cleanup_dates:
+            _delete_all_surcharge_chips(db, reservation_id, d)
+    except Exception as e:
+        logger.warning(f"Surcharge cleanup failed for res={reservation_id}: {e}")
 
     return count
 

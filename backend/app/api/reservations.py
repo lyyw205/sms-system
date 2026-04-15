@@ -483,6 +483,22 @@ async def update_reservation(
         db.flush()
         room_assignment.sync_sms_tags(db, reservation_id)
 
+    # Surcharge reconcile on count change
+    _SURCHARGE_FIELDS = {"male_count", "female_count", "party_size"}
+    if _SURCHARGE_FIELDS & set(update_data.keys()):
+        try:
+            from app.services.surcharge import reconcile_surcharge
+            effective_date = db_reservation.check_in_date
+            if db_reservation.check_out_date and db_reservation.check_out_date > db_reservation.check_in_date:
+                from app.services.schedule_utils import date_range
+                for d in date_range(db_reservation.check_in_date, db_reservation.check_out_date):
+                    reconcile_surcharge(db, reservation_id, d)
+            else:
+                reconcile_surcharge(db, reservation_id, effective_date)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Surcharge reconcile failed: {e}")
+
     db.commit()
     db.refresh(db_reservation)
 

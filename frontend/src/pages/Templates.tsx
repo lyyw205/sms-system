@@ -79,7 +79,8 @@ interface TemplateSchedule {
   updated_at: string;
   last_run: string | null;
   next_run: string | null;
-  schedule_category?: 'standard' | 'event';
+  schedule_category?: 'standard' | 'event' | 'custom_schedule';
+  custom_type?: string | null;
   hours_since_booking?: number | null;
   gender_filter?: 'male' | 'female' | null;
   max_checkin_days?: number | null;
@@ -433,7 +434,9 @@ const Templates: React.FC = () => {
   const [sActive, setSActive] = useState(true);
 
   // event schedule state
-  const [sCategory, setSCategory] = useState<'standard' | 'event'>('standard');
+  const [sCategory, setSCategory] = useState<'standard' | 'event' | 'custom_schedule'>('standard');
+  const [sCustomType, setSCustomType] = useState('');
+  const [customTypeOptions, setCustomTypeOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [sHoursSinceBooking, setSHoursSinceBooking] = useState('');
   const [sGenderFilter, setSGenderFilter] = useState<'' | 'male' | 'female'>('');
   const [sMaxCheckinDays, setSMaxCheckinDays] = useState('');
@@ -506,6 +509,7 @@ const Templates: React.FC = () => {
     fetchSchedules();
     fetchAvailableVariables();
     fetchBuildings();
+    templateSchedulesAPI.getCustomTypes().then(res => setCustomTypeOptions(res.data)).catch(() => {});
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -651,6 +655,7 @@ const Templates: React.FC = () => {
     setCmRows([{ column: 'party_type', operator: '', text: '' }]);
     setSActive(true);
     setSCategory('standard');
+    setSCustomType('');
     setSHoursSinceBooking('');
     setSGenderFilter('');
     setSMaxCheckinDays('');
@@ -690,6 +695,7 @@ const Templates: React.FC = () => {
     // sExcludeSent는 항상 true 고정
     setSActive(s.active);
     setSCategory(s.schedule_category || 'standard');
+    setSCustomType(s.custom_type || '');
     setSHoursSinceBooking(s.hours_since_booking?.toString() || '');
     setSGenderFilter(s.gender_filter || '');
     setSMaxCheckinDays(s.max_checkin_days?.toString() || '');
@@ -724,6 +730,7 @@ const Templates: React.FC = () => {
       exclude_sent: sExcludeSent,
       active: sActive,
       schedule_category: sCategory,
+      custom_type: sCategory === 'custom_schedule' ? (sCustomType || null) : null,
       hours_since_booking: sCategory === 'event' ? (parseInt(sHoursSinceBooking) || null) : null,
       gender_filter: sCategory === 'event' ? (sGenderFilter || null) : null,
       max_checkin_days: sCategory === 'event' ? (parseInt(sMaxCheckinDays) || null) : null,
@@ -1046,6 +1053,7 @@ const Templates: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>
                           {s.schedule_category === 'event' && <Badge color="purple" size="sm">이벤트</Badge>}
+                          {s.schedule_category === 'custom_schedule' && <Badge color="info" size="sm">커스텀</Badge>}
                           {s.schedule_category === 'event' && s.expires_at && (() => {
                             const expiresAt = new Date(normalizeUtcString(s.expires_at));
                             const now = new Date();
@@ -1518,6 +1526,7 @@ const Templates: React.FC = () => {
               {[
                 { value: 'standard' as const, label: '표준' },
                 { value: 'event' as const, label: '이벤트' },
+                { value: 'custom_schedule' as const, label: '커스텀' },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -1525,16 +1534,22 @@ const Templates: React.FC = () => {
                   onClick={() => {
                     setSCategory(opt.value);
                     if (opt.value === 'event') {
-                      // 이벤트 전환 시 표준 전용 state 초기화
                       setSDateTarget('today');
                       setSTargetMode('once');
                       setSStayFilter('');
-                    } else {
-                      // 표준 전환 시 이벤트 전용 state 초기화
+                      setSCustomType('');
+                    } else if (opt.value === 'custom_schedule') {
                       setSHoursSinceBooking('');
                       setSGenderFilter('');
                       setSMaxCheckinDays('');
                       setSExpiresAfterDays('');
+                      if (!sCustomType && customTypeOptions.length > 0) setSCustomType(customTypeOptions[0].value);
+                    } else {
+                      setSHoursSinceBooking('');
+                      setSGenderFilter('');
+                      setSMaxCheckinDays('');
+                      setSExpiresAfterDays('');
+                      setSCustomType('');
                     }
                   }}
                   className={`px-4 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
@@ -1548,6 +1563,19 @@ const Templates: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Custom schedule: 로직 타입 선택 */}
+          {sCategory === 'custom_schedule' && (
+            <div className="space-y-1.5">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">커스텀 로직</div>
+              <Select value={sCustomType} onChange={e => setSCustomType(e.target.value)} sizing="sm">
+                {customTypeOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </Select>
+              <p className="text-tiny text-[#B0B8C1] dark:text-gray-500">대상 선정 로직은 코드에서 관리됩니다. 발송 시간과 템플릿 내용만 수정 가능합니다.</p>
+            </div>
+          )}
 
           <div className="border-t border-[#E5E8EB] dark:border-gray-700" />
 

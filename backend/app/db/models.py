@@ -451,7 +451,8 @@ class TemplateSchedule(TenantMixin, Base):
     send_condition_operator = Column(String(10), nullable=True) # 'gte' | 'lte'
 
     # Event schedule fields
-    schedule_category = Column(String(20), default='standard')  # 'standard' | 'event'
+    schedule_category = Column(String(20), default='standard')  # 'standard' | 'event' | 'custom_schedule'
+    custom_type = Column(String(50), nullable=True)  # 'surcharge', 'headcount_mismatch' etc.
     hours_since_booking = Column(Integer, nullable=True)  # 예약 확정 후 N시간 이내 (이벤트 필수)
     gender_filter = Column(String(10), nullable=True)  # 'male' | 'female' | NULL(전체)
     max_checkin_days = Column(Integer, nullable=True)  # 최대 N일 이내 체크인

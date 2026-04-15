@@ -77,7 +77,7 @@ def reconcile_chips_for_reservation(
         if not schedule.template or not schedule.template.is_active:
             continue
         # Event schedules cannot have static chips
-        if (schedule.schedule_category or 'standard') == 'event':
+        if (schedule.schedule_category or 'standard') in ('event', 'custom_schedule'):
             continue
 
         template_key = schedule.template.template_key
@@ -88,10 +88,12 @@ def reconcile_chips_for_reservation(
                 if (template_key, d) not in expected_schedule_map:
                     expected_schedule_map[(template_key, d)] = schedule.id
 
-    # Get current chips for this reservation
-    existing = db.query(ReservationSmsAssignment).filter(
+    # Get current chips for this reservation (custom_schedule 소속 칩 제외)
+    custom_schedule_ids = {s.id for s in schedules if (s.schedule_category or 'standard') == 'custom_schedule'}
+    all_existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.reservation_id == reservation_id,
     ).all()
+    existing = [a for a in all_existing if a.schedule_id not in custom_schedule_ids]
 
     _sync_chips(db, expected_pairs, existing, reservation_id=reservation_id, schedule_map=expected_schedule_map)
 
@@ -115,7 +117,7 @@ def reconcile_chips_for_schedule(
     template_key = schedule.template.template_key
 
     # 비활성 스케줄/템플릿/이벤트: 자기가 만든 칩만 삭제
-    if not schedule.template.is_active or not schedule.is_active or (schedule.schedule_category or 'standard') == 'event':
+    if not schedule.template.is_active or not schedule.is_active or (schedule.schedule_category or 'standard') in ('event', 'custom_schedule'):
         existing = db.query(ReservationSmsAssignment).filter(
             ReservationSmsAssignment.template_key == template_key,
             ReservationSmsAssignment.schedule_id == schedule.id,

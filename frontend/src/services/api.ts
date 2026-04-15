@@ -174,7 +174,8 @@ export const templateSchedulesAPI = {
     filters?: Array<{ type: string; value: string }>;
     exclude_sent?: boolean;
     active?: boolean;
-    schedule_category?: 'standard' | 'event';
+    schedule_category?: 'standard' | 'event' | 'custom_schedule';
+    custom_type?: string | null;
     hours_since_booking?: number | null;
     gender_filter?: 'male' | 'female' | null;
     max_checkin_days?: number | null;
@@ -190,6 +191,7 @@ export const templateSchedulesAPI = {
   sync: () => api.post('/api/template-schedules/sync'),
   autoAssign: (date?: string) =>
     api.post('/api/template-schedules/auto-assign', null, { params: date ? { date } : undefined }),
+  getCustomTypes: () => api.get<Array<{ value: string; label: string }>>('/api/template-schedules/custom-types'),
 };
 
 // Auth API
