@@ -210,8 +210,8 @@ export default function SalesReport() {
                 <TableHeadCell>진행자</TableHeadCell>
                 <TableHeadCell className="text-center">진행일</TableHeadCell>
                 <TableHeadCell className="text-center">총 게스트</TableHeadCell>
-                <TableHeadCell className="text-right">총 매출</TableHeadCell>
-                <TableHeadCell className="text-right">인당 평균</TableHeadCell>
+                <TableHeadCell className="text-right">총 매출(원)</TableHeadCell>
+                <TableHeadCell className="text-right">인당 평균(원)</TableHeadCell>
                 <TableHeadCell className="text-right">일 평균</TableHeadCell>
               </TableRow>
             </TableHead>
@@ -249,31 +249,31 @@ export default function SalesReport() {
                           <TableCell className="text-center tabular-nums">{host.days_count}<span className="text-[#B0B8C1] ml-0.5">일</span></TableCell>
                           <TableCell className="text-center tabular-nums">{fmt(host.total_participants)}<span className="text-[#B0B8C1] ml-0.5">명</span></TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
-                            <SalesChips sales={host.total_sales} auction={host.total_auction} />
+                            <SalesChips sales={host.total_sales} auction={host.total_auction} unit="" />
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium text-[#3182F6]">
-                            {host.total_participants > 0 ? <SalesChips sales={Math.round(host.total_sales / host.total_participants)} auction={Math.round(host.total_auction / host.total_participants)} /> : '-'}
+                            {host.total_participants > 0 ? <SalesChips sales={Math.round(host.total_sales / host.total_participants)} auction={Math.round(host.total_auction / host.total_participants)} unit="" /> : '-'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
-                            {fmt(host.daily_avg)}<span className="ml-0.5 text-[#B0B8C1] font-normal">원</span>
+                            {fmt(host.daily_avg)}
                           </TableCell>
                         </TableRow>
 
                         {/* 날짜별 상세 (펼침) */}
                         {isExpanded && <>
                           {host.dates.map((dd) => (
-                            <TableRow key={`${host.host_username}|${dd.date}`} className="bg-[#F8F9FA] dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]">
-                              <TableCell></TableCell>
-                              <TableCell></TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300">{dd.date}</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300">{dd.participants}명</TableCell>
-                              <TableCell className="text-right text-caption tabular-nums text-[#4E5968] dark:text-gray-300">
-                                <SalesChips sales={dd.sales_total} auction={dd.auction_amount ?? 0} />
+                            <TableRow key={`${host.host_username}|${dd.date}`} className="bg-[#FAFBFC] dark:bg-[#1E1E24] hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]">
+                              <TableCell className="py-2"></TableCell>
+                              <TableCell className="py-2"></TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">{dd.date}</TableCell>
+                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">{dd.participants}명</TableCell>
+                              <TableCell className="text-right text-caption tabular-nums text-[#4E5968] dark:text-gray-300 py-2">
+                                <SalesChips sales={dd.sales_total} auction={dd.auction_amount ?? 0} unit="" />
                               </TableCell>
-                              <TableCell className="text-right text-caption tabular-nums text-[#3182F6]">
-                                {dd.participants > 0 ? <SalesChips sales={Math.round(dd.sales_total / dd.participants)} auction={Math.round((dd.auction_amount ?? 0) / dd.participants)} /> : '-'}
+                              <TableCell className="text-right text-caption tabular-nums text-[#3182F6] py-2">
+                                {dd.participants > 0 ? <SalesChips sales={Math.round(dd.sales_total / dd.participants)} auction={Math.round((dd.auction_amount ?? 0) / dd.participants)} unit="" /> : '-'}
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right py-2">
                                 {dd.items.length > 0 && (
                                   <Button color="light" size="xs" onClick={() => setDetailModal({ open: true, host: host.host_username, dd })}>
                                     <Eye className="h-3.5 w-3.5 mr-1" />상세

@@ -923,13 +923,18 @@ const RoomAssignment = () => {
   };
 
 
-  const { assignedRooms, unassigned, partyOnly, unstableGuests } = useMemo(() => {
+  const { assignedRooms, unassigned, partyOnly, unstableGuests, cancelledGuests } = useMemo(() => {
     const assigned = new Map<number, Reservation[]>();
     const unassignedList: Reservation[] = [];
     const partyOnlyList: Reservation[] = [];
     const unstableList: Reservation[] = [];
+    const cancelledList: Reservation[] = [];
 
     reservations.forEach((res) => {
+      if (res.status === 'cancelled') {
+        cancelledList.push(res);
+        return;
+      }
       if (res.room_id) {
         // Has a room assigned → goes to that room's row
         const list = assigned.get(res.room_id) || [];
@@ -970,6 +975,7 @@ const RoomAssignment = () => {
       unassigned: unassignedList,
       partyOnly: partyOnlyList,
       unstableGuests: unstableList,
+      cancelledGuests: cancelledList,
     };
   }, [reservations, sectionOverrides]);
 
@@ -1924,11 +1930,6 @@ const RoomAssignment = () => {
           <div className="overflow-hidden px-1.5 flex items-center gap-0.5">
             <span className="flex items-center gap-1">
               <InlineInput value={res.customer_name} field="customer_name" resId={res.id} onSave={handleFieldSave} className={`font-medium ${cellText}`} placeholder="이름" autoFocus={res.id === quickAddedId} disabled={selectionActive || isCancelled} />
-              {isCancelled && res.cancelled_at && (
-                <span className="text-tiny text-[#F04452] whitespace-nowrap flex-shrink-0">
-                  {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
-                </span>
-              )}
               {res.has_unstable_booking && <span className="inline-block h-[6px] w-[6px] rounded-full bg-[#7B61FF] flex-shrink-0" title="언스테이블 파티 예약 확인" />}
             </span>
           </div>
@@ -1943,7 +1944,13 @@ const RoomAssignment = () => {
           </div>
           <div className="overflow-hidden truncate text-body text-[#8B95A1] dark:text-[#8B95A1] text-center px-1.5">{res.naver_room_type || <span className="text-[#B0B8C1] dark:text-[#4E5968]">-</span>}</div>
           <div className="overflow-hidden px-1.5">
-            <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" disabled={selectionActive} />
+            {isCancelled && res.cancelled_at ? (
+              <span className="text-caption text-[#F04452]">
+                {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
+              </span>
+            ) : (
+              <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" disabled={selectionActive} />
+            )}
           </div>
           <div className="overflow-visible px-1.5">
             <SmsCell reservation={res} templateLabels={templateLabels} selectedDate={selectedDate.format('YYYY-MM-DD')} onToggle={handleSmsToggle} onAssign={handleSmsAssign} onRemove={handleSmsRemove} />
@@ -2817,6 +2824,28 @@ const RoomAssignment = () => {
                   {/* Guest area */}
                   <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
                     {unstableGuests.map((res) => renderGuestRow(res, true, 'unstable'))}
+                  </div>
+
+                  {/* Next day column - empty */}
+                  <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
+                </div>
+              )}
+
+              {/* Cancelled */}
+              {cancelledGuests.length > 0 && (
+                <div
+                  className="group flex select-none bg-white dark:bg-[#1E1E24] opacity-60"
+                  style={{ minHeight: `${Math.max(1, cancelledGuests.length) * 40}px` }}
+                >
+                  {/* Room label */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24]">
+                    <span className="font-semibold text-[#F04452] dark:text-[#FF6B7A] text-body">취소</span>
+                    <span className="text-caption text-[#B0B8C1]">{cancelledGuests.length}</span>
+                  </div>
+
+                  {/* Guest area */}
+                  <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b border-[#E5E8EB] dark:border-[#2C2C34]">
+                    {cancelledGuests.map((res) => renderGuestRow(res, true, 'cancelled'))}
                   </div>
 
                   {/* Next day column - empty */}

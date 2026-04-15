@@ -171,18 +171,21 @@ def _assign_all_rooms(
     # Sort candidates: females first, then males, then unknown gender
     candidates = sorted(candidates, key=_gender_sort_key)
 
-    # Build stay_group → existing room_id map for consecutive stay same-room preference
+    # Build preferred room maps for same-room continuity
+    # 1) stay_group → room_id (복수 예약 연장자)
+    # 2) reservation_id → room_id (단일 예약 연박자, stay_group_id 없음)
     stay_group_room_map: Dict[str, int] = {}
-    group_ids = {r.stay_group_id for r in candidates if r.stay_group_id}
-    if group_ids:
-        # Find existing assignments for any member of these groups
-        # Check target_date AND adjacent dates (previous day) to seed from prior night
-        try:
-            prev_date = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-            check_dates = [target_date, prev_date]
-        except ValueError:
-            check_dates = [target_date]
+    long_stay_room_map: Dict[int, int] = {}
 
+    try:
+        prev_date = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    except ValueError:
+        prev_date = None
+
+    # 1) stay_group 기반 (기존 로직)
+    group_ids = {r.stay_group_id for r in candidates if r.stay_group_id}
+    if group_ids and prev_date:
+        check_dates = [target_date, prev_date]
         group_members = (
             db.query(Reservation.stay_group_id, RoomAssignment.room_id)
             .join(RoomAssignment, and_(
@@ -199,15 +202,38 @@ def _assign_all_rooms(
             if gid and rid:
                 stay_group_room_map[gid] = rid
 
+    # 2) 단일 예약 연박자: stay_group_id 없지만 전날 배정이 있는 경우
+    if prev_date:
+        long_stay_candidates = [
+            r for r in candidates
+            if not r.stay_group_id and r.check_in_date < target_date
+            and r.check_out_date and r.check_out_date > target_date
+        ]
+        if long_stay_candidates:
+            prev_assignments = (
+                db.query(RoomAssignment.reservation_id, RoomAssignment.room_id)
+                .filter(
+                    RoomAssignment.reservation_id.in_([r.id for r in long_stay_candidates]),
+                    RoomAssignment.date == prev_date,
+                )
+                .all()
+            )
+            for res_id, room_id in prev_assignments:
+                long_stay_room_map[res_id] = room_id
+
     for res in candidates:
         candidate_rooms = biz_to_rooms.get(res.naver_biz_item_id, [])
         # Sort rooms by gender-specific priority
         res_gender = (res.gender or "").strip()
         candidate_rooms = _sort_candidate_rooms(candidate_rooms, res.naver_biz_item_id, res_gender)
 
-        # Consecutive stay: prepend the group's existing room to candidates
+        # Same-room preference: stay_group (연장) or single long-stay (연박)
+        preferred_room_id = None
         if res.stay_group_id and res.stay_group_id in stay_group_room_map:
             preferred_room_id = stay_group_room_map[res.stay_group_id]
+        elif res.id in long_stay_room_map:
+            preferred_room_id = long_stay_room_map[res.id]
+        if preferred_room_id:
             preferred = [r for r in candidate_rooms if r.id == preferred_room_id]
             if preferred:
                 candidate_rooms = preferred + [r for r in candidate_rooms if r.id != preferred_room_id]
@@ -302,15 +328,24 @@ def daily_assign_rooms(db: Session):
     logger.info(f"Running daily room assignment for {today} and {tomorrow}")
 
     # Clear existing auto assignments before re-assigning
+    # BUT preserve mid-stay assignments: if a reservation's check_in_date < target_date
+    # and check_out_date > target_date, it's a mid-stay night — don't delete.
     tid = current_tenant_id.get()
     for target_date in [today, tomorrow]:
-        deleted = db.query(RoomAssignment).filter(
+        auto_assignments = db.query(RoomAssignment).filter(
             RoomAssignment.date == target_date,
             RoomAssignment.assigned_by == "auto",
             RoomAssignment.tenant_id == tid,
-        ).delete(synchronize_session="fetch")
-        if deleted:
-            logger.info(f"Cleared {deleted} auto-assignments for {target_date}")
+        ).all()
+        delete_ids = []
+        for ra in auto_assignments:
+            res = db.query(Reservation).filter(Reservation.id == ra.reservation_id).first()
+            if res and res.check_in_date < target_date and res.check_out_date and res.check_out_date > target_date:
+                continue  # mid-stay: preserve
+            delete_ids.append(ra.id)
+        if delete_ids:
+            db.query(RoomAssignment).filter(RoomAssignment.id.in_(delete_ids)).delete(synchronize_session="fetch")
+            logger.info(f"Cleared {len(delete_ids)} auto-assignments for {target_date} (preserved {len(auto_assignments) - len(delete_ids)} mid-stay)")
     db.flush()
 
     result_today = auto_assign_rooms(db, today, created_by="scheduler")
