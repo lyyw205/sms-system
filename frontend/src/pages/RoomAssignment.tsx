@@ -243,8 +243,12 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
             const isSent = !!a.sent_at;
             const isFailed = a.send_status === 'failed';
             const isPastChip = isSent && a.date < selectedDate;
+            // 실패 상태인데 sent_at 이 남아있으면 "과거 성공 후 재시도 실패" — 툴팁에 병기 (KST 로 표시)
+            const priorSendNote = isFailed && a.sent_at
+              ? `\n(이전 발송 기록 있음: ${dayjs(normalizeUtcString(a.sent_at)).format('YYYY-MM-DD HH:mm')})`
+              : '';
             const chipTitle = isFailed
-              ? `${getFullName(a.template_key)} — 발송 실패: ${a.send_error || '알 수 없는 오류'}`
+              ? `${getFullName(a.template_key)} — 발송 실패: ${a.send_error || '알 수 없는 오류'}${priorSendNote}`
               : isPastChip
                 ? `${getFullName(a.template_key)} (${a.date} 발송완료)`
                 : getFullName(a.template_key);
