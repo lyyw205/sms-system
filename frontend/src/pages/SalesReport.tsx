@@ -176,8 +176,136 @@ export default function SalesReport() {
         </div>
       </div>
 
-      {/* 진행자별 테이블 */}
-      <div className="section-card overflow-hidden">
+      {/* 진행자별 — 모바일 카드 뷰 */}
+      <div className="md:hidden space-y-3">
+        {loading ? (
+          <div className="section-card flex justify-center py-12">
+            <Spinner size="md" />
+          </div>
+        ) : data.hosts.length === 0 ? (
+          <div className="section-card empty-state">
+            <Users size={40} className="text-[#B0B8C1]" />
+            <span className="mt-2 text-body text-[#8B95A1]">조회 결과가 없습니다</span>
+          </div>
+        ) : (
+          data.hosts.map((host) => {
+            const isExpanded = expandedHosts.has(host.host_username);
+            return (
+              <div key={host.host_username} className="rounded-2xl border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#1E1E24] overflow-hidden">
+                {/* 헤더 */}
+                <button
+                  type="button"
+                  onClick={() => toggleHost(host.host_username)}
+                  className="flex w-full items-center justify-between px-4 py-3 hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-heading font-semibold text-[#191F28] dark:text-white">{host.host_username}</span>
+                    <span className="text-caption text-[#8B95A1] tabular-nums">{host.days_count}일</span>
+                  </div>
+                  {isExpanded ? <ChevronDown size={18} className="text-[#8B95A1]" /> : <ChevronRight size={18} className="text-[#8B95A1]" />}
+                </button>
+
+                {/* 통계 그리드 */}
+                <div className="grid grid-cols-2 gap-2 px-4 pb-4">
+                  <div className="rounded-xl bg-[#F8F9FA] p-3 dark:bg-[#17171C]">
+                    <div className="text-caption text-[#8B95A1]">총 게스트</div>
+                    <div className="mt-0.5 text-label font-semibold tabular-nums text-[#191F28] dark:text-white">
+                      {fmt(host.total_participants)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">명</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-[#F8F9FA] p-3 dark:bg-[#17171C]">
+                    <div className="text-caption text-[#8B95A1]">일 평균</div>
+                    <div className="mt-0.5 text-label font-semibold tabular-nums text-[#191F28] dark:text-white">
+                      {fmt(host.daily_avg)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 rounded-xl bg-[#F8F9FA] p-3 dark:bg-[#17171C]">
+                    <div className="text-caption text-[#8B95A1]">총 매출</div>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-tiny text-[#3182F6]">현장판매</span>
+                        <span className="text-label font-semibold tabular-nums text-[#3182F6]">
+                          {fmt(host.total_sales)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-tiny text-[#FF9500]">경매</span>
+                        <span className="text-label font-semibold tabular-nums text-[#FF9500]">
+                          {fmt(host.total_auction)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 rounded-xl bg-[#F8F9FA] p-3 dark:bg-[#17171C]">
+                    <div className="text-caption text-[#8B95A1]">인당 평균</div>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-tiny text-[#3182F6]">현장판매</span>
+                        <span className="text-label font-semibold tabular-nums text-[#3182F6]">
+                          {host.total_participants > 0 ? fmt(Math.round(host.total_sales / host.total_participants)) : '-'}
+                          <span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-tiny text-[#FF9500]">경매</span>
+                        <span className="text-label font-semibold tabular-nums text-[#FF9500]">
+                          {host.total_participants > 0 ? fmt(Math.round(host.total_auction / host.total_participants)) : '-'}
+                          <span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 펼침 — 날짜별 미니 카드 */}
+                {isExpanded && (
+                  <div className="border-t border-[#E5E8EB] bg-[#F8F9FB] px-4 py-3 dark:border-gray-700 dark:bg-[#17171C]">
+                    <div className="space-y-2">
+                      {host.dates.map((dd) => (
+                        <div key={dd.date} className="rounded-xl bg-white p-3 dark:bg-[#1E1E24]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-label font-semibold tabular-nums text-[#191F28] dark:text-white">{dd.date}</span>
+                            <span className="text-caption text-[#8B95A1] tabular-nums">{dd.participants}명</span>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div>
+                              <div className="text-tiny text-[#3182F6]">현장판매</div>
+                              <div className="text-caption font-semibold tabular-nums text-[#191F28] dark:text-white">
+                                {fmt(dd.sales_total)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-tiny text-[#FF9500]">경매</div>
+                              <div className="text-caption font-semibold tabular-nums text-[#191F28] dark:text-white">
+                                {fmt(dd.auction_amount ?? 0)}<span className="ml-0.5 text-tiny font-normal text-[#B0B8C1]">원</span>
+                              </div>
+                            </div>
+                          </div>
+                          {dd.items.length > 0 && (
+                            <Button
+                              color="light"
+                              size="xs"
+                              className="mt-2 w-full"
+                              onClick={() => setDetailModal({ open: true, host: host.host_username, dd })}
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1" />상세 보기
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 진행자별 테이블 — 데스크톱 전용 */}
+      <div className="hidden md:block section-card overflow-hidden">
         <div className="overflow-x-auto">
           <Table className="table-fixed">
             <colgroup>
