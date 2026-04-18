@@ -46,6 +46,11 @@ AVAILABLE_VARIABLES = {
         "example": "1234",
         "category": "room"
     },
+    "prefix_room_password": {
+        "description": "앞에 랜덤 prefix 가 붙은 객실 비밀번호 (동일 방 공유 손님들은 같은 번호)",
+        "example": "701234",
+        "category": "room"
+    },
     "participant_count": {
         "description": "총 참여인원",
         "example": "25",
@@ -228,6 +233,9 @@ def calculate_template_variables(
     # room_assignment has room_id (FK) → look up Room for display name
     effective_room_password = (room_assignment.room_password if room_assignment else None) or reservation.room_password
     variables['room_password'] = effective_room_password or ''
+    # prefix 붙은 버전 — room_assignment.room_password_prefixed 우선, 없으면 base 로 fallback
+    prefixed = room_assignment.room_password_prefixed if room_assignment else None
+    variables['prefix_room_password'] = prefixed or effective_room_password or ''
 
     from app.db.models import Room, Building
     room_obj = None

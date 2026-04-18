@@ -375,7 +375,8 @@ class RoomAssignment(TenantMixin, Base):
     reservation_id = Column(Integer, ForeignKey("reservations.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(String(20), nullable=False)  # YYYY-MM-DD
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False)
-    room_password = Column(String(20), nullable=True)
+    room_password = Column(String(20), nullable=True)  # 도어락 실제 비밀번호 (Room.door_password 복사본)
+    room_password_prefixed = Column(String(20), nullable=True)  # 랜덤 prefix 붙은 표시용 버전 (템플릿이 {{prefix_room_password}} 쓰는 경우 사용)
     assigned_by = Column(String(10), default="auto")  # 'auto' or 'manual'
     bed_order = Column(Integer, default=0)  # 도미토리 행 순서 (1부터 시작, 0=미지정)
     created_at = Column(DateTime, default=utc_now)

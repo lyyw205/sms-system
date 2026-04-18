@@ -78,6 +78,13 @@ def init_db():
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN aligo_testmode BOOLEAN DEFAULT TRUE"))
                 print("AUTO-MIGRATE: Added aligo_testmode column to tenants table")
 
+        # room_assignments.room_password_prefixed
+        if "room_assignments" in inspector.get_table_names():
+            existing_cols = [c["name"] for c in inspector.get_columns("room_assignments")]
+            if "room_password_prefixed" not in existing_cols:
+                conn.execute(text("ALTER TABLE room_assignments ADD COLUMN room_password_prefixed VARCHAR(20)"))
+                print("AUTO-MIGRATE: Added room_password_prefixed column to room_assignments table")
+
         # naver_biz_items.default_capacity + section_hint
         if "naver_biz_items" in inspector.get_table_names():
             existing_cols = [c["name"] for c in inspector.get_columns("naver_biz_items")]

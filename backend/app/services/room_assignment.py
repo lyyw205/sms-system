@@ -12,8 +12,62 @@ import logging
 from app.db.models import RoomAssignment, Reservation, Room
 from app.db.tenant_context import current_tenant_id
 from app.services.activity_logger import log_activity
+from app.services.password_display import build_prefixed_password
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_prefixed_password(
+    db: Session,
+    room: Room,
+    reservation_id: int,
+    dates: List[str],
+) -> str:
+    """prefix 붙은 표시용 비밀번호를 결정한다 (base 는 단순 복사라 재사용 규칙 불필요).
+
+    Reuse priority:
+      1. 같은 room + 같은 날짜에 다른 예약자의 prefixed 값이 이미 저장됨 → 그 값 재사용
+         (도미토리 공동 투숙, 수동 복수 배정 → 모든 팀이 같은 표시 번호)
+      2. 같은 예약자 + 같은 방 다른 날짜에 prefixed 값이 있음 → 그 값 재사용
+         (연박자 재발송 안전망)
+      3. 둘 다 없음 → build_prefixed_password() 로 신규 생성
+    """
+    if not dates:
+        return build_prefixed_password(room)
+
+    # P1: 같은 room + 같은 날짜에 다른 예약자가 이미 배정됨
+    other = (
+        db.query(RoomAssignment)
+        .filter(
+            RoomAssignment.room_id == room.id,
+            RoomAssignment.date.in_(dates),
+            RoomAssignment.reservation_id != reservation_id,
+            RoomAssignment.room_password_prefixed.isnot(None),
+            RoomAssignment.room_password_prefixed != "",
+        )
+        .first()
+    )
+    if other and other.room_password_prefixed:
+        return other.room_password_prefixed
+
+    # P2: 같은 예약자 + 같은 방 기존 배정이 존재 (날짜 무관)
+    # - 연박자 재발송 안전망
+    # - 동일 (res, room, dates) 재호출 시 기존 prefix 유지 (연박 연장, 재drag 등)
+    same_res = (
+        db.query(RoomAssignment)
+        .filter(
+            RoomAssignment.reservation_id == reservation_id,
+            RoomAssignment.room_id == room.id,
+            RoomAssignment.room_password_prefixed.isnot(None),
+            RoomAssignment.room_password_prefixed != "",
+        )
+        .first()
+    )
+    if same_res and same_res.room_password_prefixed:
+        return same_res.room_password_prefixed
+
+    # P3: 신규 생성
+    return build_prefixed_password(room)
 
 
 def _compute_bed_order(db: Session, reservation_id: int, room_id: int, date_str: str, room_obj: Room) -> int:
@@ -121,8 +175,12 @@ def assign_room(
 
     dates = _date_range(from_date, end_date)
     is_dorm = room_obj.is_dormitory
-    # 객실에 설정된 비밀번호 사용 (없으면 빈 문자열)
+
+    # base 비밀번호: Room.door_password 단순 복사 (변형 없음)
     password = room_obj.door_password or ""
+    # prefix 붙은 표시용 비밀번호: P1/P2/P3 재사용 규칙으로 결정
+    #   도미토리/복수 배정 공유, 연박자 안전망, 신규 생성 분기
+    password_prefixed = _resolve_prefixed_password(db, room_obj, reservation_id, dates)
 
     # Concurrency guard for non-dormitory rooms
     if not is_dorm:
@@ -211,6 +269,7 @@ def assign_room(
             date=d,
             room_id=room_id,
             room_password=password,
+            room_password_prefixed=password_prefixed,
             assigned_by=assigned_by,
             bed_order=bed_order,
         )
