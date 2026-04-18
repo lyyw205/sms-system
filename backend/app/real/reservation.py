@@ -133,23 +133,17 @@ class RealReservationProvider:
                 if item.get('bookingStatusCode') == 'RC03'
             ]
 
-            # Filter cancelled (RC04)
-            cancelled = [
+            # Filter cancelled (RC04). Each booking has a unique bookingId, so
+            # we process every cancellation as-is — downstream sync matches by
+            # external_id and updates the corresponding DB row's status.
+            # (The previous "rebook" dedup was ported from the legacy GAS
+            # Sheets system where cancellations were merely visual noise; in a
+            # DB-backed system it silently dropped legitimate cancellations for
+            # users who re-booked the same biz_item.)
+            cancelled_filtered = [
                 item for item in data
                 if item.get('bookingStatusCode') == 'RC04'
             ]
-
-            # Remove cancelled that were re-booked (same bizItemId+name+phone in confirmed)
-            cancelled_filtered = []
-            for cancel_item in cancelled:
-                is_rebooked = any(
-                    cancel_item.get('bizItemId') == c.get('bizItemId')
-                    and cancel_item.get('name') == c.get('name')
-                    and cancel_item.get('phone') == c.get('phone')
-                    for c in confirmed
-                )
-                if not is_rebooked:
-                    cancelled_filtered.append(cancel_item)
 
             logger.info(f"Confirmed: {len(confirmed)}, Cancelled: {len(cancelled_filtered)}")
 
