@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, exists
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.auth.dependencies import get_current_user
 from app.db.models import Reservation, ReservationStatus, User
@@ -24,7 +24,8 @@ class EventSmsSearchRequest(BaseModel):
     max_nights: Optional[int] = None
     min_visits: Optional[int] = None
     max_visits: Optional[int] = None
-    exclude_age_groups: Optional[List[str]] = None  # ['20', '30', '40'] — 제외할 연령대
+    exclude_age_groups: Optional[List[str]] = None  # ['20', '30', '40', 'NULL'] — 제외할 연령대
+    exclude_invite: Optional[bool] = False  # True: 메모에 '초대' 포함된 예약 제외
 
 
 class EventSmsSendRequest(BaseModel):
@@ -74,9 +75,31 @@ async def search_reservations(
             ))
 
     if req.exclude_age_groups:
-        query = query.filter(
-            ~Reservation.age_group.in_(req.exclude_age_groups) | Reservation.age_group.is_(None)
-        )
+        exclude_null = 'NULL' in req.exclude_age_groups
+        age_values = [v for v in req.exclude_age_groups if v != 'NULL']
+        if exclude_null and age_values:
+            # NULL + 특정 연령대 제외
+            query = query.filter(
+                ~Reservation.age_group.in_(age_values) & Reservation.age_group.isnot(None)
+            )
+        elif exclude_null:
+            # NULL만 제외 (파티만 제외)
+            query = query.filter(Reservation.age_group.isnot(None))
+        else:
+            # 특정 연령대만 제외 (기존 로직)
+            query = query.filter(
+                ~Reservation.age_group.in_(age_values) | Reservation.age_group.is_(None)
+            )
+
+    if req.exclude_invite:
+        from app.db.models import ReservationDailyInfo
+        # reservations.notes 또는 reservation_daily_info.notes에 '초대' 포함 시 제외
+        has_invite_in_daily = exists().where(and_(
+            ReservationDailyInfo.reservation_id == Reservation.id,
+            ReservationDailyInfo.notes.ilike('%초대%'),
+        ))
+        has_invite_in_res = Reservation.notes.ilike('%초대%')
+        query = query.filter(~has_invite_in_daily & (~has_invite_in_res | Reservation.notes.is_(None)))
 
     if req.min_visits is not None:
         query = query.filter(Reservation.visit_count >= req.min_visits)

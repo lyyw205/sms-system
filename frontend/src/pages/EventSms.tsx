@@ -56,6 +56,7 @@ function fmtDate(val: string | null | undefined): string {
 }
 
 const AGE_GROUP_OPTIONS = [
+  { value: 'NULL', label: '파티만' },
   { value: '20', label: '20대' },
   { value: '30', label: '30대' },
   { value: '40', label: '40대' },
@@ -79,6 +80,7 @@ export default function EventSms() {
   const [minVisits, setMinVisits] = useState('');
   const [maxVisits, setMaxVisits] = useState('');
   const [ageGroups, setAgeGroups] = useState<string[]>([]);
+  const [excludeInvite, setExcludeInvite] = useState(false);
 
   // Results state
   const [results, setResults] = useState<Customer[]>([]);
@@ -114,6 +116,7 @@ export default function EventSms() {
     setMinVisits('');
     setMaxVisits('');
     setAgeGroups([]);
+    setExcludeInvite(false);
     setResults([]);
     setExcluded(new Set());
     setSearched(false);
@@ -137,6 +140,7 @@ export default function EventSms() {
         min_visits: minVisits ? Number(minVisits) : null,
         max_visits: maxVisits ? Number(maxVisits) : null,
         exclude_age_groups: ageGroups.length > 0 ? ageGroups : null,
+        exclude_invite: excludeInvite || undefined,
       });
       setResults(data.customers ?? data ?? []);
       setSearched(true);
@@ -337,6 +341,20 @@ export default function EventSms() {
                       </label>
                     ))}
                   </div>
+                </div>
+
+                {/* Exclude Invite */}
+                <div>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-body text-[#191F28] dark:text-white">
+                    <input
+                      type="checkbox"
+                      checked={excludeInvite}
+                      onChange={() => setExcludeInvite(!excludeInvite)}
+                      className="h-4 w-4 rounded border-[#E5E8EB] text-[#3182F6] accent-[#3182F6] dark:border-gray-600"
+                    />
+                    초대 제외
+                    <span className="text-caption text-[#8B95A1]">(메모에 '초대' 포함 시)</span>
+                  </label>
                 </div>
               </div>
 

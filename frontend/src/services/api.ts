@@ -271,6 +271,7 @@ export const eventSmsAPI = {
     min_visits?: number | null;
     max_visits?: number | null;
     exclude_age_groups?: string[] | null;
+    exclude_invite?: boolean;
   }) => api.post('/api/event-sms/search', params),
 
   send: (params: {
