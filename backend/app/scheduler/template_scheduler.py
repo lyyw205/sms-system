@@ -62,8 +62,13 @@ class TemplateScheduleExecutor:
             return {"success": False, "error": "Template not found or inactive"}
 
         try:
-            # Send condition check (표준 스케줄 전용)
-            if schedule.send_condition_date and schedule.send_condition_ratio is not None:
+            # Send condition check (표준 스케줄 전용 — event/custom 에는 무관)
+            is_custom = (schedule.schedule_category or 'standard') == 'custom_schedule'
+            if (
+                not is_custom
+                and schedule.send_condition_date
+                and schedule.send_condition_ratio is not None
+            ):
                 condition_met = self._check_send_condition(schedule)
                 if not condition_met:
                     schedule.last_run_at = datetime.now(timezone.utc)
@@ -87,11 +92,14 @@ class TemplateScheduleExecutor:
             send_results = []
 
             # 이벤트 스케줄: target_date를 오늘로 고정
-            if (schedule.schedule_category or 'standard') == 'event':
+            category = schedule.schedule_category or 'standard'
+            if category == 'event':
                 target_date = today_kst()
                 date_target_val = None
             else:
-                date_target_val = schedule.date_target
+                # custom_schedule defaults to 'today' when date_target is unset —
+                # matches the coercion applied inside _get_targets_standard.
+                date_target_val = schedule.date_target or ('today' if category == 'custom_schedule' else None)
                 target_date = self._resolve_date_target(date_target_val) if date_target_val else None
 
             # Build reservation_id -> building+room display map for log
@@ -249,52 +257,58 @@ class TemplateScheduleExecutor:
             self.db.rollback()
             return {"success": False, "error": str(e)}
 
-    def get_targets(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
+    def get_targets(
+        self,
+        schedule: TemplateSchedule,
+        exclude_sent: bool = True,
+        for_preview: bool = False,
+    ) -> List[Reservation]:
         """
         Filter targets based on schedule configuration (dispatcher).
 
-        Routes to _get_targets_standard() or _get_targets_event() based on schedule_category.
+        - event:           dedicated path (_get_targets_event)
+        - custom_schedule: standard path + chip-based eligibility prefilter
+        - standard:        standard path
 
         Args:
             schedule: TemplateSchedule instance
             exclude_sent: When True (default), exclude reservations already sent via this template.
+            for_preview: When True, skip side-effectful reconcile steps
+                (e.g. pre-send chip refresh for custom schedules). UI preview
+                endpoints should pass True so that viewing targets does not
+                mutate chip state.
 
         Returns:
             List of Reservation instances
         """
         if (schedule.schedule_category or 'standard') == 'event':
             return self._get_targets_event(schedule, exclude_sent=exclude_sent)
-        if (schedule.schedule_category or 'standard') == 'custom_schedule':
-            return self._get_targets_custom(schedule)
-        return self._get_targets_standard(schedule, exclude_sent=exclude_sent)
-
-    def _get_targets_custom(self, schedule: TemplateSchedule) -> List[Reservation]:
-        """custom_schedule 대상 조회: 해당 스케줄의 pending 칩이 있는 예약 반환."""
-        pending_chips = (
-            self.db.query(ReservationSmsAssignment)
-            .filter(
-                ReservationSmsAssignment.schedule_id == schedule.id,
-                ReservationSmsAssignment.sent_at.is_(None),
-                or_(ReservationSmsAssignment.send_status.is_(None), ReservationSmsAssignment.send_status != 'failed'),
-            )
-            .all()
-        )
-        if not pending_chips:
-            return []
-
-        res_ids = list({chip.reservation_id for chip in pending_chips})
-        return (
-            self.db.query(Reservation)
-            .filter(
-                Reservation.id.in_(res_ids),
-                Reservation.status == ReservationStatus.CONFIRMED,
-            )
-            .all()
-        )
+        return self._get_targets_standard(schedule, exclude_sent=exclude_sent, for_preview=for_preview)
 
     def _apply_structural_filters(self, query, schedule: TemplateSchedule, target_date: str):
         """Apply structural filters — delegates to standalone function in filters.py."""
         return _standalone_structural_filters(self.db, query, schedule, target_date)
+
+    def _refresh_custom_chips(self, schedule: TemplateSchedule, target_date: str) -> None:
+        """Run the custom_type's reconcile handler right before send.
+
+        Keeps chip state in sync with the current DB even when live trigger
+        paths (assignment change, naver sync, etc.) missed an update. Missing
+        handler or runtime error is logged but never blocks the send.
+        """
+        from app.services.custom_schedule_registry import get_pre_send_refresh_handler
+
+        handler = get_pre_send_refresh_handler(schedule.custom_type)
+        if handler is None:
+            return
+        try:
+            handler(self.db, target_date)
+            self.db.flush()
+        except Exception:
+            logger.exception(
+                "custom refresh failed (schedule_id=%s, custom_type=%s, date=%s)",
+                schedule.id, schedule.custom_type, target_date,
+            )
 
     def _check_send_condition(self, schedule: TemplateSchedule) -> bool:
         """Check if send condition (gender ratio) is met."""
@@ -334,13 +348,59 @@ class TemplateScheduleExecutor:
             return ratio <= threshold
         return True  # 알 수 없는 operator면 발송
 
-    def _get_targets_standard(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
-        """Standard schedule targeting — existing logic, unchanged."""
+    def _get_targets_standard(
+        self,
+        schedule: TemplateSchedule,
+        exclude_sent: bool = True,
+        for_preview: bool = False,
+    ) -> List[Reservation]:
+        """Standard schedule targeting.
+
+        Also serves custom_schedule via a pre-filter that narrows candidates to
+        reservations holding a pending chip for this schedule on target_date.
+        For custom_schedule, NULL fields are coerced to safe defaults so every
+        downstream guard (safety, date_target, once_per_stay, exclude_sent)
+        applies identically.
+
+        for_preview=True suppresses side-effectful steps (chip refresh) so that
+        preview endpoints can inspect targets without mutating state.
+        """
+        is_custom = (schedule.schedule_category or 'standard') == 'custom_schedule'
+
+        # Custom-only default coercion — leaves standard behavior untouched.
+        date_target_val = schedule.date_target or ('today' if is_custom else None)
+        effective_target_mode = schedule.target_mode or ('daily' if is_custom else None)
+        effective_once_per_stay = True if is_custom else bool(schedule.once_per_stay)
+        effective_exclude_sent_flag = True if is_custom else bool(schedule.exclude_sent)
+
         query = self.db.query(Reservation).filter(
             Reservation.status == ReservationStatus.CONFIRMED
         )
 
-        date_target_val = schedule.date_target
+        # ── Custom eligibility prefilter ──
+        # Restrict candidates to reservations with a pending chip bound to this
+        # schedule on the schedule's target_date. Chips act as eligibility
+        # markers set by custom generators (e.g. reconcile_surcharge); the
+        # standard filter chain below then decides whether to actually send.
+        if is_custom:
+            target_date_for_chips = self._resolve_date_target(date_target_val)
+
+            # Pre-send refresh: reconcile chips against the current DB state so
+            # missed trigger paths or stale chips cannot leak into this send.
+            # Skipped in preview mode — previews must not mutate chip state.
+            if not for_preview:
+                self._refresh_custom_chips(schedule, target_date_for_chips)
+
+            eligible_ids = self.db.query(ReservationSmsAssignment.reservation_id).filter(
+                ReservationSmsAssignment.schedule_id == schedule.id,
+                ReservationSmsAssignment.sent_at.is_(None),
+                ReservationSmsAssignment.date == target_date_for_chips,
+                or_(
+                    ReservationSmsAssignment.send_status.is_(None),
+                    ReservationSmsAssignment.send_status != 'failed',
+                ),
+            )
+            query = query.filter(Reservation.id.in_(eligible_ids))
 
         # Safety guard: never send to reservations more than 1 day out
         max_date = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
@@ -362,7 +422,7 @@ class TemplateScheduleExecutor:
                     Reservation.check_out_date == target_date,
                 )
             else:
-                if schedule.target_mode in ('daily', 'last_day'):
+                if effective_target_mode in ('daily', 'last_day'):
                     query = query.filter(
                         or_(
                             and_(
@@ -385,7 +445,7 @@ class TemplateScheduleExecutor:
         query = self._apply_structural_filters(query, schedule, target_date)
 
         # Apply exclude_sent filter via join table (sent 또는 failed 모두 제외)
-        if exclude_sent and schedule.exclude_sent:
+        if exclude_sent and effective_exclude_sent_flag:
             from sqlalchemy import exists
             done_conditions = (
                 (ReservationSmsAssignment.reservation_id == Reservation.id) &
@@ -402,11 +462,11 @@ class TemplateScheduleExecutor:
         results = query.all()
 
         # last_day: keep only reservations on their group's last calendar day
-        if schedule.target_mode == 'last_day' and results and target_date:
+        if effective_target_mode == 'last_day' and results and target_date:
             results = self._filter_last_day(results, target_date)
 
         # once_per_stay: 연박/연장 그룹 내 가장 빠른 체크인 예약에만 발송
-        if schedule.once_per_stay and results:
+        if effective_once_per_stay and results:
             from sqlalchemy import exists as sa_exists
             filtered = []
             seen_groups: set[str] = set()
@@ -527,7 +587,7 @@ class TemplateScheduleExecutor:
         Returns:
             List of target information dicts
         """
-        targets = self.get_targets(schedule)
+        targets = self.get_targets(schedule, for_preview=True)
 
         # Batch lookup room assignments from RoomAssignment table (source of truth)
         date_target_val = schedule.date_target
