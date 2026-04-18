@@ -1744,20 +1744,31 @@ const RoomAssignment = () => {
     const assignment = res?.sms_assignments?.find(a => a.template_key === templateKey && a.date === dateStr)
       || res?.sms_assignments?.find(a => a.template_key === templateKey);
     const wasSent = !!assignment?.sent_at;
-    // Optimistic update
+    // 복원용 원본값 보존 (companion fields 전부)
+    const originalSentAt = assignment?.sent_at ?? null;
+    const originalSendStatus = assignment?.send_status ?? null;
+    const originalSendError = assignment?.send_error ?? null;
+    // Optimistic update — 백엔드 toggle_sms_sent 가 세 필드 전부를 동기화하므로 프런트도 동일하게 반영
+    //   wasSent=true  (취소)      → sent_at=null, send_status=null, send_error=null
+    //   wasSent=false (on)        → sent_at=now,  send_status='sent', send_error=null
     updateReservationSms(resId, assignments =>
       assignments.map(a => a.template_key === templateKey
-        ? { ...a, sent_at: wasSent ? null : new Date().toISOString() }
+        ? {
+            ...a,
+            sent_at: wasSent ? null : new Date().toISOString(),
+            send_status: wasSent ? null : 'sent',
+            send_error: null,
+          }
         : a
       )
     );
     try {
       await smsAssignmentsAPI.toggle(resId, templateKey, skipSend, assignment?.date || selectedDate.format('YYYY-MM-DD'));
     } catch {
-      // Revert on failure
+      // Revert companion fields too
       updateReservationSms(resId, assignments =>
         assignments.map(a => a.template_key === templateKey
-          ? { ...a, sent_at: wasSent ? assignment!.sent_at : null }
+          ? { ...a, sent_at: originalSentAt, send_status: originalSendStatus, send_error: originalSendError }
           : a
         )
       );
