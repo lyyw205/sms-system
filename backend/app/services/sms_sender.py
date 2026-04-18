@@ -208,6 +208,8 @@ class SmsSender:
                     if result.get("success"):
                         sent_count += 1
                         assignment.sent_at = datetime.now(timezone.utc)
+                        assignment.send_status = 'sent'
+                        assignment.send_error = None
                         self.db.commit()
                     else:
                         failed_count += 1

@@ -783,6 +783,8 @@ async def unassign_sms_template(
     # 삭제 대신 excluded로 표시 — sync_sms_tags가 재생성하지 않도록
     assignment.assigned_by = 'excluded'
     assignment.sent_at = None
+    assignment.send_status = None
+    assignment.send_error = None
     db.commit()
     return {"success": True}
 
@@ -824,11 +826,15 @@ async def toggle_sms_sent(
 
     if assignment.sent_at:
         assignment.sent_at = None  # Mark as unsent
+        assignment.send_status = None
+        assignment.send_error = None
         db.commit()
         return {"success": True, "sent_at": None}
     elif skip_send:
         # 발송 없이 상태만 변경
         assignment.sent_at = datetime.now(timezone.utc)
+        assignment.send_status = 'sent'
+        assignment.send_error = None
         db.commit()
         return {"success": True, "sent_at": assignment.sent_at}
     else:
@@ -860,6 +866,8 @@ async def toggle_sms_sent(
 
         if result.get("success"):
             assignment.sent_at = datetime.now(timezone.utc)
+            assignment.send_status = 'sent'
+            assignment.send_error = None
             db.commit()
             return {"success": True, "sent_at": assignment.sent_at}
         else:
