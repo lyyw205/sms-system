@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 
 import { reservationsAPI } from '@/services/api';
+import { normalizeUtcString } from '@/lib/utils';
 
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
@@ -107,7 +108,9 @@ function fmtPrice(val: number | null | undefined): string {
 
 function fmtDatetime(val: string | null | undefined): string {
   if (!val) return '-';
-  return dayjs(val).format('MM.DD HH:mm');
+  // Backend sends UTC-naive ISO strings — normalize so dayjs parses as UTC
+  // and renders in the user's local (KST) zone.
+  return dayjs(normalizeUtcString(val)).format('MM.DD HH:mm');
 }
 
 function StatusBadge({ status }: { status: string }) {

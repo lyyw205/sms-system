@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Users, AlertTriangle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { partyCheckinAPI, onsiteSalesAPI, dailyHostAPI, onsiteAuctionAPI, partyHostsAPI } from '@/services/api'
+import { normalizeUtcString } from '@/lib/utils'
 import { toast } from 'sonner'
 
 interface PartyGuest {
@@ -538,7 +539,7 @@ export default function PartyCheckin() {
                     {sales.map((sale) => (
                       <div key={sale.id} className="flex items-center justify-between px-4 py-3">
                         <div className="flex items-center gap-3 flex-1">
-                          {sale.created_at && <span className="shrink-0 whitespace-nowrap text-tiny text-[#8B95A1] dark:text-gray-500 tabular-nums">{(() => { const d = new Date(sale.created_at); return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}</span>}
+                          {sale.created_at && <span className="shrink-0 whitespace-nowrap text-tiny text-[#8B95A1] dark:text-gray-500 tabular-nums">{(() => { const d = new Date(normalizeUtcString(sale.created_at)); return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}</span>}
                           <span className="text-body font-medium text-[#191F28] dark:text-white">{sale.item_name}</span>
                         </div>
                         <div className="flex items-center gap-3">

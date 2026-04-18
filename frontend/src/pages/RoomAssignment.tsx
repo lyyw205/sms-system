@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api, { reservationsAPI, roomsAPI, templatesAPI, smsAssignmentsAPI, stayGroupAPI, settingsAPI } from '../services/api';
+import { normalizeUtcString } from '../lib/utils';
 import { useTenantStore } from '@/stores/tenant-store';
 import dayjs, { Dayjs } from 'dayjs';
 import { toast } from 'sonner';
@@ -1956,7 +1957,7 @@ const RoomAssignment = () => {
           <div className="overflow-hidden px-1.5">
             {isCancelled && res.cancelled_at ? (
               <span className="text-caption text-[#F04452]">
-                {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
+                {new Date(normalizeUtcString(res.cancelled_at)).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
               </span>
             ) : (
               <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" disabled={selectionActive} />

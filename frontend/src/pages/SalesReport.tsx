@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
 
 import { salesReportAPI, partyHostsAPI } from '@/services/api';
+import { normalizeUtcString } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -439,7 +440,7 @@ export default function SalesReport() {
                 {detailModal.dd.items.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between px-4 py-2">
                     <div className="flex items-center gap-3 flex-1">
-                      {item.created_at && <span className="shrink-0 whitespace-nowrap text-tiny text-[#8B95A1] dark:text-gray-500 tabular-nums">{(() => { const d = new Date(item.created_at); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}</span>}
+                      {item.created_at && <span className="shrink-0 whitespace-nowrap text-tiny text-[#8B95A1] dark:text-gray-500 tabular-nums">{(() => { const d = new Date(normalizeUtcString(item.created_at)); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}</span>}
                       <span className="text-body font-medium text-[#191F28] dark:text-white">{item.item_name}</span>
                     </div>
                     <span className="tabular-nums text-body font-semibold text-[#191F28] dark:text-white">
