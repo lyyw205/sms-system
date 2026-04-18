@@ -557,13 +557,34 @@ const RoomAssignment = () => {
 
 
   const defaultColWidths = { name: 60, phone: 120, party: 60, gender: 60, roomType: 100, notes: 100, sms: 140, nextDay: 96 };
-  const [colWidths, setColWidths] = useState(() => {
+
+  // 날짜별 컬럼 너비 저장 — 조정 안 한 날짜는 defaultColWidths 로 복귀
+  const COL_WIDTHS_STORAGE_KEY = 'roomAssignment_colWidths_by_date';
+  const LEGACY_COL_WIDTHS_KEY = 'roomAssignment_colWidths'; // 구 전역 설정
+
+  const loadColWidthsFor = (dateStr: string): typeof defaultColWidths => {
     try {
-      const saved = localStorage.getItem('roomAssignment_colWidths');
-      if (saved) return { ...defaultColWidths, ...JSON.parse(saved) };
+      const raw = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
+      if (raw) {
+        const all = JSON.parse(raw) as Record<string, Partial<typeof defaultColWidths>>;
+        const existing = all[dateStr];
+        if (existing) return { ...defaultColWidths, ...existing };
+      }
     } catch { /* ignore */ }
     return defaultColWidths;
-  });
+  };
+
+  const saveColWidthsFor = (dateStr: string, widths: typeof defaultColWidths): void => {
+    try {
+      const raw = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
+      const all = raw ? JSON.parse(raw) : {};
+      all[dateStr] = widths;
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(all));
+    } catch { /* ignore */ }
+  };
+
+  const [colWidths, setColWidths] = useState(() => loadColWidthsFor(selectedDate.format('YYYY-MM-DD')));
+
   const NEXT_DAY_EXPANDED_WIDTH = useMemo(() => {
     return 32 + colWidths.name + colWidths.phone + colWidths.party + colWidths.gender + 16;
   }, [colWidths]);
@@ -575,9 +596,16 @@ const RoomAssignment = () => {
   const dateHeaderRef = useRef<HTMLDivElement>(null);
   const [dateHeaderH, setDateHeaderH] = useState(0);
 
+  // 구 전역 key 는 더 이상 사용하지 않으므로 최초 마운트 시 제거
   useEffect(() => {
-    localStorage.setItem('roomAssignment_colWidths', JSON.stringify(colWidths));
-  }, [colWidths]);
+    try { localStorage.removeItem(LEGACY_COL_WIDTHS_KEY); } catch { /* ignore */ }
+  }, []);
+
+  // 날짜 전환 시 해당 날짜의 저장값을 재로드 (없으면 defaultColWidths)
+  useEffect(() => {
+    setColWidths(loadColWidthsFor(selectedDate.format('YYYY-MM-DD')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   // Load custom highlight colors from tenant settings
   useEffect(() => {
@@ -799,6 +827,11 @@ const RoomAssignment = () => {
       setResizeGuideX(null);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      // 드래그 완료 시점에 현재 날짜의 슬롯에만 저장
+      setColWidths((curr: typeof defaultColWidths) => {
+        saveColWidthsFor(selectedDate.format('YYYY-MM-DD'), curr);
+        return curr;
+      });
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -810,7 +843,7 @@ const RoomAssignment = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [resizeCol]);
+  }, [resizeCol, selectedDate]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
