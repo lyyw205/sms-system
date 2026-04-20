@@ -5,6 +5,7 @@ ReservationSmsAssignment upsert를 한 곳에서 관리
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from app.db.models import ReservationSmsAssignment
+from app.diag_logger import diag
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,14 @@ def record_sms_sent(
     """
     SMS 발송 성공 기록을 ReservationSmsAssignment에 upsert.
     """
+    diag(
+        "sms.sent_recorded",
+        level="verbose",
+        res_id=reservation_id,
+        template_key=template_key,
+        date=date,
+        assigned_by=assigned_by,
+    )
     existing = (
         db.query(ReservationSmsAssignment)
         .filter(
@@ -57,6 +66,14 @@ def record_sms_failed(
     SMS 발송 실패 기록. 칩에 send_status='failed'와 에러 메시지를 기록.
     다음 스케줄 실행 시 재시도하지 않음.
     """
+    diag(
+        "sms.failed_recorded",
+        level="critical",
+        res_id=reservation_id,
+        template_key=template_key,
+        date=date,
+        error=(error or "")[:100],
+    )
     existing = (
         db.query(ReservationSmsAssignment)
         .filter(

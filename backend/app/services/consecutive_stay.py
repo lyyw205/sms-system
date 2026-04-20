@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Reservation, ReservationStatus
 from app.db.tenant_context import current_tenant_id
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
     Returns:
         dict with counts: {"linked": N, "unlinked": M, "groups": G}
     """
+    diag("stay_group.detect.enter", level="verbose")
     tid = tenant_id or current_tenant_id.get()
     if tid is None:
         raise RuntimeError("detect_and_link_consecutive_stays requires tenant context")
@@ -158,6 +160,13 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
                     break
             group_id = existing_group_id or str(uuid.uuid4())
 
+            diag(
+                "stay_group.chain_formed",
+                level="verbose",
+                group_id=group_id,
+                member_count=len(chain),
+            )
+
             for order, res in enumerate(chain):
                 should_be_grouped.add(res.id)
                 is_last = (order == len(chain) - 1)
@@ -185,6 +194,13 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
     result = {"linked": linked_count, "unlinked": unlinked_count, "groups": group_count}
     if linked_count > 0 or unlinked_count > 0:
         logger.info(f"Consecutive stay detection: {result}")
+    diag(
+        "stay_group.detect.exit",
+        level="verbose",
+        linked=result["linked"],
+        unlinked=result["unlinked"],
+        groups=result["groups"],
+    )
     return result
 
 
@@ -205,6 +221,12 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
         return False
 
     group_id = res.stay_group_id
+    diag(
+        "stay_group.unlinked",
+        level="critical",
+        res_id=reservation_id,
+        group_id=group_id,
+    )
     res.stay_group_id = None
     res.stay_group_order = None
     res.is_last_in_group = None
@@ -268,6 +290,13 @@ def link_reservations(db: Session, reservation_ids: List[int]) -> Optional[str]:
         res.stay_group_order = order
         res.is_last_in_group = (order == len(reservations) - 1)
         res.is_long_stay = True
+
+    diag(
+        "stay_group.manually_linked",
+        level="critical",
+        group_id=group_id,
+        member_count=len(reservations),
+    )
 
     db.flush()
     return group_id

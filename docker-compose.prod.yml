@@ -9,7 +9,9 @@ services:
       - .env.production
     environment:
       - TZ=Asia/Seoul
-      - DIAG_LOGGING=true
+      # DIAG v2: off | critical | verbose
+      # 평상시 off, 수정 직후 3-5일만 verbose, 이후 critical 또는 off
+      - DIAG_LEVEL=verbose
       - DIAG_LOG_DIR=/app/logs
     ports:
       - "127.0.0.1:8000:8000"

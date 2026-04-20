@@ -11,6 +11,7 @@ from app.db.models import Message, MessageDirection, MessageStatus, Reservation,
 from app.auth.dependencies import get_current_user
 from app.factory import get_sms_provider_for_tenant
 from app.services.activity_logger import log_activity
+from app.diag_logger import diag
 from datetime import datetime
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
@@ -155,6 +156,7 @@ async def get_messages(
 @router.post("/send")
 async def send_sms(request: SendSMSRequest, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user), tenant: Tenant = Depends(get_current_tenant)):
     """Send SMS manually"""
+    diag("api.send_manual_sms", level="verbose", to_count=1)
     sms_provider = get_sms_provider_for_tenant(tenant)
     result = await sms_provider.send_sms(to=request.to, message=request.content)
 

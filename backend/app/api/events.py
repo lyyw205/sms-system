@@ -12,6 +12,7 @@ from app.services.event_bus import subscribe, unsubscribe
 from app.auth.utils import decode_access_token
 from app.db.database import SessionLocal
 from app.db.models import User, UserRole, UserTenantRole
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ async def event_stream(
     _validate_token_and_tenant(token, tenant_id)
 
     q = subscribe(tenant_id)
+    diag("sse.subscribed", level="verbose", tenant_id=tenant_id)
 
     async def generator():
         try:
@@ -99,6 +101,7 @@ async def event_stream(
             pass
         finally:
             unsubscribe(q, tenant_id)
+            diag("sse.unsubscribed", level="verbose", tenant_id=tenant_id)
 
     return StreamingResponse(
         generator(),

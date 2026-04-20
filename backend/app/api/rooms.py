@@ -16,6 +16,7 @@ import logging
 
 from app.services.room_auto_assign import auto_assign_rooms
 from app.api.shared_schemas import ActionResponse
+from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 logger = logging.getLogger(__name__)
@@ -519,7 +520,8 @@ async def update_room(
         "biz_item_ids", "biz_item_links", "base_capacity",
         "is_dormitory", "dormitory", "bed_capacity",
     }
-    affects_assignment = bool(_AFFECTS_ASSIGNMENT & set(update_data.keys()))
+    _original_keys = set(update_data.keys())
+    affects_assignment = bool(_AFFECTS_ASSIGNMENT & _original_keys)
 
     # Handle biz_item_links (priority-aware) — takes precedence over biz_item_ids
     biz_item_links_input = update_data.pop("biz_item_links", None)
@@ -554,6 +556,13 @@ async def update_room(
             affected_ids = check_room_config_impact(db, room_id)
             if affected_ids:
                 warning = f"{len(affected_ids)}건의 미래 배정이 영향받을 수 있습니다. 수동 재배정을 고려하세요."
+            diag(
+                "rooms.update.config_affects_assignments",
+                level="critical",
+                room_id=room_id,
+                affected_count=len(affected_ids),
+                changed_fields=list(_original_keys & _AFFECTS_ASSIGNMENT),
+            )
         except Exception as e:
             logger.warning(f"check_room_config_impact failed for room {room_id}: {e}")
 
@@ -571,6 +580,7 @@ async def update_room(
 @router.delete("/{room_id}", response_model=ActionResponse)
 async def delete_room(room_id: int, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user)):
     """Delete a room"""
+    diag("rooms.delete", level="critical", room_id=room_id)
     db_room = db.query(Room).filter(Room.id == room_id).first()
     if not db_room:
         raise HTTPException(status_code=404, detail="객실을 찾을 수 없습니다")
@@ -610,6 +620,8 @@ async def trigger_auto_assign(
         date = datetime.now(_ZI("Asia/Seoul")).strftime("%Y-%m-%d")
 
     today = date
+
+    diag("rooms.manual_auto_assign_trigger", level="verbose", date=today)
 
     # 미배정자만 추가 배정 (기존 배정 유지, 로그는 auto_assign_rooms 내부에서 생성)
     result_today = auto_assign_rooms(db, today, created_by=current_user.username)

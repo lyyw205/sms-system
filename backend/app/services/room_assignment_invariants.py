@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import RoomAssignment, Reservation, Room
 from app.config import KST
+from app.diag_logger import diag
 
 
 def check_assignment_validity(db: Session, reservation: Reservation) -> List[str]:
@@ -30,6 +31,7 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
 
     Returns: 위반 날짜 리스트. 호출자는 try/except로 감싸야 함.
     """
+    diag("invariant.check.enter", level="verbose", res_id=reservation.id)
     invalid: List[str] = []
     today_str = datetime.now(KST).strftime("%Y-%m-%d")
 
@@ -42,6 +44,7 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
     ).all()
 
     if not assignments:
+        diag("invariant.check.exit", level="verbose", res_id=reservation.id, invalid_count=0)
         return invalid
 
     # H-B: 모든 (room_id, date) 쌍에 대한 others를 배치 조회
@@ -87,6 +90,13 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
                         break
                 if gender_conflict:
                     invalid.append(ra.date)
+                    diag(
+                        "invariant.violation",
+                        level="verbose",
+                        res_id=reservation.id,
+                        date=ra.date,
+                        reason="gender_conflict",
+                    )
                     continue
 
             # 용량 체크
@@ -96,13 +106,28 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
             )
             if other_total + res_count > (room.bed_capacity or 1):
                 invalid.append(ra.date)
+                diag(
+                    "invariant.violation",
+                    level="verbose",
+                    res_id=reservation.id,
+                    date=ra.date,
+                    reason="capacity",
+                )
                 continue
         else:
             # 일반실: 미래 날짜 이중배정 금지
             if len(others) > 0:
                 invalid.append(ra.date)
+                diag(
+                    "invariant.violation",
+                    level="verbose",
+                    res_id=reservation.id,
+                    date=ra.date,
+                    reason="double_booking",
+                )
                 continue
 
+    diag("invariant.check.exit", level="verbose", res_id=reservation.id, invalid_count=len(invalid))
     return invalid
 
 
@@ -116,4 +141,11 @@ def check_room_config_impact(db: Session, room_id: int) -> List[int]:
         RoomAssignment.room_id == room_id,
         RoomAssignment.date >= today_str,
     ).distinct().all()
-    return [r[0] for r in affected]
+    result = [r[0] for r in affected]
+    diag(
+        "invariant.room_config_impact",
+        level="verbose",
+        room_id=room_id,
+        affected_count=len(result),
+    )
+    return result

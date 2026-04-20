@@ -3,6 +3,7 @@ import json
 from sqlalchemy.orm import Session
 from app.db.models import ActivityLog, Tenant
 from app.db.tenant_context import current_tenant_id
+from app.diag_logger import diag
 
 
 def _get_tenant_slug(db: Session) -> str | None:
@@ -29,6 +30,17 @@ def log_activity(
     slug = _get_tenant_slug(db)
     if slug and not title.startswith(f"[{slug}]"):
         title = f"[{slug}] {title}"
+
+    diag(
+        "activity_log.created",
+        level="verbose",
+        type=type,
+        target_count=target_count,
+        success_count=success_count,
+        failed_count=failed_count,
+        status=status,
+        created_by=created_by,
+    )
 
     log = ActivityLog(
         activity_type=type,

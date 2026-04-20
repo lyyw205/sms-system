@@ -27,6 +27,7 @@ from app.db.models import (
     TemplateSchedule,
 )
 from app.db.tenant_context import current_tenant_id
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ def reconcile_surcharge(
     초과 인원에 해당하는 레벨의 칩만 생성하고, 나머지 레벨의 칩은 삭제합니다.
     예: 2인 초과 → surcharge_2 스케줄의 칩 생성, surcharge_1/3/4 칩 삭제
     """
+    diag("surcharge.reconcile.enter", level="verbose", res_id=reservation_id, date=date)
     try:
         # 1. RoomAssignment 조회
         query = db.query(RoomAssignment).filter(
@@ -148,6 +150,14 @@ def reconcile_surcharge(
                     "surcharge: 칩 생성 (%s, schedule_id=%s, reservation_id=%s, date=%s)",
                     target_key, schedule.id, reservation_id, date,
                 )
+                diag(
+                    "surcharge.chip_created",
+                    level="verbose",
+                    res_id=reservation_id,
+                    date=date,
+                    level_val=level,
+                    template_key=target_key,
+                )
             else:
                 # 이 레벨에 해당 안 함 → 미발송 칩 삭제
                 if existing and existing.sent_at is None:
@@ -155,6 +165,13 @@ def reconcile_surcharge(
                     logger.debug(
                         "surcharge: 칩 삭제 (%s, reservation_id=%s, date=%s)",
                         custom_type, reservation_id, date,
+                    )
+                    diag(
+                        "surcharge.chip_deleted",
+                        level="verbose",
+                        res_id=reservation_id,
+                        date=date,
+                        level_val=level,
                     )
 
         db.flush()
@@ -190,6 +207,13 @@ def _delete_all_surcharge_chips(db: Session, reservation_id: int, date: str) -> 
             "surcharge: 전체 삭제 %d건 (reservation_id=%s, date=%s)",
             deleted, reservation_id, date,
         )
+        diag(
+            "surcharge.all_deleted",
+            level="verbose",
+            res_id=reservation_id,
+            date=date,
+            count=deleted,
+        )
 
 
 def reconcile_surcharge_batch(
@@ -201,6 +225,7 @@ def reconcile_surcharge_batch(
     여러 예약에 대해 일괄 추가요금 칩 재조정을 수행합니다.
     개별 실패가 전체를 차단하지 않습니다.
     """
+    diag("surcharge.batch.enter", level="verbose", count=len(reservation_ids))
     for reservation_id in reservation_ids:
         try:
             reconcile_surcharge(db, reservation_id, date)
@@ -209,3 +234,4 @@ def reconcile_surcharge_batch(
                 "surcharge: batch 처리 중 예외 (reservation_id=%s, date=%s)",
                 reservation_id, date,
             )
+    diag("surcharge.batch.exit", level="verbose", count=len(reservation_ids))

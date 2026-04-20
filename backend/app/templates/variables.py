@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import KST
 from app.db.models import Reservation, ReservationStatus, ParticipantSnapshot
+from app.diag_logger import diag
 
 
 # 사용 가능한 템플릿 변수 정의
@@ -298,6 +299,17 @@ def calculate_template_variables(
     # Custom variables override (excluding internal _prefixed keys)
     if custom_vars:
         variables.update({k: v for k, v in custom_vars.items() if not k.startswith('_')})
+
+    diag(
+        "template.variables.calculated",
+        level="verbose",
+        res_id=reservation.id if reservation else None,
+        template_date=date,
+        has_room=bool(variables.get("room_num")),
+        has_building=bool(variables.get("building")),
+        participant_count=variables.get("participant_count"),
+        has_room_password=bool(variables.get("room_password")),
+    )
 
     return variables
 

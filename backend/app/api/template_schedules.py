@@ -15,6 +15,7 @@ from app.scheduler.template_scheduler import TemplateScheduleExecutor
 from app.scheduler.schedule_manager import ScheduleManager
 from app.scheduler.jobs import scheduler
 from app.api.shared_schemas import ActionResponse
+from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/template-schedules", tags=["template-schedules"])
 
@@ -300,6 +301,14 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(db_schedule)
 
+    diag(
+        "schedule.created",
+        level="critical",
+        schedule_id=db_schedule.id,
+        template_id=db_schedule.template_id,
+        name=db_schedule.schedule_name,
+    )
+
     # Auto-generate chips for matching reservations
     if db_schedule.is_active:
         from app.services.chip_reconciler import reconcile_chips_for_schedule
@@ -361,6 +370,20 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     db.commit()
     db.refresh(db_schedule)
 
+    diag(
+        "schedule.updated",
+        level="critical",
+        schedule_id=schedule_id,
+        changed=list(update_data.keys()),
+    )
+    if "is_active" in update_data:
+        diag(
+            "schedule.toggled",
+            level="critical",
+            schedule_id=schedule_id,
+            is_active=update_data["is_active"],
+        )
+
     # Update scheduler
     try:
         schedule_manager = ScheduleManager(scheduler)
@@ -401,6 +424,8 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
 
     db.commit()
 
+    diag("schedule.deleted", level="critical", schedule_id=schedule_id)
+
     return {"success": True, "message": "스케줄이 삭제되었습니다"}
 
 
@@ -411,6 +436,8 @@ async def run_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped
 
     if not schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
+
+    diag("schedule.manual_execute", level="verbose", schedule_id=schedule_id)
 
     # Execute schedule
     executor = TemplateScheduleExecutor(db, tenant=tenant)
