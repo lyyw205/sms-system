@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.models import TemplateSchedule, Tenant
 from app.db.tenant_context import current_tenant_id, bypass_tenant_filter
 from app.scheduler.template_scheduler import TemplateScheduleExecutor
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ScheduleManager:
             db: Database session
         """
         logger.info("Syncing all template schedules to APScheduler")
+        diag("schedule_manager.sync_all.enter", level="verbose")
 
         # Get all active schedules
         schedules = db.query(TemplateSchedule).filter(
@@ -59,6 +61,7 @@ class ScheduleManager:
             except Exception as e:
                 logger.error(f"Failed to add schedule #{schedule.id}: {str(e)}")
 
+        diag("schedule_manager.sync_all.exit", level="verbose", total_schedules=len(schedules))
         logger.info(f"Sync completed: {len(schedules)} schedules loaded")
 
     def add_schedule_job(self, schedule: TemplateSchedule, db: Session):
@@ -165,6 +168,7 @@ class ScheduleManager:
             schedule.next_run_at = job.next_run_time
             db.commit()
 
+        diag("schedule_manager.job_added", level="critical", schedule_id=schedule.id, trigger_type=schedule.schedule_type)
         logger.info(f"Added job {job_id}, next run: {job.next_run_time}")
 
     def remove_schedule_job(self, schedule_id: int):
@@ -178,6 +182,7 @@ class ScheduleManager:
 
         try:
             self.scheduler.remove_job(job_id)
+            diag("schedule_manager.job_removed", level="critical", schedule_id=schedule_id)
             logger.info(f"Removed job {job_id}")
         except Exception as e:
             logger.warning(f"Failed to remove job {job_id}: {str(e)}")
@@ -192,6 +197,7 @@ class ScheduleManager:
         """
         # Remove old job and add new one
         self.remove_schedule_job(schedule.id)
+        diag("schedule_manager.job_updated", level="critical", schedule_id=schedule.id)
 
         if schedule.is_active:
             self.add_schedule_job(schedule, db)

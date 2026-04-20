@@ -11,6 +11,7 @@ from app.auth.dependencies import get_current_user
 from app.db.models import Reservation, ReservationStatus, User
 from app.factory import get_sms_provider_for_tenant
 from app.services.activity_logger import log_activity
+from app.diag_logger import diag
 from datetime import datetime
 
 router = APIRouter(prefix="/api/event-sms", tags=["event-sms"])
@@ -52,6 +53,7 @@ async def search_reservations(
     current_user: User = Depends(get_current_user),
 ):
     """조건에 맞는 예약을 필터링하여 중복 제거된 고객 목록을 반환합니다."""
+    diag("event_sms.api.enter", level="verbose", endpoint_name="search")
     query = db.query(Reservation).filter(
         Reservation.status == ReservationStatus.CONFIRMED,
         Reservation.check_in_date >= req.date_from,
@@ -159,6 +161,7 @@ async def send_event_sms(
     current_user: User = Depends(get_current_user),
 ):
     """선택된 전화번호로 대량 문자를 발송합니다."""
+    diag("event_sms.api.enter", level="verbose", endpoint_name="send", phone_count=len(req.phones))
     if not req.phones:
         return {"success": False, "error": "발송 대상이 없습니다"}
     if not req.message.strip():
@@ -173,6 +176,8 @@ async def send_event_sms(
         kwargs["title"] = req.title
 
     result = await sms_provider.send_bulk(messages=messages, **kwargs)
+
+    diag("event_sms.triggered", level="critical", phone_count=len(req.phones), sent=result.get("sent", 0), failed=result.get("failed", 0))
 
     log_activity(
         db,

@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from typing import Optional
 from sqlalchemy.orm import Session, Query
 from sqlalchemy import event
+from app.diag_logger import diag
 
 # Current request's tenant_id — set by FastAPI dependency, read by query helpers
 current_tenant_id: ContextVar[Optional[int]] = ContextVar("current_tenant_id", default=None)
@@ -38,6 +39,7 @@ TENANT_MODELS: set = set()
 def register_tenant_model(cls):
     """Register a model class as tenant-scoped for auto-filtering."""
     TENANT_MODELS.add(cls)
+    diag("tenant_context.model_registered", level="verbose", model=cls.__name__)
     return cls
 
 

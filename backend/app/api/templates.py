@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 from app.api.deps import get_tenant_scoped_db, _remap_active_field
+from app.diag_logger import diag
 from app.db.models import MessageTemplate, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.templates.renderer import TemplateRenderer
@@ -223,6 +224,8 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
     db.commit()
     db.refresh(db_template)
 
+    diag("template.created", level="critical", template_id=db_template.id, key=db_template.template_key, name=db_template.name)
+
     return {
         "id": db_template.id,
         "template_key": db_template.template_key,
@@ -279,6 +282,10 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     db.commit()
     db.refresh(db_template)
 
+    diag("template.updated", level="critical", template_id=db_template.id, changed_fields=list(update_data.keys()))
+    if "content" in update_data:
+        diag("template.content_changed", level="critical", template_id=db_template.id, key=db_template.template_key)
+
     return {
         "id": db_template.id,
         "template_key": db_template.template_key,
@@ -317,6 +324,7 @@ def delete_template(template_id: int, db: Session = Depends(get_tenant_scoped_db
                 detail=f"활성 스케줄이 {len(active_schedules)}개 있는 템플릿은 삭제할 수 없습니다"
             )
 
+    diag("template.deleted", level="critical", template_id=template_id)
     db.delete(template)
     db.commit()
 

@@ -8,6 +8,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
+from app.diag_logger import diag
 from app.db.models import (
     Reservation,
     Room,
@@ -177,6 +178,7 @@ def apply_structural_filters(
     Returns:
         Filtered query
     """
+    diag("filter.apply.enter", level="verbose", schedule_id=getattr(schedule, 'id', None), target_date=target_date, only_date_independent=only_date_independent)
     filters = _parse_filters(schedule.filters)
 
     ctx = {"db": db, "target_date": target_date}
@@ -204,11 +206,13 @@ def apply_structural_filters(
             continue
         conditions = [c for c in (builder(v, ctx) for v in values) if c is not None]
         if conditions:
+            diag("filter.applied", level="verbose", filter_type=filter_type, conditions_count=len(conditions))
             combined = or_(*conditions) if len(conditions) > 1 else conditions[0]
             if filter_type in ("building", "room") and has_unassigned:
                 combined = or_(combined, Reservation.section == 'unassigned')
             query = query.filter(combined)
 
+    diag("filter.apply.exit", level="verbose")
     return query
 
 

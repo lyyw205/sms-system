@@ -8,6 +8,7 @@ from app.scheduler.jobs import scheduler, get_job_info
 from app.auth.dependencies import require_admin_or_above, require_superadmin
 from app.api.deps import get_tenant_scoped_db
 from app.db.models import User, TemplateSchedule
+from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
 
@@ -99,6 +100,8 @@ async def run_job_manual(
 
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    diag("scheduler.api.manual_execute", level="verbose", schedule_id=job_id)
 
     try:
         # Run job immediately (non-blocking) — 원본 job은 건드리지 않음
