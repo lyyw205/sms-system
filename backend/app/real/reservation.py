@@ -8,6 +8,7 @@ import asyncio
 import httpx
 import json
 import logging
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,6 @@ class RealReservationProvider:
             date_filter: 'REGDATE' (등록일 기준) or 'STARTDATE' (체크인일 기준)
         """
         try:
-            from app.diag_logger import diag
             diag(
                 "naver_api.fetch_page.enter",
                 level="verbose",
@@ -83,7 +83,6 @@ class RealReservationProvider:
         response.raise_for_status()
         result = response.json()
         try:
-            from app.diag_logger import diag
             diag(
                 "naver_api.fetch_page.exit",
                 level="verbose",

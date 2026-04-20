@@ -54,7 +54,7 @@ def _gzip_rotator(source: str, dest: str) -> None:
 
 
 def get_diag_logger() -> logging.Logger:
-    global _logger
+    global _logger, _LEVEL
     if _logger is not None:
         return _logger
 
@@ -67,22 +67,43 @@ def get_diag_logger() -> logging.Logger:
         _logger.propagate = False
         return _logger
 
-    log_dir = os.environ.get("DIAG_LOG_DIR", "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    # ★ 파일 핸들러 설치 실패 시 자동 off 전환 (권한/디스크 문제로 서버 크래시 방지)
+    try:
+        log_dir = os.environ.get("DIAG_LOG_DIR", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        # 쓰기 가능 여부 실제 확인
+        _probe = os.path.join(log_dir, ".diag_probe")
+        with open(_probe, "a", encoding="utf-8") as _:
+            pass
+        os.remove(_probe)
 
-    handler = TimedRotatingFileHandler(
-        os.path.join(log_dir, "refactor-diag.log"),
-        when="midnight",
-        backupCount=7,
-        encoding="utf-8",
-    )
-    handler.rotator = _gzip_rotator  # 어제 파일부터 자동 gzip
-    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+        handler = TimedRotatingFileHandler(
+            os.path.join(log_dir, "refactor-diag.log"),
+            when="midnight",
+            backupCount=7,
+            encoding="utf-8",
+        )
+        handler.rotator = _gzip_rotator
+        handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
 
-    _logger.addHandler(handler)
-    _logger.setLevel(logging.INFO)
-    _logger.propagate = False
-    return _logger
+        _logger.addHandler(handler)
+        _logger.setLevel(logging.INFO)
+        _logger.propagate = False
+        return _logger
+    except (PermissionError, OSError) as e:
+        # 파일 핸들러 설치 실패 → off 전환 + stderr 1회 경고
+        import sys
+        print(
+            f"[diag_logger] WARNING: cannot open {log_dir}/refactor-diag.log ({e}) "
+            f"— falling back to DIAG_LEVEL=off for this process",
+            file=sys.stderr,
+        )
+        _LEVEL = 0
+        _logger.handlers.clear()
+        _logger.addHandler(logging.NullHandler())
+        _logger.setLevel(logging.CRITICAL + 1)
+        _logger.propagate = False
+        return _logger
 
 
 # ── 민감정보 마스킹 ────────────────────────────────────────────────

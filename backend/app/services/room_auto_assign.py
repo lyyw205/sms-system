@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.db.models import Reservation, Room, RoomAssignment, ReservationStatus, TemplateSchedule, RoomBizItemLink
 from app.services import room_assignment
 from app.db.tenant_context import current_tenant_id
+from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
     logger.info(f"Starting room auto-assignment for {target_date}")
 
     try:
-        from app.diag_logger import diag
         diag("auto_assign.enter", level="verbose", target_date=target_date, created_by=created_by)
     except Exception:
         pass
@@ -141,7 +141,6 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
 
         # Diagnostic log
         try:
-            from app.diag_logger import diag
             diag("auto_assign.failed", level="critical", target_date=target_date, count=len(failed_details))
         except Exception as e:
             logger.warning(f"diag log failed: {e}")
@@ -154,7 +153,6 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
     logger.info(f"Room auto-assignment complete: {result}")
 
     try:
-        from app.diag_logger import diag
         diag(
             "auto_assign.exit",
             level="verbose",
@@ -441,7 +439,6 @@ def daily_assign_rooms(db: Session):
 
     # diag
     try:
-        from app.diag_logger import diag
         diag(
             "daily_assign.mode",
             level="verbose",

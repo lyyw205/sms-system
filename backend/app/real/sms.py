@@ -7,6 +7,7 @@ from datetime import datetime
 import httpx
 import logging
 from app.config import settings
+from app.diag_logger import diag, mask_phone
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,6 @@ class RealSMSProvider:
         )
 
         try:
-            from app.diag_logger import diag, mask_phone
             diag(
                 "aligo.send_sms.enter",
                 level="verbose",
@@ -132,7 +132,6 @@ class RealSMSProvider:
 
             logger.info(f"[Aligo] 단건 응답: {result}")
             try:
-                from app.diag_logger import diag
                 diag(
                     "aligo.send_sms.exit",
                     level="verbose",

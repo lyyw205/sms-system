@@ -529,7 +529,6 @@ class TemplateScheduleExecutor:
                             ))
                         )).scalar()
                         if already_sent:
-                            from app.diag_logger import diag
                             diag(
                                 "once_per_stay.dedup_hit",
                                 level="verbose",

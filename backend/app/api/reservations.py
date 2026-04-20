@@ -16,6 +16,7 @@ from app.services.activity_logger import log_activity
 from app.api.shared_schemas import ActionResponse
 from datetime import datetime, timezone
 import logging
+from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 logger = logging.getLogger(__name__)
@@ -530,7 +531,6 @@ async def update_reservation(
                     },
                     created_by=current_user.username,
                 )
-                from app.diag_logger import diag
                 diag("invariant.violation_detected", level="critical", reservation_id=reservation_id, invalid_dates=future_invalid)
 
     # Surcharge reconcile on count change
@@ -624,7 +624,6 @@ async def assign_room(
     else:
         # Manual assignment from UI
         from app.config import KST
-        from app.diag_logger import diag
         today_str = datetime.now(KST).strftime("%Y-%m-%d")
         from_date = req_date or db_reservation.check_in_date
 

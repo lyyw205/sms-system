@@ -287,7 +287,6 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                 logger.info(f"Auto-assigned {assigned_total} rooms after sync (dates: {sorted(dates)})")
                 db.commit()
 
-            from app.diag_logger import diag
             diag("naver_sync.phase5", level="verbose", added_count=added_count,
                  date_changed_count=len(date_changed_ids), dates=sorted(dates))
         except Exception as e:
@@ -549,7 +548,6 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             except Exception as e:
                 logger.warning(f"Naver same-day cancel surcharge cleanup failed: {e}")
 
-            from app.diag_logger import diag
             diag("naver_sync.same_day_cancel", level="critical", reservation_id=existing.id, dates=affected_dates)
         else:
             # 사전 취소: 전체 배정 해제 (미배정에 표시하지 않음)
@@ -615,7 +613,6 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
                     },
                     created_by="naver_sync",
                 )
-                from app.diag_logger import diag
                 diag("naver_sync.constraint_violation", level="critical", reservation_id=existing.id, invalid_dates=future_invalid)
 
     existing.updated_at = datetime.now(timezone.utc)
