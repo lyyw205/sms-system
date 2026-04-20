@@ -523,14 +523,14 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             from app.db.models import RoomAssignment as RA
             tid = current_tenant_id.get()
 
-            # S5 반영: 영향 날짜 먼저 수집
-            affected_dates = [
-                ra.date for ra in db.query(RA).filter(
-                    RA.reservation_id == existing.id,
-                    RA.tenant_id == tid,
-                    RA.date >= today_str,
-                ).all()
-            ]
+            # S5 반영: 영향 날짜 먼저 수집 (+ bed_order 재정렬을 위한 room_id도 함께)
+            affected_rows = db.query(RA).filter(
+                RA.reservation_id == existing.id,
+                RA.tenant_id == tid,
+                RA.date >= today_str,
+            ).all()
+            affected_dates = [ra.date for ra in affected_rows]
+            affected_cells = {(ra.room_id, ra.date) for ra in affected_rows if ra.room_id}
 
             db.query(RA).filter(
                 RA.reservation_id == existing.id,
@@ -539,6 +539,18 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             ).delete(synchronize_session="fetch")
             existing.room_number = None
             existing.room_password = None
+
+            if affected_cells:
+                db.flush()
+                compacted = room_assignment._compact_bed_orders_in_cells(db, affected_cells)
+                if compacted:
+                    diag(
+                        "naver_sync.same_day_cancel.compact",
+                        level="verbose",
+                        res_id=existing.id,
+                        cells_count=len(affected_cells),
+                        changed=compacted,
+                    )
 
             # S5 반영: surcharge 칩 정리
             try:

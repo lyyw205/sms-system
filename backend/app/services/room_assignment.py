@@ -73,6 +73,65 @@ def _resolve_prefixed_password(
     return build_prefixed_password(room)
 
 
+def _compact_bed_orders_in_cells(db: Session, cells) -> int:
+    """삭제로 생긴 bed_order 갭을 메우기 위해 (room_id, date) 셀별로 1부터 재정렬.
+
+    cells: iterable of (room_id, date_str) tuples — 방금 삭제된 RoomAssignment가
+    속해 있던 셀들. 도미토리 방만 대상 (일반실은 무시).
+
+    기존 점유자들의 **상대 순서는 유지**하고 (bed_order ASC, created_at ASC),
+    번호만 1..N으로 다시 매긴다.
+
+    반환: 변경된 레코드 수.
+    """
+    if not cells:
+        return 0
+    normalized = {(rid, d) for rid, d in cells if rid is not None and d}
+    if not normalized:
+        return 0
+
+    room_ids = {rid for rid, _ in normalized}
+    dorm_ids = {
+        r.id for r in
+        db.query(Room).filter(Room.id.in_(room_ids), Room.is_dormitory == True).all()
+    }
+    if not dorm_ids:
+        return 0
+
+    changed = 0
+    for room_id, date_str in normalized:
+        if room_id not in dorm_ids:
+            continue
+
+        remaining = (
+            db.query(RoomAssignment)
+            .filter(
+                RoomAssignment.room_id == room_id,
+                RoomAssignment.date == date_str,
+                RoomAssignment.bed_order > 0,
+            )
+            .order_by(RoomAssignment.bed_order.asc(), RoomAssignment.created_at.asc())
+            .all()
+        )
+        for idx, ra in enumerate(remaining, start=1):
+            if ra.bed_order != idx:
+                ra.bed_order = idx
+                changed += 1
+
+    if changed:
+        try:
+            diag(
+                "compact_bed_orders",
+                level="verbose",
+                cells_count=len(normalized),
+                changed=changed,
+            )
+        except Exception:
+            pass
+
+    return changed
+
+
 def _compute_bed_order(db: Session, reservation_id: int, room_id: int, date_str: str, room_obj: Room) -> int:
     """도미토리 배정 시 bed_order를 계산한다.
 
@@ -372,6 +431,16 @@ def assign_room(
                         all_pushed_res_ids.add(o_ra.reservation_id)
                         pushed_dates_for_surcharge[o_ra.reservation_id].add(d)
                     db.flush()
+                    # 잔여 점유자 bed_order 갭 제거 (새 예약 삽입 전에 선행)
+                    _compact_bed_orders_in_cells(db, {(room_id, d)})
+                    diag(
+                        "assign_room.pushed_out_compact",
+                        level="verbose",
+                        room_id=room_id,
+                        date=d,
+                        pushed_count=len(others),
+                        caused_by=reservation_id,
+                    )
                     savepoint.commit()
                 except Exception as e:
                     savepoint.rollback()
@@ -608,7 +677,19 @@ def unassign_room(
     if from_date:
         query = query.filter(RoomAssignment.date.in_(dates))
 
+    affected_cells = {(ra.room_id, ra.date) for ra in old_assignments if ra.room_id}
     count = query.delete(synchronize_session="fetch")
+    if affected_cells:
+        db.flush()
+        compacted = _compact_bed_orders_in_cells(db, affected_cells)
+        if compacted:
+            diag(
+                "unassign_room.compact",
+                level="verbose",
+                res_id=reservation_id,
+                cells_count=len(affected_cells),
+                changed=compacted,
+            )
 
     # section과 SMS 태그는 호출자가 관리 (PUT endpoint → sync_sms_tags)
 
@@ -636,6 +717,15 @@ def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
     diag("clear_all_for_reservation.enter", level="verbose", res_id=reservation_id)
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     tid = current_tenant_id.get()
+
+    # 삭제 전에 (room_id, date) 수집 — 삭제 후 bed_order 재정렬에 사용
+    to_delete = (
+        db.query(RoomAssignment)
+        .filter(RoomAssignment.reservation_id == reservation_id, RoomAssignment.tenant_id == tid)
+        .all()
+    )
+    affected_cells = {(ra.room_id, ra.date) for ra in to_delete if ra.room_id}
+
     count = (
         db.query(RoomAssignment)
         .filter(RoomAssignment.reservation_id == reservation_id, RoomAssignment.tenant_id == tid)
@@ -644,6 +734,18 @@ def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
     if reservation:
         reservation.room_number = None
         reservation.room_password = None
+
+    if affected_cells:
+        db.flush()
+        compacted = _compact_bed_orders_in_cells(db, affected_cells)
+        if compacted:
+            diag(
+                "clear_all_for_reservation.compact",
+                level="verbose",
+                res_id=reservation_id,
+                cells_count=len(affected_cells),
+                changed=compacted,
+            )
 
     # section과 SMS 태그는 호출자가 관리
 
@@ -721,9 +823,21 @@ def reconcile_dates(db: Session, reservation: Reservation):
         .all()
     )
 
+    orphaned_cells = {(a.room_id, a.date) for a in orphaned if a.room_id}
     for assignment in orphaned:
         if assignment.date not in valid_dates:
             db.delete(assignment)
+    if orphaned_cells:
+        db.flush()
+        compacted = _compact_bed_orders_in_cells(db, orphaned_cells)
+        if compacted:
+            diag(
+                "reconcile_dates.orphan_compact",
+                level="verbose",
+                res_id=reservation.id,
+                cells_count=len(orphaned_cells),
+                changed=compacted,
+            )
 
     # 2) 범위 내 누락 날짜 채우기 (Phase 1-1)
     existing = (
