@@ -437,7 +437,18 @@ const RoomAssignment = () => {
   }, [selectionActive, selectedGuestIds, reservations]);
 
   // Undo stack for room assignments
-  const [undoStack, setUndoStack] = useState<Array<{ resId: number; prevRoomId: number | null; prevRoomNumber: string | null; prevSection: string | null; date: string; customerName: string }>>([]);
+  const [undoStack, setUndoStack] = useState<Array<{
+    resId: number;
+    prevRoomId: number | null;
+    prevRoomNumber: string | null;
+    prevSection: string | null;
+    date: string;
+    customerName: string;
+    applySubsequent?: boolean;    // 되돌릴 때 동일 범위로 복원
+    applyGroup?: boolean;          // 그룹 이동 여부
+    movedToRoomId?: number | null; // 이동했던 방 (밀려난 사람의 원래 방)
+    pushedOut?: Array<{ reservation_id: number; customer_name: string | null; date: string }>;
+  }>>([]);
   const undoInProgress = useRef(false);
 
   const [recentlyMovedId, setRecentlyMovedId] = useState<number | null>(null);
@@ -799,9 +810,20 @@ const RoomAssignment = () => {
     const es = new EventSource(`/api/events/stream?token=${encodeURIComponent(token)}&tenant_id=${tenantId}`);
     es.onmessage = (e) => {
       try {
-        const { event } = JSON.parse(e.data);
+        const { event, data } = JSON.parse(e.data);
         if (event === 'schedule_complete') {
           fetchReservations(selectedDate);
+        }
+        // Phase 2-1: 자동 배정 실패 알림
+        else if (event === 'room_assign_failed') {
+          const count = data?.count ?? 0;
+          toast.warning(`객실 자동 배정 실패 ${count}건 — 활동 로그에서 확인하세요`, {
+            duration: 10000,
+            action: {
+              label: '로그 보기',
+              onClick: () => { window.location.href = '/activity-logs'; }
+            }
+          });
         }
       } catch {
         // malformed payload, ignore
@@ -890,21 +912,44 @@ const RoomAssignment = () => {
     setUndoStack(prev => {
       if (prev.length === 0) { undoInProgress.current = false; return prev; }
       const last = prev[prev.length - 1];
-      reservationsAPI.assignRoom(last.resId, {
-        room_id: last.prevRoomId,
-        date: last.date,
-        apply_subsequent: false,
-      }).then(async () => {
-        if (last.prevRoomId === null && last.prevSection) {
-          await reservationsAPI.update(last.resId, { section: last.prevSection });
+      (async () => {
+        try {
+          // 1. 주 예약자를 이전 방으로 되돌림 — 원본 범위(applySubsequent) + 그룹 여부 복원
+          await reservationsAPI.assignRoom(last.resId, {
+            room_id: last.prevRoomId,
+            date: last.date,
+            apply_subsequent: last.applySubsequent ?? false,
+            apply_group: last.applyGroup ?? false,
+          });
+          if (last.prevRoomId === null && last.prevSection) {
+            await reservationsAPI.update(last.resId, { section: last.prevSection });
+          }
+
+          // 2. 밀려났던 예약자들을 원래 방(=주 예약자가 이동했던 방)으로 복원
+          const pushedOut = last.pushedOut ?? [];
+          if (pushedOut.length > 0 && last.movedToRoomId) {
+            for (const p of pushedOut) {
+              try {
+                await reservationsAPI.assignRoom(p.reservation_id, {
+                  room_id: last.movedToRoomId,
+                  date: p.date,
+                  apply_subsequent: false,  // 밀려났던 날짜만 복원
+                });
+              } catch {
+                toast.warning(`${p.customer_name ?? '예약자'} 복원 실패 — 수동 확인 필요`);
+              }
+            }
+          }
+
+          const pushedMsg = pushedOut.length > 0 ? ` (+ ${pushedOut.length}명 원복)` : '';
+          toast.success(`되돌리기: ${last.customerName} → ${last.prevRoomId ? last.prevRoomNumber : '미배정'}${pushedMsg}`);
+          fetchReservations(selectedDate);
+        } catch {
+          toast.error('되돌리기 실패');
+        } finally {
+          undoInProgress.current = false;
         }
-        toast.success(`되돌리기: ${last.customerName} → ${last.prevRoomId ? last.prevRoomNumber : '미배정'}`);
-        fetchReservations(selectedDate);
-      }).catch(() => {
-        toast.error('되돌리기 실패');
-      }).finally(() => {
-        undoInProgress.current = false;
-      });
+      })();
       return prev.slice(0, -1);
     });
   }, [selectedDate, fetchReservations]);
@@ -1091,6 +1136,12 @@ const RoomAssignment = () => {
     if (!found) return;
     const { res, isNextDay: sourceIsNextDay } = found;
     const targetDate = dropTargetDate || selectedDate;
+
+    // Phase 1-6: 과거 날짜 드롭 차단
+    if (targetDate.isBefore(dayjs(), 'day')) {
+      toast.warning('지난 날짜의 배정은 수정할 수 없습니다');
+      return;
+    }
     const dropIsNextDay = !targetDate.isSame(selectedDate, 'day');
 
     // Duplicate check on correct list
@@ -1259,7 +1310,18 @@ const RoomAssignment = () => {
       toast.success(`${roomNumber} 배정 완료`);
       // Push to undo stack only after successful assignment
       if (prev) {
-        setUndoStack(stack => [...stack.slice(-19), { resId, prevRoomId: prev.room_id ?? null, prevRoomNumber: (prev as any).room_number ?? null, prevSection: prev.section ?? null, date: effectiveDate.format('YYYY-MM-DD'), customerName: prev.customer_name }]);
+        setUndoStack(stack => [...stack.slice(-19), {
+          resId,
+          prevRoomId: prev.room_id ?? null,
+          prevRoomNumber: (prev as any).room_number ?? null,
+          prevSection: prev.section ?? null,
+          date: effectiveDate.format('YYYY-MM-DD'),
+          customerName: prev.customer_name,
+          applySubsequent,                                    // ★ 원본 범위 보존
+          applyGroup,                                          // ★ 그룹 이동 여부
+          movedToRoomId: roomId,                               // ★ 밀려난 사람의 원래 방 = 방금 이동한 방
+          pushedOut: result.pushed_out ?? [],                  // ★ 밀려난 목록 (backend pushed_out 사용)
+        }]);
       }
       if (result.warnings?.length) {
         result.warnings.forEach((w: string) => toast.warning(w));
@@ -2034,7 +2096,44 @@ const RoomAssignment = () => {
       nextGuests = [...nextGuestsRaw].sort((a, b) => (a.bed_order || 0) - (b.bed_order || 0) || a.id - b.id);
     }
 
-    const maxOccupancy = Math.max(guests.length, nextGuests.length, 1);
+    // ★ 도미토리: bed_order 기반 slot 매핑 (배열 인덱스가 아닌 실제 bed_order에 위치)
+    // 내일 1행이 비었는데 윤현정(bed_order=2)이 1행에 올라가던 버그 수정.
+    // 레거시/중복 데이터 (bed_order=0 또는 중복 bed_order)는 leftover로 수집 → 빈 슬롯에 fallback 채움
+    const guestByBed = new Map<number, Reservation>();
+    const nextByBed = new Map<number, Reservation>();
+    if (isDormitory) {
+      const leftoverGuests: Reservation[] = [];
+      const leftoverNextGuests: Reservation[] = [];
+      for (const g of guests) {
+        const bo = g.bed_order || 0;
+        if (bo >= 1 && !guestByBed.has(bo)) guestByBed.set(bo, g);
+        else leftoverGuests.push(g);
+      }
+      for (const g of nextGuests) {
+        const bo = g.bed_order || 0;
+        if (bo >= 1 && !nextByBed.has(bo)) nextByBed.set(bo, g);
+        else leftoverNextGuests.push(g);
+      }
+      // leftover를 빈 슬롯에 순서대로 배치 (bed_order=0 레거시 데이터 안전망)
+      let lIdx = 0;
+      for (let b = 1; b <= bed_capacity && lIdx < leftoverGuests.length; b++) {
+        if (!guestByBed.has(b)) guestByBed.set(b, leftoverGuests[lIdx++]);
+      }
+      let lIdx2 = 0;
+      for (let b = 1; b <= bed_capacity && lIdx2 < leftoverNextGuests.length; b++) {
+        if (!nextByBed.has(b)) nextByBed.set(b, leftoverNextGuests[lIdx2++]);
+      }
+    }
+
+    // 최대 bed_order도 고려해서 visibleRows 계산 (빈 행 보존 위함)
+    const highestBedOrder = isDormitory
+      ? Math.max(
+          0,
+          ...guests.map(g => g.bed_order || 0),
+          ...nextGuests.map(g => g.bed_order || 0),
+        )
+      : 0;
+    const maxOccupancy = Math.max(guests.length, nextGuests.length, highestBedOrder, 1);
     const visibleRows = isDormitory
       ? Math.min(bed_capacity, maxOccupancy)
       : Math.max(1, guests.length);
@@ -2086,8 +2185,10 @@ const RoomAssignment = () => {
         <div className="flex-1 divide-y divide-[#F2F4F6] dark:divide-[#2C2C34] border-b" style={borderStyle}>
           {isDormitory ? (
             // Dormitory: show beds as rows, filled or empty
+            // ★ bed_order 기반 매칭 — guests[i] (인덱스) 아님
             Array.from({ length: totalRows }).map((_, i) => {
-              const guest = guests[i];
+              const bedIdx = i + 1;
+              const guest = guestByBed.get(bedIdx);
               if (guest) {
                 return renderGuestRow(guest, true);
               }
@@ -2135,7 +2236,8 @@ const RoomAssignment = () => {
         >
           <div className="divide-y divide-[#F2F4F6] dark:divide-[#2C2C34]">
             {Array.from({ length: totalRows }).map((_, i) => {
-              const nextGuest = nextGuests[i];
+              // ★ 도미토리는 bed_order 매칭, 일반실은 인덱스 기반
+              const nextGuest = isDormitory ? nextByBed.get(i + 1) : nextGuests[i];
               const gp = nextGuest ? formatGenderPeople(nextGuest) : '';
               return (
                 <div key={`next-${i}`} className={`flex items-center ${nextDayExpanded ? 'justify-start' : 'justify-center'} ${hasGuests ? 'h-10' : 'h-9'} px-1 ${nextGuest?.is_long_stay ? 'bg-[#FFF0E0] dark:bg-[#FF9500]/15' : ''}`}>
@@ -3212,13 +3314,13 @@ const RoomAssignment = () => {
                 color="blue"
                 onClick={() => multiNightConfirm?.onConfirm(true)}
               >
-                전체 날짜 적용
+                오늘 이후 전체
               </Button>
               <Button
                 color="light"
                 onClick={() => multiNightConfirm?.onConfirm(false)}
               >
-                오늘만 적용
+                이 날짜만
               </Button>
               <Button
                 color="light"

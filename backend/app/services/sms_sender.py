@@ -71,7 +71,24 @@ async def send_single_sms(
         room_assignment=ra,
     )
 
+    # ★ 3-1b: 방 정보 변수를 쓰는 템플릿인데 room_num/building이 비어있으면 차단
+    _ROOM_VARS_REQUIRED = ("{{room_num}}", "{{building}}", "{{room_password}}")
     renderer = TemplateRenderer(db)
+    _template_obj = renderer.get_template(template_key)
+    _template_content = _template_obj.content if _template_obj else ""
+    if any(v in _template_content for v in _ROOM_VARS_REQUIRED):
+        if not context.get("room_num") or not context.get("building"):
+            logger.error(
+                f"Blocking SMS: room info empty. res={reservation.id} template={template_key} date={date}"
+            )
+            from app.services.sms_tracking import record_sms_failed
+            record_sms_failed(
+                db, reservation.id, template_key,
+                error="방 정보 누락 (미배정 상태)",
+                date=effective_date or "",
+            )
+            return {"success": False, "message_id": None, "error": "방 정보 누락 (미배정 상태)"}
+
     message_content = renderer.render(template_key, context)
 
     # 미치환 변수가 남아있으면 발송 차단

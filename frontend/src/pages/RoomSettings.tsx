@@ -135,10 +135,11 @@ const RoomSettings = () => {
     display_name: string;
     default_capacity: number;
     section_hint: string;
+    default_party_type: string | null;
     active: boolean;
     exposed?: boolean;
   }>>([]);
-  const [bizItemEdits, setBizItemEdits] = useState<Record<string, {display_name?: string; default_capacity?: number; section_hint?: string}>>({});
+  const [bizItemEdits, setBizItemEdits] = useState<Record<string, {display_name?: string; default_capacity?: number; section_hint?: string; default_party_type?: string}>>({});
   const [bizItemSaving, setBizItemSaving] = useState(false);
   const [bizItemSyncing, setBizItemSyncing] = useState(false);
 
@@ -210,6 +211,8 @@ const RoomSettings = () => {
     const changes = Object.entries(bizItemEdits).map(([biz_item_id, edits]) => ({
       biz_item_id,
       ...edits,
+      // empty string → null (서버에서 필드 지움)
+      default_party_type: edits.default_party_type === '' ? null : edits.default_party_type,
     }));
     if (changes.length === 0) {
       setBizItemModalOpen(false);
@@ -335,8 +338,11 @@ const RoomSettings = () => {
         })),
       };
       if (editingId !== null) {
-        await roomsAPI.update(editingId, payload);
+        const res = await roomsAPI.update(editingId, payload);
         toast.success('수정 완료');
+        if (res?.data?.warning) {
+          toast.warning(res.data.warning, { duration: 10000 });
+        }
       } else {
         await roomsAPI.create(payload);
         toast.success('추가 완료');
@@ -1170,6 +1176,7 @@ const RoomSettings = () => {
                       <TableHeadCell className="text-caption">표시명</TableHeadCell>
                       <TableHeadCell className="text-caption w-24">기준인원</TableHeadCell>
                       <TableHeadCell className="text-caption w-28">섹션</TableHeadCell>
+                      <TableHeadCell className="text-caption w-28">파티포함</TableHeadCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1210,6 +1217,18 @@ const RoomSettings = () => {
                             >
                               <option value="">미배정</option>
                               <option value="party">파티만</option>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              sizing="sm"
+                              value={edits.default_party_type ?? item.default_party_type ?? ''}
+                              onChange={e => handleBizItemEdit(item.biz_item_id, 'default_party_type', e.target.value)}
+                            >
+                              <option value="">없음</option>
+                              <option value="1">1차만</option>
+                              <option value="2">1+2차</option>
+                              <option value="2차만">2차만</option>
                             </Select>
                           </TableCell>
                         </TableRow>

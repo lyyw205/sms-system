@@ -229,9 +229,8 @@ def calculate_template_variables(
     variables['phone'] = reservation.phone or ''
     variables['naver_room_type'] = reservation.naver_room_type or ''
 
-    # 객실 정보 - prefer room_assignment if provided
-    # room_assignment has room_id (FK) → look up Room for display name
-    effective_room_password = (room_assignment.room_password if room_assignment else None) or reservation.room_password
+    # 객실 정보 - room_assignment 기반 (denormalized fallback 제거, Phase 3-1)
+    effective_room_password = room_assignment.room_password if room_assignment else ""
     variables['room_password'] = effective_room_password or ''
     # prefix 붙은 버전 — room_assignment.room_password_prefixed 우선, 없으면 base 로 fallback
     prefixed = room_assignment.room_password_prefixed if room_assignment else None
@@ -242,25 +241,17 @@ def calculate_template_variables(
     if room_assignment and room_assignment.room_id:
         room_obj = db.query(Room).filter(Room.id == room_assignment.room_id).first()
 
-    effective_room_number = (room_obj.room_number if room_obj else None) or reservation.room_number
+    effective_room_number = room_obj.room_number if room_obj else ""
 
     if effective_room_number:
         # Lookup Building name via Room → Building relationship
         if room_obj and room_obj.building_id:
             building_obj = db.query(Building).filter(Building.id == room_obj.building_id).first()
             building_name = building_obj.name if building_obj else ''
-        elif not room_obj:
-            # Fallback: look up by reservation.room_number (denormalized)
-            fallback_room = db.query(Room).filter(Room.room_number == effective_room_number).first()
-            if fallback_room and fallback_room.building_id:
-                building_obj = db.query(Building).filter(Building.id == fallback_room.building_id).first()
-                building_name = building_obj.name if building_obj else ''
-            else:
-                building_name = ''
         else:
             building_name = ''
         # room_number 첫 글자가 A/B면 동 이름으로 치환 (본관 A동/B동 구분)
-        if effective_room_number and effective_room_number[0] in ('A', 'B'):
+        if effective_room_number[0] in ('A', 'B'):
             building_name = f"{effective_room_number[0]}동"
         variables['building'] = building_name
         # Extract room number part: "본관 101호" → "101호", or just use as-is

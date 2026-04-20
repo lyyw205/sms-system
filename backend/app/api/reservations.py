@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.db.models import Reservation, ReservationStatus, User, Tenant, ReservationSmsAssignment, RoomAssignment, ReservationDailyInfo
 from app.factory import get_reservation_provider_for_tenant, get_sms_provider_for_tenant
@@ -171,8 +171,8 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         notes=override_notes if override_notes is not None else res.notes,
         booking_source=res.booking_source,
         room_id=override_room_id,
-        room_number=override_room if override_room is not None else res.room_number,
-        room_password=override_password if override_password is not None else res.room_password,
+        room_number=override_room if override_room is not None else None,
+        room_password=override_password if override_password is not None else None,
         room_assigned_by=override_assigned_by,
         naver_room_type=res.naver_room_type,
         gender=res.gender,
@@ -445,6 +445,10 @@ async def update_reservation(
     _SMS_TAG_FIELDS = {"section", "party_type", "gender", "naver_room_type", "notes", "check_in_date", "check_out_date"}
     sms_fields_changed = section_changed or bool(_SMS_TAG_FIELDS & update_data.keys())
 
+    # 성별/인원 변경 감지 (invariant 재검증 대상 필드)
+    _CONSTRAINT_FIELDS = {"gender", "male_count", "female_count", "party_size", "gender_manual"}
+    constraint_changed = bool(_CONSTRAINT_FIELDS & set(update_data.keys()))
+
     # Log section change for debugging (room_move 로그와 연계)
     if section_changed:
         old_section = db_reservation.section or "unassigned"
@@ -487,6 +491,48 @@ async def update_reservation(
         db.flush()
         room_assignment.sync_sms_tags(db, reservation_id)
 
+    # Phase 2-5a: 성별/인원 변경 시 invariant 재검증
+    if constraint_changed:
+        try:
+            from app.services.room_assignment_invariants import check_assignment_validity
+            invalid_dates = check_assignment_validity(db, db_reservation)
+        except Exception as e:
+            logger.warning(f"check_assignment_validity failed: {e}")
+            invalid_dates = []
+
+        if invalid_dates:
+            from datetime import timedelta
+            from app.config import KST
+            today_str = datetime.now(KST).strftime("%Y-%m-%d")
+            future_invalid = sorted([d for d in invalid_dates if d > today_str])
+            if future_invalid:
+                end_d = (datetime.strptime(future_invalid[-1], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                room_assignment.unassign_room(
+                    db, reservation_id,
+                    from_date=future_invalid[0],
+                    end_date=end_d,
+                )
+                # ★ 검증 추가: invariant-violation unassign 후 SMS 칩 재동기화
+                # 없으면 stale room_guide 칩으로 잘못된 방 안내 SMS 발송 위험
+                try:
+                    db.flush()
+                    room_assignment.sync_sms_tags(db, reservation_id)
+                except Exception as e:
+                    logger.warning(f"sync_sms_tags after invariant unassign failed: {e}")
+                log_activity(
+                    db, type="room_move",
+                    title=f"[{db_reservation.customer_name}] 제약 위반 배정 해제 ({len(future_invalid)}일)",
+                    detail={
+                        "reservation_id": reservation_id,
+                        "invalid_dates": future_invalid,
+                        "trigger": "constraint_field_change",
+                        "changed_fields": list(_CONSTRAINT_FIELDS & set(update_data.keys())),
+                    },
+                    created_by=current_user.username,
+                )
+                from app.diag_logger import diag
+                diag("invariant.violation_detected", reservation_id=reservation_id, invalid_dates=future_invalid)
+
     # Surcharge reconcile on count change
     _SURCHARGE_FIELDS = {"male_count", "female_count", "party_size"}
     if _SURCHARGE_FIELDS & set(update_data.keys()):
@@ -525,7 +571,8 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_tena
     from app.db.models import PartyCheckin, ReservationDailyInfo
     from app.db.tenant_context import current_tenant_id
     tid = current_tenant_id.get()
-    db.query(RoomAssignment).filter(RoomAssignment.reservation_id == reservation_id, RoomAssignment.tenant_id == tid).delete()
+    from app.services.room_assignment import clear_all_for_reservation
+    clear_all_for_reservation(db, reservation_id)
     db.query(ReservationSmsAssignment).filter(ReservationSmsAssignment.reservation_id == reservation_id, ReservationSmsAssignment.tenant_id == tid).delete()
     db.query(ReservationDailyInfo).filter(ReservationDailyInfo.reservation_id == reservation_id, ReservationDailyInfo.tenant_id == tid).delete()
     db.query(PartyCheckin).filter(PartyCheckin.reservation_id == reservation_id, PartyCheckin.tenant_id == tid).delete()
@@ -535,9 +582,17 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_tena
     return {"success": True, "message": "예약이 삭제되었습니다"}
 
 
+class PushedOutEntry(BaseModel):
+    """밀어내기(push-out)된 예약 정보 — undo 복원에 사용"""
+    reservation_id: int
+    customer_name: Optional[str] = None
+    date: str
+
+
 class RoomAssignResponse(BaseModel):
     reservation: ReservationResponse
     warnings: Optional[List[str]] = None
+    pushed_out: List[PushedOutEntry] = []  # ★ undo 복원용 구조화된 정보
 
 
 @router.put("/{reservation_id}/room", response_model=RoomAssignResponse)
@@ -553,6 +608,7 @@ async def assign_room(
     req_date = request.date
     apply_subsequent = request.apply_subsequent
     warnings: List[str] = []
+    pushed_out_list: List[Dict[str, Any]] = []  # undo 복원용
 
     if room_id is None:
         # Unassign room
@@ -567,9 +623,21 @@ async def assign_room(
         room_assignment.sync_sms_tags(db, reservation_id)
     else:
         # Manual assignment from UI
+        from app.config import KST
+        from app.diag_logger import diag
+        today_str = datetime.now(KST).strftime("%Y-%m-%d")
         from_date = req_date or db_reservation.check_in_date
+
+        # 과거 날짜 차단 (M-1)
+        if from_date < today_str:
+            diag("past_drop.blocked", reservation_id=reservation_id, req_date=req_date, today=today_str)
+            raise HTTPException(
+                status_code=400,
+                detail="지난 날짜의 배정은 수정할 수 없습니다",
+            )
+
         end_date = db_reservation.check_out_date if apply_subsequent else None
-        room_assignment.assign_room(
+        _result = room_assignment.assign_room(
             db,
             reservation_id,
             room_id,
@@ -578,6 +646,15 @@ async def assign_room(
             assigned_by="manual",
             created_by=current_user.username,
         )
+        if isinstance(_result, tuple):
+            _, pushed_out_raw = _result
+            for p in pushed_out_raw:
+                warnings.append(f"{p['customer_name']} ({p['date']})가 미배정으로 이동됨")
+                pushed_out_list.append({
+                    "reservation_id": p["reservation_id"],
+                    "customer_name": p.get("customer_name"),
+                    "date": p["date"],
+                })
 
         # 연장자 그룹 일괄 이동: 같은 stay_group의 다른 예약도 같은 방으로 배정
         if request.apply_group and db_reservation.stay_group_id:
@@ -608,6 +685,7 @@ async def assign_room(
     return RoomAssignResponse(
         reservation=_to_response(db_reservation, db=db),
         warnings=warnings if warnings else None,
+        pushed_out=[PushedOutEntry(**p) for p in pushed_out_list],
     )
 
 
@@ -1093,7 +1171,8 @@ async def extend_stay(
         if not conflict_guests:
             assign_room(
                 db, new_res.id, request.room_id, next_date_str,
-                assigned_by=current_user.username,
+                assigned_by="manual",
+                created_by=current_user.username,
             )
 
     db.commit()
@@ -1138,7 +1217,8 @@ async def extend_stay_assign_room(
 
     assign_room(
         db, request.new_reservation_id, request.room_id, request.date,
-        assigned_by=current_user.username,
+        assigned_by="manual",
+        created_by=current_user.username,
     )
 
     db.commit()
@@ -1182,7 +1262,8 @@ async def cancel_extend_stay(
     tid = current_tenant_id.get()
 
     # 1. Delete room assignments for the extended reservation
-    db.query(RoomAssignment).filter(RoomAssignment.reservation_id == extended.id, RoomAssignment.tenant_id == tid).delete()
+    from app.services.room_assignment import clear_all_for_reservation
+    clear_all_for_reservation(db, extended.id)
 
     # 2. Delete SMS assignments for the extended reservation
     db.query(ReservationSmsAssignment).filter(ReservationSmsAssignment.reservation_id == extended.id, ReservationSmsAssignment.tenant_id == tid).delete()

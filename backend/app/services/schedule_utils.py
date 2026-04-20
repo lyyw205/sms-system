@@ -50,8 +50,17 @@ def get_schedule_dates(schedule, reservation) -> List[str]:
 
 
 def date_range(from_date: str, end_date: Optional[str]) -> List[str]:
-    """Generate list of date strings [from_date, end_date) in YYYY-MM-DD format.
-    If end_date is None or same as from_date, returns [from_date].
+    """Generate dates in [from_date, end_date) — **end_date EXCLUSIVE**.
+
+    For a stay: pass check_in_date as from_date and check_out_date as end_date.
+    The returned list covers all NIGHTS (체류 일수), not including checkout day.
+
+    Examples:
+        date_range("2026-04-10", "2026-04-13") → ["2026-04-10", "2026-04-11", "2026-04-12"]
+        date_range("2026-04-10", "2026-04-10") → ["2026-04-10"]  # fallback
+        date_range("2026-04-10", None) → ["2026-04-10"]
+
+    If end_date is None or <= from_date: returns [from_date].
     """
     if not end_date or end_date <= from_date:
         return [from_date]

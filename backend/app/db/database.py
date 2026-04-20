@@ -99,6 +99,9 @@ def init_db():
             if "display_name" not in existing_cols:
                 conn.execute(text("ALTER TABLE naver_biz_items ADD COLUMN display_name VARCHAR(200)"))
                 print("AUTO-MIGRATE: Added display_name column to naver_biz_items table")
+            if "default_party_type" not in existing_cols:
+                conn.execute(text("ALTER TABLE naver_biz_items ADD COLUMN default_party_type VARCHAR(10)"))
+                print("AUTO-MIGRATE: Added default_party_type column to naver_biz_items table")
 
         # template_schedules.filters
         if "template_schedules" in inspector.get_table_names():
@@ -358,9 +361,6 @@ def init_db():
             if "unstable_cookie" not in cols:
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN unstable_cookie TEXT"))
                 print("AUTO-MIGRATE: Added unstable_cookie column to tenants table")
-            if "snapshot_refresh_times" not in cols:
-                conn.execute(text("ALTER TABLE tenants ADD COLUMN snapshot_refresh_times TEXT"))
-                print("AUTO-MIGRATE: Added snapshot_refresh_times column to tenants table")
 
     # Task 1.5: admin 기본 비밀번호 환경변수화
     db = SessionLocal()

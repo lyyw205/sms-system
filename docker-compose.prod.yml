@@ -7,8 +7,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      - TZ=Asia/Seoul
+      - DIAG_LOGGING=true
+      - DIAG_LOG_DIR=/app/logs
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - ./backend/logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

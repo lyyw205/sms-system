@@ -89,6 +89,12 @@ class RoomResponse(BaseModel):
         from_attributes = True
 
 
+class RoomUpdateResponse(BaseModel):
+    room: RoomResponse
+    warning: Optional[str] = None
+    affected_reservation_ids: List[int] = []
+
+
 class NaverBizItemResponse(BaseModel):
     id: int
     biz_item_id: str
@@ -96,6 +102,7 @@ class NaverBizItemResponse(BaseModel):
     display_name: Optional[str] = None
     default_capacity: Optional[int] = None
     section_hint: Optional[str] = None
+    default_party_type: Optional[str] = None
     biz_item_type: Optional[str] = None
     exposed: bool = True
     active: bool
@@ -207,6 +214,7 @@ def _biz_item_to_response(item: NaverBizItem) -> NaverBizItemResponse:
         display_name=item.display_name,
         default_capacity=item.default_capacity,
         section_hint=item.section_hint,
+        default_party_type=item.default_party_type,
         biz_item_type=item.biz_item_type,
         exposed=item.is_exposed,
         active=item.is_active,
@@ -227,6 +235,7 @@ class BizItemUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     default_capacity: Optional[int] = None
     section_hint: Optional[str] = None
+    default_party_type: Optional[str] = None
 
 
 @router.patch("/naver/biz-items")
@@ -249,6 +258,8 @@ def update_biz_items(
             biz_item.default_capacity = item_data.default_capacity
         if item_data.section_hint is not None:
             biz_item.section_hint = item_data.section_hint or None  # empty string → None
+        if item_data.default_party_type is not None:
+            biz_item.default_party_type = item_data.default_party_type or None  # empty string → None
         updated.append(biz_item)
 
     db.commit()
@@ -490,7 +501,7 @@ async def create_room(room: RoomCreate, db: Session = Depends(get_tenant_scoped_
     return _room_to_response(db_room)
 
 
-@router.put("/{room_id}", response_model=RoomResponse)
+@router.put("/{room_id}", response_model=RoomUpdateResponse)
 async def update_room(
     room_id: int,
     room: RoomUpdate,
@@ -503,6 +514,12 @@ async def update_room(
         raise HTTPException(status_code=404, detail="객실을 찾을 수 없습니다")
 
     update_data = room.dict(exclude_unset=True)
+    # Phase 2-5b (C-C): 배정에 영향 주는 필드 변경 감지 (remap 이전 원본 key 기준)
+    _AFFECTS_ASSIGNMENT = {
+        "biz_item_ids", "biz_item_links", "base_capacity",
+        "is_dormitory", "dormitory", "bed_capacity",
+    }
+    affects_assignment = bool(_AFFECTS_ASSIGNMENT & set(update_data.keys()))
 
     # Handle biz_item_links (priority-aware) — takes precedence over biz_item_ids
     biz_item_links_input = update_data.pop("biz_item_links", None)
@@ -528,11 +545,27 @@ async def update_room(
     if biz_item_ids is not None:
         _sync_biz_item_links(db, db_room, biz_item_ids, priorities)
 
+    # Phase 2-5b: 영향 감지 (commit 전, 미래 배정 조회는 현재 room_id 기준)
+    warning: Optional[str] = None
+    affected_ids: List[int] = []
+    if affects_assignment:
+        from app.services.room_assignment_invariants import check_room_config_impact
+        try:
+            affected_ids = check_room_config_impact(db, room_id)
+            if affected_ids:
+                warning = f"{len(affected_ids)}건의 미래 배정이 영향받을 수 있습니다. 수동 재배정을 고려하세요."
+        except Exception as e:
+            logger.warning(f"check_room_config_impact failed for room {room_id}: {e}")
+
     db.commit()
     db.refresh(db_room)
 
     logger.info(f"Updated room {room_id}: {db_room.room_number} - {db_room.room_type}")
-    return _room_to_response(db_room)
+    return RoomUpdateResponse(
+        room=_room_to_response(db_room),
+        warning=warning,
+        affected_reservation_ids=affected_ids,
+    )
 
 
 @router.delete("/{room_id}", response_model=ActionResponse)

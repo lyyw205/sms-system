@@ -494,13 +494,26 @@ class TemplateScheduleExecutor:
                             continue  # Skip: another group member already sent
                         seen_groups.add(res.stay_group_id)
                     else:
-                        # 연박자(stay_group_id=None): reservation_id로 기발송 체크
+                        # D6: standalone(stay_group_id=None) — 같은 사람(이름+전화)의
+                        # 모든 예약에서 기발송 체크. 그룹 해제된 뒤에도 중복 발송 방지.
                         already_sent = self.db.query(sa_exists().where(
                             (ReservationSmsAssignment.template_key == schedule.template.template_key) &
                             (ReservationSmsAssignment.sent_at.isnot(None)) &
-                            (ReservationSmsAssignment.reservation_id == res.id)
+                            (ReservationSmsAssignment.reservation_id.in_(
+                                self.db.query(Reservation.id).filter(
+                                    Reservation.customer_name == res.customer_name,
+                                    Reservation.phone == res.phone,
+                                )
+                            ))
                         )).scalar()
                         if already_sent:
+                            from app.diag_logger import diag
+                            diag(
+                                "once_per_stay.dedup_hit",
+                                reservation_id=res.id,
+                                template_key=schedule.template.template_key,
+                                customer_name=res.customer_name,
+                            )
                             continue
                 filtered.append(res)
             results = filtered

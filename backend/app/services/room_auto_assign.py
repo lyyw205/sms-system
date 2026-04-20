@@ -11,7 +11,7 @@ Unified assignment logic (biz_item_id mapping + capacity check + gender lock):
   prevents mixing genders in the same room on the same date.
 """
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from app.config import KST
 from sqlalchemy.orm import Session
 import logging
@@ -60,7 +60,7 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
     # Get all unassigned confirmed reservations for target_date
     unassigned = _get_unassigned_reservations(db, target_date)
 
-    assigned_details = _assign_all_rooms(db, unassigned, biz_to_rooms, target_date)
+    assigned_details, failed_details = _assign_all_rooms(db, unassigned, biz_to_rooms, target_date)
 
     assigned_count = len(assigned_details)
     assigned_reservation_ids = [d["reservation_id"] for d in assigned_details]
@@ -85,7 +85,11 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
             db,
             type="room_assign",
             title="객실 자동 배정 : {} ({})".format(
-                {'scheduler': '10시 스케줄러', 'sync': '신규 예약자 자동 배정', 'reconcile': '예약 대사 후 배정'}.get(created_by, '수동 버튼'),
+                {
+                    'scheduler': '10시 스케줄러',
+                    'sync': '신규 예약자 자동 배정',
+                    'reconcile': '예약 대사 후 배정',
+                }.get(created_by, '수동 버튼'),
                 target_date,
             ),
             detail={
@@ -96,6 +100,45 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
             success_count=assigned_count,
             created_by=created_by,
         )
+
+    # Failure activity log + SSE + diag
+    if failed_details:
+        from app.services.activity_logger import log_activity
+        log_activity(
+            db,
+            type="room_assign_failed",
+            title=f"객실 자동 배정 실패 {len(failed_details)}건 ({target_date})",
+            detail={
+                "target_date": target_date,
+                "failures": failed_details,
+            },
+            target_count=len(failed_details),
+            failed_count=len(failed_details),
+            status="failed",
+            created_by=created_by,
+        )
+
+        # SSE event — frontend listens for room_assign_failed
+        try:
+            from app.services.event_bus import publish
+            publish(
+                "room_assign_failed",
+                {
+                    "target_date": target_date,
+                    "count": len(failed_details),
+                    "failures": failed_details[:10],  # first 10 only in payload
+                },
+                tenant_id=current_tenant_id.get(),
+            )
+        except Exception as e:
+            logger.warning(f"SSE publish failed: {e}")
+
+        # Diagnostic log
+        try:
+            from app.diag_logger import diag
+            diag("auto_assign.failed", target_date=target_date, count=len(failed_details))
+        except Exception as e:
+            logger.warning(f"diag log failed: {e}")
 
     result = {
         "target_date": target_date,
@@ -164,16 +207,25 @@ def _assign_all_rooms(
     candidates: List[Reservation],
     biz_to_rooms: Dict[str, List[Room]],
     target_date: str,
-) -> List[dict]:
+) -> Tuple[List[dict], List[dict]]:
     """
     Assign rooms based on biz_item_id mapping.
     For dormitory rooms: respects bed_capacity and gender lock.
     For regular rooms: one reservation per room.
     Gender lock: if a dormitory room already has occupants, only same-gender guests can be added.
 
-    Returns list of dicts: [{"reservation_id": int, "guest_name": str, "room_number": str}, ...]
+    Returns (assigned_results, failed_results):
+      assigned_results: [{"reservation_id", "customer_name", "room_number"}, ...]
+      failed_results:   [{"reservation_id", "customer_name", "reason",
+                          "biz_item_id", "target_date"}, ...]
+    Failure reasons:
+      - "no_candidate_rooms": no room maps to this biz_item_id
+      - "capacity_full": every dorm candidate had no free beds
+      - "gender_lock": every dorm candidate was locked by opposite gender
+      - "all_rooms_occupied": no regular room had capacity
     """
     assigned_results = []
+    failed_results: List[dict] = []
 
     # Sort candidates: females first, then males, then unknown gender
     candidates = sorted(candidates, key=_gender_sort_key)
@@ -245,9 +297,19 @@ def _assign_all_rooms(
             if preferred:
                 candidate_rooms = preferred + [r for r in candidate_rooms if r.id != preferred_room_id]
         if not candidate_rooms:
+            failed_results.append({
+                "reservation_id": res.id,
+                "customer_name": res.customer_name,
+                "reason": "no_candidate_rooms",
+                "biz_item_id": res.naver_biz_item_id,
+                "target_date": target_date,
+            })
             continue
 
         people_count = res.party_size or res.booking_count or 1
+
+        assigned_this_res = False
+        last_failure_reason: str = None  # tracks the most recent reason across dorm candidates
 
         for room in candidate_rooms:
             if room.is_dormitory:
@@ -256,6 +318,7 @@ def _assign_all_rooms(
                     db, room.id, target_date, res.check_out_date,
                     people_count=people_count, exclude_reservation_id=res.id
                 ):
+                    last_failure_reason = "capacity_full"
                     continue
 
                 # Gender lock: check ALL existing occupants' gender
@@ -279,6 +342,7 @@ def _assign_all_rooms(
                             gender_conflict = True
                             break
                     if gender_conflict:
+                        last_failure_reason = "gender_lock"
                         continue
 
                 # Assign
@@ -291,6 +355,7 @@ def _assign_all_rooms(
                 # Update group room map so next group member prefers same room
                 if res.stay_group_id:
                     stay_group_room_map[res.stay_group_id] = room.id
+                assigned_this_res = True
                 break
             else:
                 # Regular room: booking_count만큼 배정 (2개 예약 = 2개 방)
@@ -318,45 +383,53 @@ def _assign_all_rooms(
                         if res.stay_group_id:
                             stay_group_room_map[res.stay_group_id] = reg_room.id
                         rooms_assigned += 1
+                if rooms_assigned > 0:
+                    assigned_this_res = True
+                else:
+                    last_failure_reason = "all_rooms_occupied"
                 break  # 일반실 분기 완료 — 다음 예약으로
 
-    return assigned_results
+        if not assigned_this_res:
+            failed_results.append({
+                "reservation_id": res.id,
+                "customer_name": res.customer_name,
+                "reason": last_failure_reason or "no_candidate_rooms",
+                "biz_item_id": res.naver_biz_item_id,
+                "target_date": target_date,
+            })
+
+    return assigned_results, failed_results
 
 
 def daily_assign_rooms(db: Session):
     """
-    Daily job: auto-assign rooms for today and tomorrow.
-    Clears all auto-assigned rooms first, then re-assigns from scratch.
-    Manual assignments (assigned_by='manual') are preserved.
+    Daily job: FILL-ONLY mode.
+    미배정 예약만 채워넣기. 기존 배정(auto/manual 모두)은 건드리지 않음.
+
+    엣지 케이스(예약/방 설정 변경)는 각 API에서 명시적으로 처리:
+      - update_reservation 성별/인원 변경 → check_assignment_validity
+      - update_room 설정 변경 → UI 경고 배너
     """
     today = datetime.now(KST).strftime("%Y-%m-%d")
     tomorrow = (datetime.now(KST) + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    logger.info(f"Running daily room assignment for {today} and {tomorrow}")
+    logger.info(f"Running daily FILL-ONLY assignment for {today} and {tomorrow}")
 
-    # Clear existing auto assignments before re-assigning
-    # BUT preserve mid-stay assignments: if a reservation's check_in_date < target_date
-    # and check_out_date > target_date, it's a mid-stay night — don't delete.
-    tid = current_tenant_id.get()
-    for target_date in [today, tomorrow]:
-        auto_assignments = db.query(RoomAssignment).filter(
-            RoomAssignment.date == target_date,
-            RoomAssignment.assigned_by == "auto",
-            RoomAssignment.tenant_id == tid,
-        ).all()
-        delete_ids = []
-        for ra in auto_assignments:
-            res = db.query(Reservation).filter(Reservation.id == ra.reservation_id).first()
-            if res and res.check_in_date < target_date and res.check_out_date and res.check_out_date > target_date:
-                continue  # mid-stay: preserve
-            delete_ids.append(ra.id)
-        if delete_ids:
-            db.query(RoomAssignment).filter(RoomAssignment.id.in_(delete_ids)).delete(synchronize_session="fetch")
-            logger.info(f"Cleared {len(delete_ids)} auto-assignments for {target_date} (preserved {len(auto_assignments) - len(delete_ids)} mid-stay)")
-    db.flush()
-
+    # FILL-ONLY: 미배정만 배정 (DELETE 없음)
     result_today = auto_assign_rooms(db, today, created_by="scheduler")
     result_tomorrow = auto_assign_rooms(db, tomorrow, created_by="scheduler")
+
+    # diag
+    try:
+        from app.diag_logger import diag
+        diag(
+            "daily_assign.mode",
+            mode="fill_only",
+            today_assigned=result_today.get("assigned", 0),
+            tomorrow_assigned=result_tomorrow.get("assigned", 0),
+        )
+    except Exception as e:
+        logger.warning(f"diag log failed: {e}")
 
     return {
         "today": result_today,

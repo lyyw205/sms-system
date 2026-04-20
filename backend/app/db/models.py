@@ -98,8 +98,8 @@ class Reservation(TenantMixin, Base):
     visitor_phone = Column(String(20), nullable=True)
 
     # Room assignment fields
-    room_number = Column(String(20), nullable=True)  # e.g., A101, B205
-    room_password = Column(String(20), nullable=True)  # Auto-generated password
+    room_number = Column(String(20), nullable=True)  # DEPRECATED: use RoomAssignment via room_lookup
+    room_password = Column(String(20), nullable=True)  # DEPRECATED: use RoomAssignment via room_lookup
     naver_room_type = Column("room_info", String(200), nullable=True)  # Room type description
 
     # User demographics (from Naver user info)
@@ -143,35 +143,6 @@ class Reservation(TenantMixin, Base):
         UniqueConstraint("tenant_id", "external_id", name="uq_tenant_external_id"),
     )
 
-
-# DEACTIVATED: LLM/RAG auto-response feature — preserved for Alembic migration compatibility
-class Rule(TenantMixin, Base):
-    """Auto-response rules"""
-
-    __tablename__ = "rules"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    pattern = Column(String(500), nullable=False)  # Regex pattern
-    response = Column(Text, nullable=False)
-    priority = Column(Integer, default=0)  # Higher = higher priority
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=utc_now)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
-
-
-# DEACTIVATED: LLM/RAG auto-response feature — preserved for Alembic migration compatibility
-class Document(TenantMixin, Base):
-    """Knowledge base documents for RAG"""
-
-    __tablename__ = "documents"
-
-    id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String(200), nullable=False)
-    content = Column(Text, nullable=True)
-    file_path = Column(String(500), nullable=True)
-    uploaded_at = Column(DateTime, default=utc_now)
-    is_indexed = Column(Boolean, default=False)  # ChromaDB indexing status
 
 
 class MessageTemplate(TenantMixin, Base):
@@ -236,39 +207,6 @@ class ReservationSmsAssignment(TenantMixin, Base):
         UniqueConstraint("reservation_id", "template_key", "date", name="uq_res_sms_template_date"),
     )
 
-
-class CampaignLog(TenantMixin, Base):
-    """SMS campaign execution logs
-    DEPRECATED: ActivityLog로 완전 대체됨. 신규 코드에서 생성 금지.
-    기존 데이터 유지를 위해 모델은 보존하되, 조회 전용으로만 사용.
-    """
-
-    __tablename__ = "campaign_logs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    campaign_type = Column(String(50), nullable=False)  # 'tag_based', 'room_guide', 'party_guide'
-    target_tag = Column(String(50), nullable=True)
-    target_count = Column(Integer, default=0)
-    sent_count = Column(Integer, default=0)
-    failed_count = Column(Integer, default=0)
-    sent_at = Column(DateTime, default=utc_now)
-    completed_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
-    extra_data = Column("metadata", Text, nullable=True)  # JSON for additional info
-
-
-class GenderStat(TenantMixin, Base):
-    """Gender statistics for party planning"""
-
-    __tablename__ = "gender_stats"
-
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(String(20), nullable=False, index=True)  # YYYY-MM-DD
-    male_count = Column(Integer, default=0)
-    female_count = Column(Integer, default=0)
-    participant_count = Column("total_participants", Integer, default=0)
-    created_at = Column(DateTime, default=utc_now)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class RoomBizItemLink(TenantMixin, Base):
@@ -400,6 +338,7 @@ class NaverBizItem(TenantMixin, Base):
     is_active = Column(Boolean, default=True)
     default_capacity = Column(Integer, default=1, nullable=True)  # 예약 단위 기본 인원 (도미토리=1, 개인실=2~3)
     section_hint = Column(String(20), nullable=True)  # 'party' | 'room' | null(=unassigned)
+    default_party_type = Column(String(10), nullable=True)  # '1' | '2' | '2차만' | null — 패키지 상품 예약 시 Reservation.party_type 자동 세팅
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -565,7 +504,6 @@ class Tenant(Base):
     aligo_testmode = Column(Boolean, default=True)  # True=테스트모드(실제 미발송), False=실제 발송
     chip_priority_keys = Column(Text, nullable=True)  # JSON array of template_keys for chip display order
     custom_highlight_colors = Column(Text, nullable=True)  # JSON array of custom hex colors e.g. ["#FF5733","#33FF57"]
-    snapshot_refresh_times = Column(Text, nullable=True)  # JSON array of HH:MM strings, e.g. '["09:00","11:50"]'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
@@ -651,8 +589,8 @@ class PartyHost(TenantMixin, Base):
 from app.db.tenant_context import register_tenant_model as _register  # noqa: E402
 
 for _model in [
-    Message, Reservation, Rule, Document, MessageTemplate, ReservationSmsAssignment,
-    CampaignLog, GenderStat, RoomBizItemLink, Building, RoomGroup, Room, RoomAssignment,
+    Message, Reservation, MessageTemplate, ReservationSmsAssignment,
+    RoomBizItemLink, Building, RoomGroup, Room, RoomAssignment,
     NaverBizItem, TemplateSchedule, ActivityLog, PartyCheckin, ReservationDailyInfo,
     ParticipantSnapshot, OnsiteSale, DailyHost, OnsiteAuction, PartyHost,
 ]:

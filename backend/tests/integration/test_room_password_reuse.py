@@ -65,7 +65,7 @@ class TestBasePassword:
         room = _make_room(db, b.id, door_password="9999")
         res = _make_reservation(db)
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -77,7 +77,7 @@ class TestBasePassword:
         room = _make_room(db, b.id, door_password=None)
         res = _make_reservation(db)
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -134,7 +134,7 @@ class TestPrefixedPasswordReuse:
         room = _make_room(db, b.id)
         res = _make_reservation(db, check_in="2026-04-10", check_out="2026-04-13")
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10", end_date="2026-04-13",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -184,7 +184,7 @@ class TestPrefixedPasswordReuse:
         room = _make_room(db, b.id)
         res = _make_reservation(db, check_in="2026-04-10", check_out="2026-04-12")
 
-        first = assign_room(
+        first, _first_pushed = assign_room(
             db, res.id, room.id, "2026-04-10", end_date="2026-04-12",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -192,7 +192,7 @@ class TestPrefixedPasswordReuse:
         original = first[0].room_password_prefixed
 
         # 같은 조건으로 다시 호출 (재 drag / 연박 연장)
-        second = assign_room(
+        second, _second_pushed = assign_room(
             db, res.id, room.id, "2026-04-10", end_date="2026-04-13",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -210,7 +210,7 @@ class TestPrefixedPasswordReuse:
         room = _make_room(db, b.id, door_password="404")
         res = _make_reservation(db)
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )

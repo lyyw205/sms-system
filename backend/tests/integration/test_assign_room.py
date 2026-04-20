@@ -42,7 +42,7 @@ class TestAssignRoom:
         room = _make_room(db, b.id)
         res = _make_reservation(db)
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -58,7 +58,7 @@ class TestAssignRoom:
         room = _make_room(db, b.id)
         res = _make_reservation(db, check_in="2026-04-10", check_out="2026-04-13")
 
-        assignments = assign_room(
+        assignments, _pushed = assign_room(
             db, res.id, room.id, "2026-04-10", end_date="2026-04-13",
             assigned_by="manual", skip_sms_sync=True, skip_logging=True,
         )
@@ -94,7 +94,13 @@ class TestAssignRoom:
         )
         db.flush()
 
-        assert res.room_number == "A101"
+        from app.db.models import RoomAssignment
+        ra = db.query(RoomAssignment).filter(
+            RoomAssignment.reservation_id == res.id,
+            RoomAssignment.date == "2026-04-10"
+        ).first()
+        assert ra is not None
+        assert ra.room_id == room.id
 
     def test_reassign_overwrites_existing(self, db):
         """재배정 시 기존 같은 날짜 배정 삭제 후 신규 생성."""

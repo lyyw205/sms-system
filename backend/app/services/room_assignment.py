@@ -3,12 +3,15 @@ Centralized room assignment service.
 All room assignment operations go through this module to maintain
 consistency between room_assignments table and denormalized fields.
 """
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict
 from datetime import datetime, timedelta
+from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 import logging
 
+from app.config import KST
+from app.diag_logger import diag
 from app.db.models import RoomAssignment, Reservation, Room
 from app.db.tenant_context import current_tenant_id
 from app.services.activity_logger import log_activity
@@ -158,12 +161,16 @@ def assign_room(
     skip_sms_sync: bool = False,
     created_by: Optional[str] = None,
     skip_logging: bool = False,
-) -> List[RoomAssignment]:
+) -> Tuple[List[RoomAssignment], List[Dict]]:
     """
     Assign a room for date range [from_date, end_date).
     Creates RoomAssignment records for each date.
     For non-dormitory rooms, uses SELECT FOR UPDATE to prevent double-booking.
     Does NOT overwrite records for dates before from_date.
+
+    Returns (assignments, pushed_out) where pushed_out is a list of
+    {reservation_id, customer_name, date, cause} entries for callers that
+    want to surface user-facing warnings.
     """
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not reservation:
@@ -176,11 +183,16 @@ def assign_room(
     dates = _date_range(from_date, end_date)
     is_dorm = room_obj.is_dormitory
 
+    # H-A: today_str은 함수 진입 시 1회 계산 (루프 내 TZ 재계산 방지)
+    today_str = datetime.now(KST).strftime("%Y-%m-%d")
+
     # base 비밀번호: Room.door_password 단순 복사 (변형 없음)
     password = room_obj.door_password or ""
     # prefix 붙은 표시용 비밀번호: P1/P2/P3 재사용 규칙으로 결정
     #   도미토리/복수 배정 공유, 연박자 안전망, 신규 생성 분기
     password_prefixed = _resolve_prefixed_password(db, room_obj, reservation_id, dates)
+
+    pushed_out: List[Dict] = []
 
     # Concurrency guard for non-dormitory rooms
     if not is_dorm:
@@ -195,17 +207,215 @@ def assign_room(
                 .with_for_update()
                 .first()
             )
-            if existing:
-                if assigned_by == "auto":
-                    raise ValueError(
-                        f"Room {room_obj.room_number} is already occupied on {d} by reservation {existing.reservation_id}"
-                    )
-                # 수동배정: 잠금은 유지한 채 경고 로그만 남기고 진행
+            if not existing:
+                continue
+
+            if assigned_by == "auto":
+                raise ValueError(
+                    f"Room {room_obj.room_number} is already occupied on {d} by reservation {existing.reservation_id}"
+                )
+
+            # 수동 배정 (1-4): 당일/과거는 경고만, 미래는 기존자 밀어내기
+            if d <= today_str:
                 logger.warning(
-                    f"Manual multi-assign: room {room_obj.room_number} on {d} "
+                    f"Manual multi-assign on today/past: room {room_obj.room_number} on {d} "
                     f"already has reservation {existing.reservation_id}, "
                     f"adding reservation {reservation_id} (by {assigned_by})"
                 )
+                continue
+
+            # 미래 이중배정 → savepoint로 격리하여 기존 예약자 미배정 처리
+            pushed_res_id = existing.reservation_id
+            other_res = db.query(Reservation).filter(
+                Reservation.id == pushed_res_id
+            ).first()
+            other_name = other_res.customer_name if other_res else "?"
+
+            savepoint = db.begin_nested()
+            try:
+                if other_res:
+                    other_res.section = "unassigned"
+                db.delete(existing)
+                db.flush()
+
+                # C-1/H-3: 밀려난 예약의 SMS 칩 + surcharge 정리
+                try:
+                    sync_sms_tags(db, pushed_res_id)
+                except Exception as e:
+                    logger.warning(f"Pushed-out sync_sms_tags failed: {e}")
+                try:
+                    from app.services.surcharge import _delete_all_surcharge_chips
+                    _delete_all_surcharge_chips(db, pushed_res_id, d)
+                except Exception as e:
+                    logger.warning(f"Pushed-out surcharge cleanup failed: {e}")
+
+                log_activity(
+                    db, type="room_move",
+                    title=f"[{other_name}] 이중배정 회피 — 미배정 이동 ({d})",
+                    detail={
+                        "reservation_id": pushed_res_id,
+                        "date": d,
+                        "cause": "pushed_out_by",
+                        "pushed_out_by_reservation_id": reservation_id,
+                        "pushed_out_by_customer": reservation.customer_name,
+                        "room_id": room_id,
+                    },
+                    created_by="system",
+                )
+                savepoint.commit()
+                pushed_out.append({
+                    "reservation_id": pushed_res_id,
+                    "customer_name": other_name,
+                    "date": d,
+                    "cause": "pushed_out_by",
+                })
+                diag(
+                    "double_booking.pushed_out",
+                    pushed_res_id=pushed_res_id,
+                    caused_by=reservation_id,
+                    date=d,
+                    room_id=room_id,
+                )
+            except Exception as e:
+                savepoint.rollback()
+                logger.error(
+                    f"Push-out failed for res={pushed_res_id} on {d}: {e}"
+                )
+                # 한 명 실패가 전체 루프를 막지 않음 — 계속 진행
+
+    # Dormitory manual-assignment hardline check (1-5)
+    if is_dorm and assigned_by == "manual":
+        new_gender = (reservation.gender or "").strip()
+        new_count = reservation.party_size or reservation.booking_count or 1
+
+        # C-B 배치 최적화: 미래 날짜들의 others를 한 번에 조회
+        future_dates = [d for d in dates if d > today_str]
+        if future_dates:
+            all_others = db.query(RoomAssignment).filter(
+                RoomAssignment.room_id == room_id,
+                RoomAssignment.date.in_(future_dates),
+                RoomAssignment.reservation_id != reservation_id,
+            ).all()
+
+            other_res_ids = {o.reservation_id for o in all_others}
+            other_res_map: Dict[int, Reservation] = {}
+            if other_res_ids:
+                other_res_map = {
+                    r.id: r for r in db.query(Reservation).filter(
+                        Reservation.id.in_(other_res_ids)
+                    ).all()
+                }
+
+            others_by_date: Dict[str, List[RoomAssignment]] = defaultdict(list)
+            for o in all_others:
+                others_by_date[o.date].append(o)
+
+            all_pushed_res_ids: set = set()
+            pushed_dates_for_surcharge: Dict[int, set] = defaultdict(set)
+
+            for d in sorted(future_dates):
+                others = others_by_date.get(d, [])
+                if not others:
+                    continue
+
+                # 혼성 체크
+                gender_conflict = False
+                if new_gender:
+                    for o_ra in others:
+                        o_res = other_res_map.get(o_ra.reservation_id)
+                        o_gender = (o_res.gender or "").strip() if o_res else ""
+                        if o_gender and o_gender != new_gender:
+                            gender_conflict = True
+                            break
+
+                # 용량 체크
+                total_occupancy = 0
+                for o_ra in others:
+                    o_res = other_res_map.get(o_ra.reservation_id)
+                    if o_res:
+                        total_occupancy += (
+                            o_res.party_size or o_res.booking_count or 1
+                        )
+                    else:
+                        total_occupancy += 1
+                capacity_exceeded = (
+                    (total_occupancy + new_count) > (room_obj.bed_capacity or 1)
+                )
+
+                if not (gender_conflict or capacity_exceeded):
+                    continue
+
+                reason = "gender_mix" if gender_conflict else "capacity"
+                pushed_res_ids_this_date = [o.reservation_id for o in others]
+
+                # C-D: savepoint로 날짜별 격리
+                savepoint = db.begin_nested()
+                try:
+                    for o_ra in others:
+                        o_res = other_res_map.get(o_ra.reservation_id)
+                        if o_res:
+                            o_res.section = "unassigned"
+                        db.delete(o_ra)
+                        all_pushed_res_ids.add(o_ra.reservation_id)
+                        pushed_dates_for_surcharge[o_ra.reservation_id].add(d)
+                    db.flush()
+                    savepoint.commit()
+                except Exception as e:
+                    savepoint.rollback()
+                    logger.error(
+                        f"Dorm hardline savepoint failed for room={room_id} date={d}: {e}"
+                    )
+                    continue
+
+                log_activity(
+                    db, type="room_move",
+                    title=f"도미토리 제약 충돌 — {len(others)}명 미배정 이동 ({d})",
+                    detail={
+                        "room_id": room_id,
+                        "date": d,
+                        "reason": reason,
+                        "pushed_count": len(others),
+                        "pushed_reservation_ids": pushed_res_ids_this_date,
+                        "caused_by_reservation_id": reservation_id,
+                        "caused_by_customer": reservation.customer_name,
+                    },
+                    created_by="system",
+                )
+                diag(
+                    "dormitory.hardline",
+                    room_id=room_id,
+                    date=d,
+                    reason=reason,
+                    pushed_count=len(others),
+                    caused_by=reservation_id,
+                )
+
+                for o_ra in others:
+                    o_res = other_res_map.get(o_ra.reservation_id)
+                    pushed_out.append({
+                        "reservation_id": o_ra.reservation_id,
+                        "customer_name": o_res.customer_name if o_res else "?",
+                        "date": d,
+                        "cause": reason,
+                    })
+
+            # C-B: unique reservation별 1회 sync_sms_tags (중복 제거)
+            for p_id in all_pushed_res_ids:
+                try:
+                    sync_sms_tags(db, p_id)
+                except Exception as e:
+                    logger.warning(f"Dorm push-out sync_sms_tags failed for res={p_id}: {e}")
+
+            # surcharge는 (res_id, date) 단위 — 각각 정리
+            for p_id, p_dates in pushed_dates_for_surcharge.items():
+                for p_date in p_dates:
+                    try:
+                        from app.services.surcharge import _delete_all_surcharge_chips
+                        _delete_all_surcharge_chips(db, p_id, p_date)
+                    except Exception as e:
+                        logger.warning(
+                            f"Dorm push-out surcharge cleanup failed for res={p_id} date={p_date}: {e}"
+                        )
 
     # Capture old room for move logging
     old_assignments = (
@@ -278,12 +488,8 @@ def assign_room(
         assignments.append(assignment)
 
     # Flush to persist all date records before any subsequent queries
-    # (autoflush=False 환경에서 sync_denormalized_field 쿼리 전에 반드시 필요)
     db.flush()
     logger.info(f"assign_room: res={reservation_id} room={room_id} dates={dates} created={len(assignments)} assigned_by={assigned_by}")
-
-    # Update denormalized field
-    sync_denormalized_field(db, reservation)
 
     # Update section field
     reservation.section = 'room'
@@ -303,7 +509,19 @@ def assign_room(
         except Exception as e:
             logger.warning(f"Surcharge reconcile failed for res={reservation_id}: {e}")
 
-    return assignments
+    # ★ H-F 제거 (2026-04-21): push-out 후 즉시 재배정 트리거는 불필요.
+    # 미래 날짜에만 push-out 발생 → 밀려난 예약자는 미배정 상태로 대기 →
+    # 해당 날짜가 오늘/내일이 되면 10:01 daily_assign_rooms 스케줄러가 자동 재배정.
+    # 즉시 재배정은 쿼리 폭증 + 복잡도 증가만 유발하여 제거.
+    if pushed_out:
+        affected_dates = sorted({p["date"] for p in pushed_out})
+        diag(
+            "pushed_out.awaiting_scheduler",
+            affected_dates=",".join(affected_dates),
+            caused_by=reservation_id,
+        )
+
+    return assignments, pushed_out
 
 
 def unassign_room(
@@ -360,9 +578,6 @@ def unassign_room(
 
     count = query.delete(synchronize_session="fetch")
 
-    # Update denormalized field
-    sync_denormalized_field(db, reservation)
-
     # section과 SMS 태그는 호출자가 관리 (PUT endpoint → sync_sms_tags)
 
     # Surcharge 칩 정리 (방 해제 시)
@@ -396,10 +611,8 @@ def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
 
 
 def sync_denormalized_field(db: Session, reservation: Reservation):
-    """
-    Set reservation.room_number to check-in date's room assignment.
-    This is the denormalized field for backward compatibility.
-    """
+    """DEPRECATED: Phase 3-1 이후 미사용. Reservation.room_number/password는
+    clear_all_for_reservation의 cleanup 외에는 쓰지 않음. 호출 제거됨."""
     assignment = (
         db.query(RoomAssignment)
         .filter(
@@ -432,8 +645,11 @@ def sync_denormalized_field(db: Session, reservation: Reservation):
 def reconcile_dates(db: Session, reservation: Reservation):
     """
     Called when reservation dates change.
-    Deletes assignments for dates no longer in [date, end_date) range.
-    Does NOT auto-extend assignments.
+    - Deletes assignments for dates no longer in [check_in, check_out) range.
+    - NEW (Phase 1-1): For missing dates inside the valid range (extension),
+      auto-creates RoomAssignment by copying the nearest existing assignment.
+      Applies X3 push-out: future-date conflicts are evicted (long-stay priority).
+      Recomputes bed_order and reconciles surcharge for the new dates.
     """
     valid_dates = set(_date_range(reservation.check_in_date, reservation.check_out_date))
 
@@ -442,7 +658,17 @@ def reconcile_dates(db: Session, reservation: Reservation):
         logger.warning(f"reconcile_dates: reservation {reservation.id} has no valid dates, skipping")
         return
 
+    today_str = datetime.now(KST).strftime("%Y-%m-%d")
     tid = current_tenant_id.get()
+
+    diag(
+        "reconcile_dates.enter",
+        res_id=reservation.id,
+        check_in=reservation.check_in_date,
+        check_out=reservation.check_out_date,
+    )
+
+    # 1) 범위 밖 삭제 (기존 로직)
     orphaned = (
         db.query(RoomAssignment)
         .filter(
@@ -457,12 +683,140 @@ def reconcile_dates(db: Session, reservation: Reservation):
         if assignment.date not in valid_dates:
             db.delete(assignment)
 
-    if orphaned:
-        sync_denormalized_field(db, reservation)
+    # 2) 범위 내 누락 날짜 채우기 (Phase 1-1)
+    existing = (
+        db.query(RoomAssignment)
+        .filter(
+            RoomAssignment.reservation_id == reservation.id,
+            RoomAssignment.tenant_id == tid,
+            RoomAssignment.date.in_(valid_dates),
+        )
+        .all()
+    )
+    existing_dates = {a.date for a in existing}
+    missing = valid_dates - existing_dates
+
+    inserted_count = 0
+
+    if missing and existing:
+        # 같은 reservation의 가장 가까운 배정을 reference로 선택 (방 유지)
+        try:
+            reference = min(
+                existing,
+                key=lambda a: abs(
+                    (datetime.strptime(a.date, "%Y-%m-%d")
+                     - datetime.strptime(reservation.check_in_date, "%Y-%m-%d")).days
+                ),
+            )
+        except Exception:
+            reference = existing[0]
+
+        ref_room = db.query(Room).filter(Room.id == reference.room_id).first()
+
+        for d in sorted(missing):
+            # X3 수정: 충돌 체크 — 일반실은 FOR UPDATE로 동시성 보호
+            conflict_query = db.query(RoomAssignment).filter(
+                RoomAssignment.room_id == reference.room_id,
+                RoomAssignment.date == d,
+                RoomAssignment.reservation_id != reservation.id,
+            )
+            if ref_room and not ref_room.is_dormitory:
+                conflict_query = conflict_query.with_for_update()
+            conflicts = conflict_query.all()
+
+            if conflicts and d > today_str:
+                # 미래 날짜 충돌 — 연장 예약자 우선, 기존자 미배정으로 밀어냄
+                for c_ra in conflicts:
+                    c_pushed_id = c_ra.reservation_id
+                    c_res = db.query(Reservation).filter(
+                        Reservation.id == c_pushed_id
+                    ).first()
+                    c_name = c_res.customer_name if c_res else "?"
+                    if c_res:
+                        c_res.section = "unassigned"
+                    db.delete(c_ra)
+                    db.flush()
+
+                    try:
+                        sync_sms_tags(db, c_pushed_id)
+                    except Exception as e:
+                        logger.warning(f"Extension push-out sync_sms_tags failed: {e}")
+                    try:
+                        from app.services.surcharge import _delete_all_surcharge_chips
+                        _delete_all_surcharge_chips(db, c_pushed_id, d)
+                    except Exception as e:
+                        logger.warning(f"Extension push-out surcharge cleanup failed: {e}")
+
+                    log_activity(
+                        db, type="room_move",
+                        title=f"[{c_name}] 연박 연장에 밀림 — 미배정 이동 ({d})",
+                        detail={
+                            "reservation_id": c_pushed_id,
+                            "date": d,
+                            "cause": "long_stay_extension_priority",
+                            "caused_by_reservation_id": reservation.id,
+                            "caused_by_customer": reservation.customer_name,
+                            "room_id": reference.room_id,
+                        },
+                        created_by="system",
+                    )
+                    diag(
+                        "reconcile_dates.extension_pushed_out",
+                        pushed_res_id=c_pushed_id,
+                        caused_by=reservation.id,
+                        date=d,
+                        room_id=reference.room_id,
+                    )
+            elif conflicts and d <= today_str:
+                # 당일/과거 충돌은 밀어내지 않음 (당일 이중배정 허용 정책과 일치)
+                logger.warning(
+                    f"reconcile_dates: conflict on {d} not pushed (today/past). "
+                    f"manual review needed for res={reservation.id}"
+                )
+
+            # 새 RoomAssignment INSERT (bed_order 재계산)
+            bed_order = (
+                _compute_bed_order(db, reservation.id, reference.room_id, d, ref_room)
+                if ref_room else 0
+            )
+            new_ra = RoomAssignment(
+                reservation_id=reservation.id,
+                date=d,
+                room_id=reference.room_id,
+                room_password=reference.room_password,
+                room_password_prefixed=reference.room_password_prefixed,
+                assigned_by=reference.assigned_by,
+                bed_order=bed_order,
+            )
+            db.add(new_ra)
+            db.flush()
+            inserted_count += 1
+
+        # H-1: 새 날짜에 surcharge reconcile
+        try:
+            from app.services.surcharge import reconcile_surcharge
+            for d in sorted(missing):
+                reconcile_surcharge(db, reservation.id, d, room_id=reference.room_id)
+        except Exception as e:
+            logger.warning(f"Surcharge reconcile failed in reconcile_dates: {e}")
+
+    if orphaned or missing:
+        # 칩 재계산
+        try:
+            sync_sms_tags(db, reservation.id)
+        except Exception as e:
+            logger.warning(f"reconcile_dates sync_sms_tags failed for res={reservation.id}: {e}")
         logger.info(
             f"Reconciled dates for reservation {reservation.id}: "
-            f"removed {len(orphaned)} orphaned assignments"
+            f"removed {len(orphaned)} orphaned, inserted {inserted_count} missing"
         )
+
+    diag(
+        "reconcile_dates.exit",
+        res_id=reservation.id,
+        deleted=len(orphaned),
+        inserted=inserted_count,
+    )
 
 
 def check_capacity_all_dates(

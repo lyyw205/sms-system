@@ -32,6 +32,7 @@ type ActivityType =
   | 'sms_manual'
   | 'sms_send'
   | 'naver_sync'
+  | 'room_assign_failed'
 
 type ActivityStatus = 'success' | 'failed' | 'partial'
 
@@ -63,6 +64,7 @@ const TYPE_LABELS: Record<ActivityType, string> = {
   sms_manual: 'SMS 발송',
   sms_send: 'SMS 발송',
   naver_sync: '네이버 동기화',
+  room_assign_failed: '배정 실패',
 }
 
 const TYPE_BADGE_COLOR: Record<ActivityType, string> = {
@@ -71,6 +73,7 @@ const TYPE_BADGE_COLOR: Record<ActivityType, string> = {
   sms_manual: 'success',
   sms_send: 'success',
   naver_sync: 'warning',
+  room_assign_failed: 'failure',
 }
 
 const STATUS_LABELS: Record<ActivityStatus, string> = {
@@ -295,6 +298,7 @@ const ActivityLogs = () => {
             <option value="room_move">객실 이동</option>
             <option value="sms_send">SMS 발송</option>
             <option value="naver_sync">네이버 동기화</option>
+            <option value="room_assign_failed">배정 실패</option>
           </Select>
 
           <Select
@@ -586,6 +590,33 @@ const ActivityLogs = () => {
                                                   </td>
                                                 </>
                                               )}
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                  {/* Failures table (room_assign_failed) */}
+                                  {log.type === 'room_assign_failed' && Array.isArray(d.failures) && (d.failures as Array<{customer_name?: string; reason?: string}>).length > 0 && (
+                                    <div className="rounded-lg border border-[#E5E8EB] bg-white dark:border-gray-700 dark:bg-[#2C2C34] overflow-hidden">
+                                      <table className="w-full text-caption">
+                                        <thead>
+                                          <tr className="border-b border-[#E5E8EB] dark:border-gray-700 bg-[#F8F9FA] dark:bg-[#1E1E24]">
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">예약자명</th>
+                                            <th className="px-3 py-1.5 text-left font-medium text-[#8B95A1]">실패 사유</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(d.failures as Array<{customer_name?: string; reason?: string}>).map((f, i) => (
+                                            <tr key={i} className="border-b last:border-b-0 border-[#F2F4F6] dark:border-gray-800">
+                                              <td className="px-3 py-1.5 text-[#191F28] dark:text-gray-200">{f.customer_name || '-'}</td>
+                                              <td className="px-3 py-1.5 text-[#F04452]">
+                                                {f.reason === 'gender_lock' ? '성별 충돌' :
+                                                 f.reason === 'capacity_full' ? '용량 초과' :
+                                                 f.reason === 'no_candidate_rooms' ? '매칭 방 없음' :
+                                                 f.reason === 'all_rooms_occupied' ? '모든 방 occupied' :
+                                                 f.reason || '알 수 없음'}
+                                              </td>
                                             </tr>
                                           ))}
                                         </tbody>

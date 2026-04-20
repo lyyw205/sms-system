@@ -75,6 +75,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     biz_items = db.query(NaverBizItem).all()
     biz_name_map = {b.biz_item_id: (b.display_name or b.name) for b in biz_items}
     biz_section_map = {b.biz_item_id: b.section_hint for b in biz_items}
+    biz_party_map = {b.biz_item_id: b.default_party_type for b in biz_items if b.default_party_type}
     biz_capacity_map = {b.biz_item_id: b.default_capacity for b in biz_items if b.default_capacity}
 
     # Build dormitory map and capacity fallback from RoomBizItemLink → Room
@@ -148,6 +149,8 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                     res_data["people_count"] = biz_capacity_map.get(bid, 1)
             # section_hint enrichment (res_data에 저장해서 _create_reservation에서 사용)
             res_data["_section_hint"] = biz_section_map.get(bid)
+            # 패키지 상품 기본 파티타입 (새 예약 생성 시에만 적용)
+            res_data["_default_party_type"] = biz_party_map.get(bid)
 
     # Bulk-fetch existing reservations by external_id/naver_booking_id in one query
     all_ext_ids = [
@@ -226,25 +229,52 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     # auto_assign_rooms → assign_room() → ★ 칩 reconcile (2차)
     # 이번에는 RoomAssignment 있으므로 building 필터 통과 → 칩 생성됨
     # reconcile 경로: 오늘 포함 / 일반 sync 경로: 내일 이후만 (오늘은 수동 배정 유지)
-    if added_count > 0:
+    if added_count > 0 or date_changed_ids:
         try:
             today = datetime.now(KST).strftime("%Y-%m-%d")
             dates = set()
+
+            # added reservations: 기존 로직
+            new_external_ids = set()
             for res_data in reservations:
+                ext = res_data.get("external_id") or res_data.get("naver_booking_id")
+                if ext and existing_map.get(ext) is None:
+                    new_external_ids.add(ext)
+            for res_data in reservations:
+                ext = res_data.get("external_id") or res_data.get("naver_booking_id")
+                if ext not in new_external_ids:
+                    continue
                 d = res_data.get("date")
                 if reconcile_date:
-                    if d and d >= today:  # reconcile: 오늘 포함
+                    if d and d >= today:
                         dates.add(d)
                 else:
-                    if d and d > today:   # 일반 sync: 오늘 제외
+                    if d and d > today:
                         dates.add(d)
+
+            # date_changed reservations: 전체 체류 범위 수집
+            if date_changed_ids:
+                from app.services.schedule_utils import date_range as _date_range
+                changed = db.query(Reservation).filter(
+                    Reservation.id.in_(date_changed_ids)
+                ).all()
+                for res in changed:
+                    if res.check_in_date and res.check_out_date:
+                        for d in _date_range(str(res.check_in_date), str(res.check_out_date)):
+                            if d >= today:
+                                dates.add(d)
+
             assigned_total = 0
             for d in sorted(dates):
                 result = auto_assign_rooms(db, d, created_by="reconcile" if reconcile_date else "sync")
                 assigned_total += result.get("assigned", 0)
             if dates:
-                logger.info(f"Auto-assigned {assigned_total} rooms after {'reconcile' if reconcile_date else 'sync'} (dates: {sorted(dates)})")
+                logger.info(f"Auto-assigned {assigned_total} rooms after sync (dates: {sorted(dates)})")
                 db.commit()
+
+            from app.diag_logger import diag
+            diag("naver_sync.phase5", added_count=added_count,
+                 date_changed_count=len(date_changed_ids), dates=sorted(dates))
         except Exception as e:
             logger.error(f"Auto-assign after sync failed: {e}")
             db.rollback()
@@ -370,6 +400,11 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
     section_hint = res_data.get("_section_hint")
     section = section_hint if section_hint in ('party', 'room', 'unstable') else 'unassigned'
 
+    # 패키지 상품: default_party_type이 있으면 Reservation.party_type 자동 세팅
+    default_pt = res_data.get("_default_party_type")
+    if default_pt and not res_data.get("party_type"):
+        res_data["party_type"] = default_pt
+
     reservation = Reservation(
         external_id=res_data.get("external_id"),
         naver_booking_id=res_data.get("naver_booking_id"),
@@ -398,6 +433,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         age_group=res_data.get("age_group"),
         visit_count=res_data.get("visit_count", 1),
         section=section,
+        party_type=res_data.get("party_type"),
     )
     reservation.is_long_stay = compute_is_long_stay(reservation)
     return reservation
@@ -405,6 +441,12 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
 
 def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, Any]):
     """[Phase 2] 기존 예약 갱신. 성별 인원은 gender_manual=False일 때만 재계산."""
+    # Phase 2-5c: 제약 관련 필드의 이전 값 캡처 (invariant 재검증에 사용)
+    old_male = existing.male_count
+    old_female = existing.female_count
+    old_party_size = existing.party_size
+    old_gender = existing.gender
+
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
     existing.phone = res_data.get("phone", existing.phone)
@@ -458,6 +500,16 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             # 당일 취소: 오늘 이후 배정만 해제, 미배정 풀에 빨간 행으로 표시
             from app.db.models import RoomAssignment as RA
             tid = current_tenant_id.get()
+
+            # S5 반영: 영향 날짜 먼저 수집
+            affected_dates = [
+                ra.date for ra in db.query(RA).filter(
+                    RA.reservation_id == existing.id,
+                    RA.tenant_id == tid,
+                    RA.date >= today_str,
+                ).all()
+            ]
+
             db.query(RA).filter(
                 RA.reservation_id == existing.id,
                 RA.tenant_id == tid,
@@ -465,6 +517,17 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             ).delete(synchronize_session="fetch")
             existing.room_number = None
             existing.room_password = None
+
+            # S5 반영: surcharge 칩 정리
+            try:
+                from app.services.surcharge import _delete_all_surcharge_chips
+                for d in affected_dates:
+                    _delete_all_surcharge_chips(db, existing.id, d)
+            except Exception as e:
+                logger.warning(f"Naver same-day cancel surcharge cleanup failed: {e}")
+
+            from app.diag_logger import diag
+            diag("naver_sync.same_day_cancel", reservation_id=existing.id, dates=affected_dates)
         else:
             # 사전 취소: 전체 배정 해제 (미배정에 표시하지 않음)
             room_assignment.clear_all_for_reservation(db, existing.id)
@@ -484,5 +547,52 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
 
     # Recompute is_long_stay (stay_group_id may be set later by detect_and_link)
     existing.is_long_stay = compute_is_long_stay(existing)
+
+    # Phase 2-5c: 성별/인원 변경 시 invariant 체크 (C-2)
+    _CONSTRAINT_CHANGED = (
+        old_male != existing.male_count or
+        old_female != existing.female_count or
+        old_party_size != existing.party_size or
+        old_gender != existing.gender
+    )
+
+    if _CONSTRAINT_CHANGED:
+        try:
+            from app.services.room_assignment_invariants import check_assignment_validity
+            invalid_dates = check_assignment_validity(db, existing)
+        except Exception as e:
+            logger.warning(f"naver_sync invariant check failed: {e}")
+            invalid_dates = []
+
+        if invalid_dates:
+            from datetime import timedelta as _td
+            today_str = datetime.now(KST).strftime("%Y-%m-%d")
+            future_invalid = sorted([d for d in invalid_dates if d > today_str])
+            if future_invalid:
+                end_d = (datetime.strptime(future_invalid[-1], "%Y-%m-%d") + _td(days=1)).strftime("%Y-%m-%d")
+                room_assignment.unassign_room(
+                    db, existing.id,
+                    from_date=future_invalid[0],
+                    end_date=end_d,
+                )
+                # ★ 검증 추가: invariant-violation unassign 후 SMS 칩 재동기화
+                try:
+                    db.flush()
+                    room_assignment.sync_sms_tags(db, existing.id)
+                except Exception as e:
+                    logger.warning(f"naver_sync invariant unassign sync_sms_tags failed: {e}")
+                from app.services.activity_logger import log_activity
+                log_activity(
+                    db, type="room_move",
+                    title=f"[{existing.customer_name}] 네이버 동기화 제약 위반 — 배정 해제",
+                    detail={
+                        "reservation_id": existing.id,
+                        "invalid_dates": future_invalid,
+                        "trigger": "naver_sync_constraint_violation",
+                    },
+                    created_by="naver_sync",
+                )
+                from app.diag_logger import diag
+                diag("naver_sync.constraint_violation", reservation_id=existing.id, invalid_dates=future_invalid)
 
     existing.updated_at = datetime.now(timezone.utc)
