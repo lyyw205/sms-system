@@ -67,9 +67,9 @@ def get_diag_logger() -> logging.Logger:
         _logger.propagate = False
         return _logger
 
-    # ★ 파일 핸들러 설치 실패 시 자동 off 전환 (권한/디스크 문제로 서버 크래시 방지)
+    # ★ 파일 핸들러 설치 실패 시 stderr fallback (로그는 docker logs 에서 계속 볼 수 있음)
+    log_dir = os.environ.get("DIAG_LOG_DIR", "logs")
     try:
-        log_dir = os.environ.get("DIAG_LOG_DIR", "logs")
         os.makedirs(log_dir, exist_ok=True)
         # 쓰기 가능 여부 실제 확인
         _probe = os.path.join(log_dir, ".diag_probe")
@@ -85,23 +85,26 @@ def get_diag_logger() -> logging.Logger:
         )
         handler.rotator = _gzip_rotator
         handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
-
         _logger.addHandler(handler)
         _logger.setLevel(logging.INFO)
         _logger.propagate = False
         return _logger
     except (PermissionError, OSError) as e:
-        # 파일 핸들러 설치 실패 → off 전환 + stderr 1회 경고
+        # 파일 핸들러 설치 실패 → stderr StreamHandler로 fallback
+        # (레벨은 그대로 유지, 로그는 `docker logs <container>` 에 [DIAG] 태그로 나옴)
         import sys
         print(
             f"[diag_logger] WARNING: cannot open {log_dir}/refactor-diag.log ({e}) "
-            f"— falling back to DIAG_LEVEL=off for this process",
+            f"— falling back to stderr. Logs will appear in `docker logs` with [DIAG] tag. "
+            f"For file output, fix dir permission: mkdir -p {log_dir} && chmod 777 {log_dir}",
             file=sys.stderr,
         )
-        _LEVEL = 0
-        _logger.handlers.clear()
-        _logger.addHandler(logging.NullHandler())
-        _logger.setLevel(logging.CRITICAL + 1)
+        stream_handler = logging.StreamHandler(sys.stderr)
+        stream_handler.setFormatter(
+            logging.Formatter("[DIAG] %(asctime)s | %(levelname)s | %(message)s")
+        )
+        _logger.addHandler(stream_handler)
+        _logger.setLevel(logging.INFO)
         _logger.propagate = False
         return _logger
 
