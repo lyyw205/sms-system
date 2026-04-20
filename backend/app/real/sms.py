@@ -109,6 +109,18 @@ class RealSMSProvider:
         )
 
         try:
+            from app.diag_logger import diag, mask_phone
+            diag(
+                "aligo.send_sms.enter",
+                level="verbose",
+                to=mask_phone(to),
+                msg_type=msg_type,
+                testmode=testmode_yn,
+            )
+        except Exception:
+            pass
+
+        try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     ALIGO_SEND_URL,
@@ -119,6 +131,15 @@ class RealSMSProvider:
                 result = response.json()
 
             logger.info(f"[Aligo] 단건 응답: {result}")
+            try:
+                from app.diag_logger import diag
+                diag(
+                    "aligo.send_sms.exit",
+                    level="verbose",
+                    result_code=result.get("result_code"),
+                )
+            except Exception:
+                pass
 
             success = str(result.get("result_code")) == "1"
             if not success:

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
 from app.db.models import TemplateSchedule, Reservation, RoomAssignment, ReservationSmsAssignment, Room, ReservationStatus
+from app.diag_logger import diag
 from app.services.filters import (
     apply_structural_filters as _standalone_structural_filters,
 )
@@ -46,6 +47,12 @@ class TemplateScheduleExecutor:
             Dict with execution results
         """
         logger.info(f"Executing template schedule #{schedule_id}")
+        diag(
+            "schedule.execute.enter",
+            level="verbose",
+            schedule_id=schedule_id,
+            manual=manual,
+        )
 
         # Load schedule
         schedule = self.db.query(TemplateSchedule).filter(
@@ -79,6 +86,12 @@ class TemplateScheduleExecutor:
             # Get targets
             targets = self.get_targets(schedule)
             logger.info(f"Found {len(targets)} targets for schedule #{schedule_id}")
+            diag(
+                "schedule.execute.targets",
+                level="verbose",
+                schedule_id=schedule_id,
+                target_count=len(targets),
+            )
 
             if not targets:
                 # Update last_run even if no targets
@@ -239,6 +252,15 @@ class TemplateScheduleExecutor:
                     "sent_count": sent_count,
                     "failed_count": failed_count,
                 }, tenant_id=current_tenant_id.get())
+
+            diag(
+                "schedule.execute.exit",
+                level="verbose",
+                schedule_id=schedule_id,
+                sent=sent_count,
+                failed=failed_count,
+                targets=len(targets),
+            )
 
             return {
                 "success": True,
@@ -510,6 +532,7 @@ class TemplateScheduleExecutor:
                             from app.diag_logger import diag
                             diag(
                                 "once_per_stay.dedup_hit",
+                                level="verbose",
                                 reservation_id=res.id,
                                 template_key=schedule.template.template_key,
                                 customer_name=res.customer_name,

@@ -38,6 +38,12 @@ def publish(event_type: str, data: dict, tenant_id: int) -> None:
     Send an event to SSE clients of a specific tenant.
     Drops the event for any client whose queue is full.
     """
+    try:
+        from app.diag_logger import diag
+        diag("event_bus.publish", level="verbose", event_type=event_type, tid=tenant_id)
+    except Exception:
+        pass
+
     if not _queues:
         return
     payload = json.dumps({"event": event_type, "data": data})

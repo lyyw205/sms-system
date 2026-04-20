@@ -531,7 +531,7 @@ async def update_reservation(
                     created_by=current_user.username,
                 )
                 from app.diag_logger import diag
-                diag("invariant.violation_detected", reservation_id=reservation_id, invalid_dates=future_invalid)
+                diag("invariant.violation_detected", level="critical", reservation_id=reservation_id, invalid_dates=future_invalid)
 
     # Surcharge reconcile on count change
     _SURCHARGE_FIELDS = {"male_count", "female_count", "party_size"}
@@ -630,7 +630,7 @@ async def assign_room(
 
         # 과거 날짜 차단 (M-1)
         if from_date < today_str:
-            diag("past_drop.blocked", reservation_id=reservation_id, req_date=req_date, today=today_str)
+            diag("past_drop.blocked", level="critical", reservation_id=reservation_id, req_date=req_date, today=today_str)
             raise HTTPException(
                 status_code=400,
                 detail="지난 날짜의 배정은 수정할 수 없습니다",

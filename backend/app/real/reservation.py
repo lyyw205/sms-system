@@ -43,6 +43,18 @@ class RealReservationProvider:
         Args:
             date_filter: 'REGDATE' (등록일 기준) or 'STARTDATE' (체크인일 기준)
         """
+        try:
+            from app.diag_logger import diag
+            diag(
+                "naver_api.fetch_page.enter",
+                level="verbose",
+                page=page,
+                date_filter=date_filter,
+                start=start_date.strftime("%Y-%m-%d"),
+                end=end_date.strftime("%Y-%m-%d"),
+            )
+        except Exception:
+            pass
         now = datetime.now()
         start_str = start_date.strftime("%Y-%m-%dT00%%3A00%%3A00.000Z")
         end_str = end_date.strftime("%Y-%m-%dT23%%3A59%%3A59.999Z")
@@ -69,7 +81,19 @@ class RealReservationProvider:
 
         response = await client.get(url, headers=self._get_headers(), timeout=30.0)
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        try:
+            from app.diag_logger import diag
+            diag(
+                "naver_api.fetch_page.exit",
+                level="verbose",
+                page=page,
+                status=response.status_code,
+                items=len(result) if isinstance(result, list) else 0,
+            )
+        except Exception:
+            pass
+        return result
 
     async def sync_reservations(self, target_date: Optional[datetime] = None, from_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """

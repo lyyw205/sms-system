@@ -20,6 +20,30 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// DIAG_BLOCK_START: request correlation (refactor-2026-04)
+// 주요 사용자 액션을 전역에 태그하고 다음 axios 요청에 자동 첨부
+declare global {
+  interface Window {
+    __diagAction?: string;
+  }
+}
+
+api.interceptors.request.use((config) => {
+  // X-Request-ID 자동 생성 (8자 랜덤)
+  if (!config.headers['X-Request-ID']) {
+    config.headers['X-Request-ID'] = Math.random().toString(36).substring(2, 10);
+  }
+  // 최근 사용자 액션 첨부 (있으면)
+  const action = window.__diagAction;
+  if (action) {
+    config.headers['X-Diag-Action'] = action;
+    // 1회성으로 클리어 (다음 요청에 남지 않도록)
+    window.__diagAction = undefined;
+  }
+  return config;
+});
+// DIAG_BLOCK_END
+
 // Auth interceptor - handle 401 with refresh token
 let isRefreshing = false
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []

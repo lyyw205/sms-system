@@ -183,6 +183,18 @@ def assign_room(
     dates = _date_range(from_date, end_date)
     is_dorm = room_obj.is_dormitory
 
+    diag(
+        "assign_room.enter",
+        level="verbose",
+        res_id=reservation_id,
+        room_id=room_id,
+        from_date=from_date,
+        end_date=end_date,
+        dates_count=len(dates),
+        assigned_by=assigned_by,
+        is_dorm=is_dorm,
+    )
+
     # H-A: today_str은 함수 진입 시 1회 계산 (루프 내 TZ 재계산 방지)
     today_str = datetime.now(KST).strftime("%Y-%m-%d")
 
@@ -271,6 +283,7 @@ def assign_room(
                 })
                 diag(
                     "double_booking.pushed_out",
+                    level="critical",
                     pushed_res_id=pushed_res_id,
                     caused_by=reservation_id,
                     date=d,
@@ -383,6 +396,7 @@ def assign_room(
                 )
                 diag(
                     "dormitory.hardline",
+                    level="critical",
                     room_id=room_id,
                     date=d,
                     reason=reason,
@@ -517,9 +531,19 @@ def assign_room(
         affected_dates = sorted({p["date"] for p in pushed_out})
         diag(
             "pushed_out.awaiting_scheduler",
+            level="critical",
             affected_dates=",".join(affected_dates),
             caused_by=reservation_id,
         )
+
+    diag(
+        "assign_room.exit",
+        level="verbose",
+        res_id=reservation_id,
+        room_id=room_id,
+        created=len(assignments),
+        pushed_count=len(pushed_out),
+    )
 
     return assignments, pushed_out
 
@@ -539,6 +563,14 @@ def unassign_room(
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not reservation:
         return 0
+
+    diag(
+        "unassign_room.enter",
+        level="verbose",
+        res_id=reservation_id,
+        from_date=from_date,
+        end_date=end_date,
+    )
 
     query = db.query(RoomAssignment).filter(
         RoomAssignment.reservation_id == reservation_id
@@ -589,11 +621,19 @@ def unassign_room(
     except Exception as e:
         logger.warning(f"Surcharge cleanup failed for res={reservation_id}: {e}")
 
+    diag(
+        "unassign_room.exit",
+        level="verbose",
+        res_id=reservation_id,
+        deleted=count,
+    )
+
     return count
 
 
 def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
     """Delete ALL RoomAssignment records for a reservation and clear denormalized fields."""
+    diag("clear_all_for_reservation.enter", level="verbose", res_id=reservation_id)
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     tid = current_tenant_id.get()
     count = (
@@ -607,6 +647,7 @@ def clear_all_for_reservation(db: Session, reservation_id: int) -> int:
 
     # section과 SMS 태그는 호출자가 관리
 
+    diag("clear_all_for_reservation.exit", level="verbose", res_id=reservation_id, deleted=count)
     return count
 
 
@@ -663,6 +704,7 @@ def reconcile_dates(db: Session, reservation: Reservation):
 
     diag(
         "reconcile_dates.enter",
+        level="verbose",
         res_id=reservation.id,
         check_in=reservation.check_in_date,
         check_out=reservation.check_out_date,
@@ -762,6 +804,7 @@ def reconcile_dates(db: Session, reservation: Reservation):
                     )
                     diag(
                         "reconcile_dates.extension_pushed_out",
+                        level="critical",
                         pushed_res_id=c_pushed_id,
                         caused_by=reservation.id,
                         date=d,
@@ -813,6 +856,7 @@ def reconcile_dates(db: Session, reservation: Reservation):
 
     diag(
         "reconcile_dates.exit",
+        level="verbose",
         res_id=reservation.id,
         deleted=len(orphaned),
         inserted=inserted_count,

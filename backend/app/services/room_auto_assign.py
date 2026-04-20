@@ -36,6 +36,12 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
 
     logger.info(f"Starting room auto-assignment for {target_date}")
 
+    try:
+        from app.diag_logger import diag
+        diag("auto_assign.enter", level="verbose", target_date=target_date, created_by=created_by)
+    except Exception:
+        pass
+
     # Get rooms with at least one biz_item linked (N:M via RoomBizItemLink)
     rooms_with_biz = (
         db.query(Room)
@@ -136,7 +142,7 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
         # Diagnostic log
         try:
             from app.diag_logger import diag
-            diag("auto_assign.failed", target_date=target_date, count=len(failed_details))
+            diag("auto_assign.failed", level="critical", target_date=target_date, count=len(failed_details))
         except Exception as e:
             logger.warning(f"diag log failed: {e}")
 
@@ -146,6 +152,20 @@ def auto_assign_rooms(db: Session, target_date: str = None, created_by: str = "s
         "unassigned": len(unassigned) - assigned_count,
     }
     logger.info(f"Room auto-assignment complete: {result}")
+
+    try:
+        from app.diag_logger import diag
+        diag(
+            "auto_assign.exit",
+            level="verbose",
+            target_date=target_date,
+            candidates=len(unassigned),
+            assigned=assigned_count,
+            failed=len(failed_details),
+        )
+    except Exception:
+        pass
+
     return result
 
 
@@ -424,6 +444,7 @@ def daily_assign_rooms(db: Session):
         from app.diag_logger import diag
         diag(
             "daily_assign.mode",
+            level="verbose",
             mode="fill_only",
             today_assigned=result_today.get("assigned", 0),
             tomorrow_assigned=result_tomorrow.get("assigned", 0),

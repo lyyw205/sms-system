@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import logging
 
 from app.db.models import Reservation, ReservationStatus
+from app.diag_logger import diag
 from app.providers.base import SMSProvider
 from app.services.activity_logger import log_activity
 
@@ -47,7 +48,23 @@ async def send_single_sms(
     from app.templates.renderer import TemplateRenderer
     from app.templates.variables import calculate_template_variables
 
+    diag(
+        "send_single_sms.enter",
+        level="verbose",
+        res_id=reservation.id,
+        template_key=template_key,
+        date=date,
+    )
+
     if not reservation.phone:
+        diag(
+            "send_single_sms.exit",
+            level="verbose",
+            res_id=reservation.id,
+            template_key=template_key,
+            success=False,
+            reason="no_phone",
+        )
         return {"success": False, "message_id": None, "error": "전화번호가 없습니다"}
 
     effective_date = date or (
@@ -81,6 +98,13 @@ async def send_single_sms(
             logger.error(
                 f"Blocking SMS: room info empty. res={reservation.id} template={template_key} date={date}"
             )
+            diag(
+                "sms_sender.blocked_empty_room",
+                level="critical",
+                res_id=reservation.id,
+                template_key=template_key,
+                date=effective_date,
+            )
             from app.services.sms_tracking import record_sms_failed
             record_sms_failed(
                 db, reservation.id, template_key,
@@ -97,6 +121,14 @@ async def send_single_sms(
         error_msg = f"미치환 변수 발견: {', '.join(unreplaced)}"
         logger.error(f"[{template_key}] {error_msg} - 발송 차단됨 (수신자: {reservation.phone})")
         return {"success": False, "message_id": None, "error": error_msg, "message": message_content}
+
+    diag(
+        "sms_sender.provider_call",
+        level="verbose",
+        res_id=reservation.id,
+        template_key=template_key,
+        provider=type(sms_provider).__name__,
+    )
 
     result = await sms_provider.send_sms(to=reservation.phone, message=message_content)
 
@@ -125,6 +157,14 @@ async def send_single_sms(
         )
     if not skip_commit:
         db.commit()
+
+    diag(
+        "send_single_sms.exit",
+        level="verbose",
+        res_id=reservation.id,
+        template_key=template_key,
+        success=success,
+    )
 
     if success:
         return {"success": True, "message_id": result.get("message_id"), "error": None, "message": message_content}

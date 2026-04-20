@@ -27,6 +27,7 @@ from app.db.models import (
     TemplateSchedule,
 )
 from app.config import today_kst
+from app.diag_logger import diag
 from app.services.filters import apply_structural_filters
 from app.services.schedule_utils import get_schedule_dates, resolve_target_date
 
@@ -54,6 +55,8 @@ def reconcile_chips_for_reservation(
     if not reservation:
         return
 
+    diag("reconcile_chips_for_reservation.enter", level="verbose", res_id=reservation_id)
+
     # 취소된 예약: 기존 미발송 칩만 정리하고 리턴 (새 칩 생성 안 함)
     if reservation.status == ReservationStatus.CANCELLED:
         existing = db.query(ReservationSmsAssignment).filter(
@@ -63,6 +66,12 @@ def reconcile_chips_for_reservation(
         ).all()
         for a in existing:
             db.delete(a)
+        diag(
+            "reconcile_chips_for_reservation.exit",
+            level="verbose",
+            res_id=reservation_id,
+            cancelled_cleanup=len(existing),
+        )
         return
 
     if schedules is None:
@@ -95,7 +104,16 @@ def reconcile_chips_for_reservation(
     ).all()
     existing = [a for a in all_existing if a.schedule_id not in custom_schedule_ids]
 
-    _sync_chips(db, expected_pairs, existing, reservation_id=reservation_id, schedule_map=expected_schedule_map)
+    created = _sync_chips(db, expected_pairs, existing, reservation_id=reservation_id, schedule_map=expected_schedule_map)
+
+    diag(
+        "reconcile_chips_for_reservation.exit",
+        level="verbose",
+        res_id=reservation_id,
+        expected=len(expected_pairs),
+        existing=len(existing),
+        created=created,
+    )
 
 
 def reconcile_chips_for_schedule(
@@ -116,13 +134,30 @@ def reconcile_chips_for_schedule(
         return 0
     template_key = schedule.template.template_key
 
+    diag(
+        "reconcile_chips_for_schedule.enter",
+        level="verbose",
+        schedule_id=schedule.id,
+        template_key=template_key,
+    )
+
     # 비활성 스케줄/템플릿/이벤트: 자기가 만든 칩만 삭제
     if not schedule.template.is_active or not schedule.is_active or (schedule.schedule_category or 'standard') in ('event', 'custom_schedule'):
         existing = db.query(ReservationSmsAssignment).filter(
             ReservationSmsAssignment.template_key == template_key,
             ReservationSmsAssignment.schedule_id == schedule.id,
         ).all()
-        return _sync_chips_for_schedule(db, set(), existing, template_key, schedule.id)
+        created = _sync_chips_for_schedule(db, set(), existing, template_key, schedule.id)
+        diag(
+            "reconcile_chips_for_schedule.exit",
+            level="verbose",
+            schedule_id=schedule.id,
+            template_key=template_key,
+            inactive_cleanup=True,
+            existing=len(existing),
+            created=created,
+        )
+        return created
 
     # 활성: 후보 예약 조회 (날짜 무관 필터만) + per-date 필터링
     target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
@@ -147,7 +182,20 @@ def reconcile_chips_for_schedule(
         ReservationSmsAssignment.date.in_(scope_dates),
     ).all()
 
-    return _sync_chips_for_schedule(db, expected_pairs, existing, template_key, schedule.id)
+    created = _sync_chips_for_schedule(db, expected_pairs, existing, template_key, schedule.id)
+
+    diag(
+        "reconcile_chips_for_schedule.exit",
+        level="verbose",
+        schedule_id=schedule.id,
+        template_key=template_key,
+        candidates=len(candidates),
+        expected=len(expected_pairs),
+        existing=len(existing),
+        created=created,
+    )
+
+    return created
 
 
 def _reservation_matches_schedule(

@@ -25,6 +25,16 @@ from app.db.database import init_db, get_db
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 import logging
 
+# DIAG_BLOCK_START: request correlation middleware (refactor-2026-04)
+import uuid
+from app.diag_logger import (
+    diag,
+    set_request_context,
+    reset_request_context,
+    is_enabled,
+)
+# DIAG_BLOCK_END
+
 # Sentry 초기화 (DEMO_MODE=false + SENTRY_DSN 설정 시)
 if not app_settings.DEMO_MODE and app_settings.SENTRY_DSN:
     try:
@@ -82,6 +92,51 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Rate Limiting 미들웨어 + 에러 핸들러
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+
+
+# DIAG_BLOCK_START: diag correlation middleware (refactor-2026-04)
+@app.middleware("http")
+async def diag_correlation_middleware(request, call_next):
+    """Request correlation ID + user action 태그 주입.
+    DIAG_LEVEL=off 면 아무 동작 안 함 (is_enabled로 early return)."""
+    if not is_enabled("critical"):
+        return await call_next(request)
+
+    req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
+    action = request.headers.get("X-Diag-Action", "-")
+    tokens = set_request_context(req_id, action)
+
+    import time
+    start = time.perf_counter()
+    try:
+        diag(
+            "request.enter",
+            level="verbose",
+            method=request.method,
+            path=request.url.path,
+        )
+        response = await call_next(request)
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        diag(
+            "request.exit",
+            level="verbose",
+            status=response.status_code,
+            ms=elapsed_ms,
+        )
+        return response
+    except Exception as e:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        diag(
+            "request.error",
+            level="critical",
+            error=type(e).__name__,
+            msg=str(e)[:200],
+            ms=elapsed_ms,
+        )
+        raise
+    finally:
+        reset_request_context(tokens)
+# DIAG_BLOCK_END
 
 @app.get("/sentry-debug")
 async def trigger_error():

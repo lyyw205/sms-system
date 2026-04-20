@@ -720,6 +720,9 @@ const RoomAssignment = () => {
     setAutoAssigning(true);
     try {
       const dateStr = selectedDate.format('YYYY-MM-DD');
+      // DIAG_BLOCK_START
+      window.__diagAction = 'auto_assign_button';
+      // DIAG_BLOCK_END
       const res = await roomsAPI.autoAssign(dateStr);
       const today = res.data.today;
       toast.success(`객실 자동 배정 완료: ${today.assigned}건 배정`);
@@ -914,6 +917,9 @@ const RoomAssignment = () => {
       const last = prev[prev.length - 1];
       (async () => {
         try {
+          // DIAG_BLOCK_START
+          window.__diagAction = 'undo_assign';
+          // DIAG_BLOCK_END
           // 1. 주 예약자를 이전 방으로 되돌림 — 원본 범위(applySubsequent) + 그룹 여부 복원
           await reservationsAPI.assignRoom(last.resId, {
             room_id: last.prevRoomId,
@@ -1227,6 +1233,9 @@ const RoomAssignment = () => {
       }));
       if (!isNextDay) setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
       try {
+        // DIAG_BLOCK_START
+        window.__diagAction = 'drop_on_pool';
+        // DIAG_BLOCK_END
         await reservationsAPI.assignRoom(resId, { room_id: null, date: effectiveDate.format('YYYY-MM-DD'), apply_subsequent: true });
         await reservationsAPI.update(resId, { section: 'unassigned' });
         toast.success('미배정으로 이동');
@@ -1263,6 +1272,9 @@ const RoomAssignment = () => {
       }));
       if (!isNextDay) setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
       try {
+        // DIAG_BLOCK_START
+        window.__diagAction = 'drop_on_party';
+        // DIAG_BLOCK_END
         await reservationsAPI.assignRoom(resId, { room_id: null, date: effectiveDate.format('YYYY-MM-DD'), apply_subsequent: true });
         await reservationsAPI.update(resId, { section: 'party' });
         toast.success('파티만으로 이동');
@@ -1301,6 +1313,9 @@ const RoomAssignment = () => {
     if (!isNextDay) setSectionOverrides((prev) => { const next = { ...prev }; delete next[resId]; return next; });
 
     try {
+      // DIAG_BLOCK_START
+      window.__diagAction = `drag_guest_to_room:res=${resId},room=${roomNumber}`;
+      // DIAG_BLOCK_END
       const { data: result } = await reservationsAPI.assignRoom(resId, {
         room_id: roomId,
         date: effectiveDate.format('YYYY-MM-DD'),

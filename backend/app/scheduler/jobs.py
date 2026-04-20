@@ -10,6 +10,7 @@ import logging
 from app.db.database import SessionLocal
 from app.db.models import Tenant
 from app.db.tenant_context import current_tenant_id, bypass_tenant_filter
+from app.diag_logger import diag
 from app.factory import get_reservation_provider_for_tenant
 from app.services.room_auto_assign import daily_assign_rooms
 from app.config import KST
@@ -66,6 +67,7 @@ async def sync_naver_reservations_job():
     모든 Phase는 sync_naver_to_db() 내부에서 순차 실행됨.
     """
     logger.info("Running Naver reservations sync job (all tenants)")
+    diag("job.sync_naver_reservations.enter", level="verbose")
 
     from app.services.naver_sync import sync_naver_to_db
 
@@ -93,6 +95,8 @@ async def sync_naver_reservations_job():
         finally:
             db.close()
             current_tenant_id.reset(token)
+
+    diag("job.sync_naver_reservations.exit", level="verbose", tenants=len(tenants))
 
 
 async def load_template_schedules():
@@ -315,12 +319,14 @@ async def daily_room_assign_job():
     Iterates over all active tenants.
     """
     logger.info("Running daily room auto-assignment job (all tenants)")
+    diag("job.daily_room_assign.enter", level="verbose")
 
     def _assign(db, tenant):
         result = daily_assign_rooms(db)
         logger.info(f"[{tenant.slug}] Daily room auto-assignment result: {result}")
 
     _for_each_tenant(_assign)
+    diag("job.daily_room_assign.exit", level="verbose")
 
 
 def refresh_snapshots_job():

@@ -11,6 +11,7 @@ import logging
 import re
 
 from app.db.models import Reservation, ReservationStatus, ReservationSmsAssignment, NaverBizItem, RoomBizItemLink, Room
+from app.diag_logger import diag
 from app.services import room_assignment
 from app.services.consecutive_stay import compute_is_long_stay
 from app.services.room_auto_assign import auto_assign_rooms
@@ -64,12 +65,26 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
 
     Returns summary dict with synced/added/updated counts.
     """
+    diag(
+        "naver_sync.enter",
+        level="verbose",
+        source=source,
+        reconcile_date=reconcile_date,
+        from_date=from_date,
+    )
+
     if reconcile_date:
         logger.info(f"Starting Naver reconciliation for check-in date: {reconcile_date}")
         raw_reservations = await reservation_provider.fetch_by_checkin_date(reconcile_date)
     else:
         logger.info(f"Starting Naver reservation sync...{f' (from {from_date})' if from_date else ''}")
         raw_reservations = await reservation_provider.sync_reservations(target_date, from_date=from_date)
+
+    diag(
+        "naver_sync.fetched",
+        level="verbose",
+        raw_count=len(raw_reservations),
+    )
 
     # Build lookup maps from DB (NaverBizItem + Room)
     biz_items = db.query(NaverBizItem).all()
@@ -273,7 +288,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                 db.commit()
 
             from app.diag_logger import diag
-            diag("naver_sync.phase5", added_count=added_count,
+            diag("naver_sync.phase5", level="verbose", added_count=added_count,
                  date_changed_count=len(date_changed_ids), dates=sorted(dates))
         except Exception as e:
             logger.error(f"Auto-assign after sync failed: {e}")
@@ -304,6 +319,14 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             logger.warning(f"Surcharge batch reconcile after sync failed: {e}")
 
     logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
+
+    diag(
+        "naver_sync.exit",
+        level="verbose",
+        synced=len(reservations),
+        added=added_count,
+        updated=updated_count,
+    )
 
     return {
         "success": True,
@@ -527,7 +550,7 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
                 logger.warning(f"Naver same-day cancel surcharge cleanup failed: {e}")
 
             from app.diag_logger import diag
-            diag("naver_sync.same_day_cancel", reservation_id=existing.id, dates=affected_dates)
+            diag("naver_sync.same_day_cancel", level="critical", reservation_id=existing.id, dates=affected_dates)
         else:
             # 사전 취소: 전체 배정 해제 (미배정에 표시하지 않음)
             room_assignment.clear_all_for_reservation(db, existing.id)
@@ -593,6 +616,6 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
                     created_by="naver_sync",
                 )
                 from app.diag_logger import diag
-                diag("naver_sync.constraint_violation", reservation_id=existing.id, invalid_dates=future_invalid)
+                diag("naver_sync.constraint_violation", level="critical", reservation_id=existing.id, invalid_dates=future_invalid)
 
     existing.updated_at = datetime.now(timezone.utc)
