@@ -627,15 +627,27 @@ async def assign_room(
         today_str = datetime.now(KST).strftime("%Y-%m-%d")
         from_date = req_date or db_reservation.check_in_date
 
-        # 과거 날짜 차단 (M-1)
-        if from_date < today_str:
-            diag("past_drop.blocked", level="critical", reservation_id=reservation_id, req_date=req_date, today=today_str)
-            raise HTTPException(
-                status_code=400,
-                detail="지난 날짜의 배정은 수정할 수 없습니다",
-            )
-
         end_date = db_reservation.check_out_date if apply_subsequent else None
+
+        # 연박자 cascade(apply_subsequent)는 today 이전 날짜를 건드리지 않음.
+        # 단건 배정(apply_subsequent=False)은 과거 셀 수정을 허용.
+        if apply_subsequent and from_date < today_str:
+            diag(
+                "cascade.clamped_to_today",
+                level="critical",
+                reservation_id=reservation_id,
+                original_from=from_date,
+                clamped_to=today_str,
+            )
+            from_date = today_str
+            # 퇴실일까지 이미 지났으면 cascade 할 구간이 없음 → no-op
+            if end_date and from_date >= end_date:
+                db.commit()
+                return RoomAssignResponse(
+                    reservation=_to_response(db_reservation, db=db),
+                    warnings=None,
+                    pushed_out=[],
+                )
         _result = room_assignment.assign_room(
             db,
             reservation_id,
@@ -662,8 +674,11 @@ async def assign_room(
                 Reservation.id != reservation_id,
             ).all()
             for member in group_members:
-                member_from = member.check_in_date
+                # 그룹 멤버 cascade 도 today 이전은 스킵
+                member_from = max(member.check_in_date, today_str)
                 member_end = member.check_out_date
+                if member_end and member_from >= member_end:
+                    continue  # 이미 퇴실 지난 멤버
                 try:
                     room_assignment.assign_room(
                         db,

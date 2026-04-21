@@ -1143,11 +1143,6 @@ const RoomAssignment = () => {
     const { res, isNextDay: sourceIsNextDay } = found;
     const targetDate = dropTargetDate || selectedDate;
 
-    // Phase 1-6: 과거 날짜 드롭 차단
-    if (targetDate.isBefore(dayjs(), 'day')) {
-      toast.warning('지난 날짜의 배정은 수정할 수 없습니다');
-      return;
-    }
     const dropIsNextDay = !targetDate.isSame(selectedDate, 'day');
 
     // Duplicate check on correct list
