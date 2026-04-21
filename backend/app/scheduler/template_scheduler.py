@@ -62,10 +62,28 @@ class TemplateScheduleExecutor:
 
         if not schedule:
             logger.warning(f"Schedule #{schedule_id} not found or inactive")
+            diag(
+                "schedule.execute.exit",
+                level="verbose",
+                schedule_id=schedule_id,
+                outcome="schedule_not_found",
+                sent=0,
+                failed=0,
+                targets=0,
+            )
             return {"success": False, "error": "Schedule not found or inactive"}
 
         if not schedule.template or not schedule.template.is_active:
             logger.warning(f"Template for schedule #{schedule_id} not found or inactive")
+            diag(
+                "schedule.execute.exit",
+                level="verbose",
+                schedule_id=schedule_id,
+                outcome="template_not_found",
+                sent=0,
+                failed=0,
+                targets=0,
+            )
             return {"success": False, "error": "Template not found or inactive"}
 
         try:
@@ -81,6 +99,15 @@ class TemplateScheduleExecutor:
                     schedule.last_run_at = datetime.now(timezone.utc)
                     self.db.commit()
                     logger.info(f"Schedule #{schedule_id}: send condition not met, skipping")
+                    diag(
+                        "schedule.execute.exit",
+                        level="verbose",
+                        schedule_id=schedule_id,
+                        outcome="send_condition_not_met",
+                        sent=0,
+                        failed=0,
+                        targets=0,
+                    )
                     return {"success": True, "sent_count": 0, "message": "Send condition not met, skipped"}
 
             # Get targets
@@ -97,6 +124,15 @@ class TemplateScheduleExecutor:
                 # Update last_run even if no targets
                 schedule.last_run_at = datetime.now(timezone.utc)
                 self.db.commit()
+                diag(
+                    "schedule.execute.exit",
+                    level="verbose",
+                    schedule_id=schedule_id,
+                    outcome="no_targets",
+                    sent=0,
+                    failed=0,
+                    targets=0,
+                )
                 return {"success": True, "sent_count": 0, "message": "No targets found"}
 
             # Send messages
@@ -257,6 +293,7 @@ class TemplateScheduleExecutor:
                 "schedule.execute.exit",
                 level="verbose",
                 schedule_id=schedule_id,
+                outcome="completed",
                 sent=sent_count,
                 failed=failed_count,
                 targets=len(targets),
@@ -277,6 +314,14 @@ class TemplateScheduleExecutor:
             except ImportError:
                 pass
             self.db.rollback()
+            diag(
+                "schedule.execute.exit",
+                level="critical",
+                schedule_id=schedule_id,
+                outcome="exception",
+                error=type(e).__name__,
+                msg=str(e)[:200],
+            )
             return {"success": False, "error": str(e)}
 
     def get_targets(

@@ -98,8 +98,9 @@ app.add_middleware(SlowAPIMiddleware)
 @app.middleware("http")
 async def diag_correlation_middleware(request, call_next):
     """Request correlation ID + user action 태그 주입.
-    DIAG_LEVEL=off 면 아무 동작 안 함 (is_enabled로 early return)."""
-    if not is_enabled("critical"):
+    DIAG_LEVEL=off 면 아무 동작 안 함 (is_enabled로 early return).
+    /health 는 docker healthcheck 노이즈라 스킵."""
+    if not is_enabled("critical") or request.url.path == "/health":
         return await call_next(request)
 
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
