@@ -11,11 +11,20 @@ docs/diag-golden/
 ├── README.md            # 이 문서 (방법론)
 ├── invariants.md        # 항상 성립해야 하는 불변식 규칙
 ├── state.json           # 마지막 검증 체크포인트 (자동 갱신)
+│                          - last_log_timestamp / last_commit_sha
+│                          - last_coverage_scan_sha (0.5단계 증분 기준)
+│                          - known_gaps (계측 누락이지만 의도적으로 허용된 항목)
 └── actions/             # 정답 trace YAML 파일들 (액션당 1개)
     ├── drag-single-night-past.yaml
     ├── drag-multi-night-past-cascade.yaml
     ├── schedule-execute-no-targets.yaml
     └── ...
+
+관련 스크립트 (`scripts/diag/`):
+- `extract_trace.py` — 로그 → 정규화 JSON
+- `diff_trace.py` — 정답지 vs 실제 trace 비교
+- `check_invariants.py` — 8개 불변식 자동 검증
+- `coverage_scan.py` — **태그/diag 누락 정적 스캔** (증분 or 전체, 0.5단계에서 호출)
 ```
 
 ## 정규화 룰 (필수)
