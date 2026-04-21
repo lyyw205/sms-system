@@ -32,6 +32,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Menu,
+  Phone,
   Undo2,
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/use-mobile';
@@ -1228,8 +1229,8 @@ const RoomAssignment = () => {
       }));
       if (!isNextDay) setSectionOverrides((prev) => ({ ...prev, [resId]: 'unassigned' }));
       try {
-        // DIAG_BLOCK_START
-        window.__diagAction = 'drop_on_pool';
+        // DIAG_BLOCK_START: 사전 태그가 있으면 존중 (ctx_menu:move_to_pool 등)
+        if (!window.__diagAction) window.__diagAction = 'drop_on_pool';
         // DIAG_BLOCK_END
         await reservationsAPI.assignRoom(resId, { room_id: null, date: effectiveDate.format('YYYY-MM-DD'), apply_subsequent: true });
         await reservationsAPI.update(resId, { section: 'unassigned' });
@@ -1267,8 +1268,8 @@ const RoomAssignment = () => {
       }));
       if (!isNextDay) setSectionOverrides((prev) => ({ ...prev, [resId]: 'party' }));
       try {
-        // DIAG_BLOCK_START
-        window.__diagAction = 'drop_on_party';
+        // DIAG_BLOCK_START: 사전 태그가 있으면 존중 (ctx_menu:move_to_party 등)
+        if (!window.__diagAction) window.__diagAction = 'drop_on_party';
         // DIAG_BLOCK_END
         await reservationsAPI.assignRoom(resId, { room_id: null, date: effectiveDate.format('YYYY-MM-DD'), apply_subsequent: true });
         await reservationsAPI.update(resId, { section: 'party' });
@@ -1595,10 +1596,16 @@ const RoomAssignment = () => {
       isAlreadyCopiedToUnstable: !!firstRes.unstable_party,
       hasRealUnstableBooking: !!firstRes.has_unstable_booking,
       onMoveToPool: () => {
+        // DIAG_BLOCK_START
+        window.__diagAction = 'ctx_menu:move_to_pool';
+        // DIAG_BLOCK_END
         targetIds.forEach((id) => handleDropOnPool(id));
         setContextMenu(null);
       },
       onMoveToParty: () => {
+        // DIAG_BLOCK_START
+        window.__diagAction = 'ctx_menu:move_to_party';
+        // DIAG_BLOCK_END
         targetIds.forEach((id) => handleDropOnParty(id));
         setContextMenu(null);
       },
@@ -1606,12 +1613,20 @@ const RoomAssignment = () => {
         if (targetIds.length > 1) {
           showConfirm('게스트 일괄 삭제', `${targetIds.length}명을 삭제하시겠습니까?`, async () => {
             for (const id of targetIds) {
-              try { await reservationsAPI.delete(id); } catch { /* skip */ }
+              try {
+                // DIAG_BLOCK_START
+                window.__diagAction = 'ctx_menu:delete_guest';
+                // DIAG_BLOCK_END
+                await reservationsAPI.delete(id);
+              } catch { /* skip */ }
             }
             toast.success(`${targetIds.length}명 삭제 완료`);
             fetchReservations(selectedDate);
           });
         } else {
+          // DIAG_BLOCK_START
+          window.__diagAction = 'ctx_menu:delete_guest';
+          // DIAG_BLOCK_END
           handleDeleteGuest(targetIds[0]);
         }
         setContextMenu(null);
@@ -1622,6 +1637,11 @@ const RoomAssignment = () => {
           setContextMenu(null);
           return;
         }
+        // DIAG_BLOCK_START
+        window.__diagAction = firstRes.stay_group_id
+          ? 'ctx_menu:stay_group_unlink'
+          : 'ctx_menu:stay_group_link';
+        // DIAG_BLOCK_END
         if (firstRes.stay_group_id) {
           handleStayGroupUnlink(firstRes.id);
         } else {
@@ -1632,6 +1652,9 @@ const RoomAssignment = () => {
       onSetColor: async (color: string | null) => {
         for (const id of targetIds) {
           try {
+            // DIAG_BLOCK_START
+            window.__diagAction = 'ctx_menu:set_color';
+            // DIAG_BLOCK_END
             await reservationsAPI.update(id, { highlight_color: color });
           } catch { /* skip */ }
         }
@@ -1643,6 +1666,9 @@ const RoomAssignment = () => {
       onCopyToUnstable: async () => {
         for (const id of targetIds) {
           try {
+            // DIAG_BLOCK_START
+            window.__diagAction = 'ctx_menu:copy_to_unstable';
+            // DIAG_BLOCK_END
             await reservationsAPI.updateDailyInfo(id, { date: dateStr, unstable_party: true });
           } catch { /* skip */ }
         }
@@ -1655,6 +1681,9 @@ const RoomAssignment = () => {
       onRemoveFromUnstable: async () => {
         for (const id of targetIds) {
           try {
+            // DIAG_BLOCK_START
+            window.__diagAction = 'ctx_menu:remove_from_unstable';
+            // DIAG_BLOCK_END
             await reservationsAPI.updateDailyInfo(id, { date: dateStr, unstable_party: false });
           } catch { /* skip */ }
         }
@@ -1674,6 +1703,9 @@ const RoomAssignment = () => {
         const nextDateStr = nextDate.format('YYYY-MM-DD');
 
         try {
+          // DIAG_BLOCK_START
+          window.__diagAction = 'ctx_menu:extend_stay';
+          // DIAG_BLOCK_END
           const { data } = await api.post(`/api/reservations/${resId}/extend-stay`, {
             room_id: res.room_id || null,
           });
@@ -1700,6 +1732,9 @@ const RoomAssignment = () => {
         const resId = targetIds[0];
         setContextMenu(null);
         try {
+          // DIAG_BLOCK_START
+          window.__diagAction = 'ctx_menu:cancel_extend_stay';
+          // DIAG_BLOCK_END
           await api.delete(`/api/reservations/${resId}/extend-stay`);
           toast.success('수동연박 취소 완료');
           fetchReservations(selectedDate);
@@ -3234,6 +3269,34 @@ const RoomAssignment = () => {
                     }`}
                   >
                     <Menu className="h-[18px] w-[18px]" />
+                  </button>
+                </div>
+              </Tooltip>
+              <Tooltip
+                content={
+                  selectedGuestIds.size !== 1
+                    ? '1명 선택 시만 전화 가능'
+                    : '선택한 게스트에게 전화'
+                }
+                placement="top"
+              >
+                <div className="inline-block">
+                  <button
+                    onClick={() => {
+                      if (selectedGuestIds.size !== 1) return;
+                      const id = [...selectedGuestIds][0];
+                      const found = findReservation(id);
+                      const phone = found?.res?.phone?.trim();
+                      if (!phone) {
+                        toast.warning('연락처가 등록되지 않은 게스트입니다');
+                        return;
+                      }
+                      window.location.href = `tel:${phone}`;
+                    }}
+                    disabled={selectedGuestIds.size !== 1}
+                    className="h-10 w-10 flex items-center justify-center rounded-full bg-[#00C9A7]/10 text-[#00C9A7] border border-[#00C9A7]/20 hover:bg-[#00C9A7]/20 active:bg-[#00C9A7]/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  >
+                    <Phone className="h-[18px] w-[18px]" />
                   </button>
                 </div>
               </Tooltip>
