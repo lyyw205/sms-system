@@ -1,0 +1,78 @@
+action: drag_guest_to_room (도미토리)
+description: |
+  도미토리 방으로 드래그. 일반실과 달리 성별/용량 제약 체크 경로를 탐. 충돌 없을
+  때의 정상 플로우.
+
+  충돌 발생 시(성별/용량 위반)에는 dormitory.hardline 이벤트가 CONDITIONAL 로 추가
+  되며 이 YAML 은 충돌 없는 정상 케이스만 다룸. 충돌 케이스는 별도 YAML 생성 권장.
+
+reference_commit: 0ec7084
+reference_case: req=kzynjhyg, res=4091, 2026-04-21 13:31:49
+created_at: 2026-04-21
+
+preconditions:
+  reservation:
+    is_long_stay: "*"
+  target_room:
+    is_dormitory: true
+  user_action: 드래그 (도미토리 방으로)
+  apply_subsequent: true
+  conflict: false  # 성별/용량 OK
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PUT
+      path: /api/reservations/*/room
+      action_prefix: drag_guest_to_room
+
+  - event: assign_room.enter
+    category: MANDATORY
+    fields:
+      dates_count: 1
+      is_dorm: true
+      assigned_by: manual
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: room_move
+      status: success
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+
+  - event: surcharge.reconcile.enter
+    category: MANDATORY
+
+  - event: assign_room.exit
+    category: MANDATORY
+    fields:
+      created: 1
+      pushed_count: 0  # 정상 케이스 (용량 남음)
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: dormitory.hardline
+    reason: 정상 케이스에선 발동 안 함 (충돌 있으면 별도 YAML 필요)
+
+conditional_events:
+  - event: double_booking.pushed_out
+    when: 다른 도미토리 멤버가 밀려난 경우
+    note: 이 경우 별도 YAML 로 분리하거나 conditional 로 허용

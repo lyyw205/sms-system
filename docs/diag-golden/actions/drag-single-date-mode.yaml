@@ -1,0 +1,69 @@
+action: drag_guest_to_room ("이 날만 적용" 선택)
+description: |
+  연박자 드래그 시 모달에서 "이 날만 적용" 선택. apply_subsequent=false 로 호출되어
+  드롭 날짜 1일만 변경. end_date 필드가 로그에 없는 것이 특징.
+
+reference_commit: 0ec7084
+reference_case: req=9jz8cjkf, res=4080, 2026-04-21 13:29:52
+created_at: 2026-04-21
+
+preconditions:
+  reservation:
+    is_long_stay: "*"  # 연박자/단박자 무관
+  user_action: 드래그 + 모달에서 "이 날만 적용" 선택
+  apply_subsequent: false
+  modal_choice: 이 날만
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PUT
+      path: /api/reservations/*/room
+      action_prefix: drag_guest_to_room
+
+  - event: assign_room.enter
+    category: MANDATORY
+    fields:
+      from_date: "*"  # today-N, today, today+N 모두 가능 (과거 편집 자유)
+      dates_count: 1
+      # end_date 필드 없음 (apply_subsequent=false)
+      assigned_by: manual
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: room_move
+      status: success
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+
+  - event: surcharge.reconcile.enter
+    category: MANDATORY
+
+  - event: assign_room.exit
+    category: MANDATORY
+    fields:
+      created: 1
+      pushed_count: 0
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: cascade.clamped_to_today
+    reason: apply_subsequent=false 라 가드 조건 불충족

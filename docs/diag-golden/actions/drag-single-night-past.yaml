@@ -1,0 +1,85 @@
+action: drag_guest_to_room (1박 손님, 과거 셀 드롭)
+description: |
+  check_in=today-1, check_out=today 인 단박자를 과거 테이블(어제) 에서 다른 방으로
+  드래그. cascade 가드는 is_long_stay=false 때문에 미발동해야 하며, 드롭 대상 1일만
+  RoomAssignment 로 INSERT 되어야 한다.
+
+  이 케이스는 2026-04-21 운영 중 발견된 "어제 셀 이동시 원상복귀" 버그의 핵심
+  케이스. 0ec7084 커밋에서 수정됨.
+
+reference_commit: 0ec7084
+reference_case: req=hi5n53mh, res=4077, 2026-04-21 13:29:44
+created_at: 2026-04-21
+
+preconditions:
+  reservation:
+    is_long_stay: false
+    check_in: today-1
+    check_out: today
+  user_action: 드래그 (과거 테이블 열고 다른 방으로)
+  apply_subsequent: true  # 프론트 하드코딩 (1박자에도 true)
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PUT
+      path: /api/reservations/*/room
+      action_prefix: drag_guest_to_room
+
+  - event: assign_room.enter
+    category: MANDATORY
+    fields:
+      from_date: today-1
+      end_date: today
+      dates_count: 1
+      is_dorm: false
+      assigned_by: manual
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: room_move
+      status: success
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: filter.apply.exit
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+
+  - event: surcharge.reconcile.enter
+    category: MANDATORY
+    fields:
+      date: today-1
+
+  - event: assign_room.exit
+    category: MANDATORY
+    fields:
+      created: 1
+      pushed_count: 0
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: cascade.clamped_to_today
+    reason: 1박자는 is_long_stay=false 라 가드 조건 미충족
+  - event: cascade.full_past_noop
+    reason: 이 이벤트는 0ec7084에서 삭제됨 — 나오면 롤백
+  - event: cascade.downgraded_to_single
+    reason: 이 이벤트는 0ec7084에서 삭제됨 — 나오면 롤백

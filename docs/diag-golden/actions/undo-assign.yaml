@@ -1,0 +1,66 @@
+action: undo_assign (배정 실행 취소)
+description: |
+  방금 수행한 방 배정을 undo. 원래 방/범위로 되돌리는 2차 assign_room 호출.
+  프론트의 undoStack 을 pop 해서 이전 상태 복원.
+
+reference_commit: 0ec7084
+reference_case: 이전 로그 (13:12:19~20) 에서 관측 — req=450n6yaz, 3638 undo
+created_at: 2026-04-21
+
+preconditions:
+  user_action: undo 버튼 클릭 (Ctrl+Z 포함)
+  undoStack_has_entry: true  # 직전 undo 가능한 액션 존재
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PUT
+      path: /api/reservations/*/room
+      action_prefix: undo_assign
+
+  - event: assign_room.enter
+    category: MANDATORY
+    fields:
+      assigned_by: manual
+      # applySubsequent 는 원래 액션의 값을 복원
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: room_move
+      status: success
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+
+  - event: surcharge.reconcile.enter
+    category: MANDATORY
+
+  - event: assign_room.exit
+    category: MANDATORY
+    fields:
+      created: 1
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events: []
+
+notes: |
+  undo 는 원래 액션 종류(배정/해제/밀려남) 에 따라 2차 호출이 여럿 생길 수 있음.
+  밀려났던 손님까지 복구하는 경우 별도 연쇄 assign_room 호출이 발생하므로
+  VARIABLE_COUNT 로 다룰 필요 있을 수 있음. 케이스 쌓이면 undo-complex.yaml 분리.

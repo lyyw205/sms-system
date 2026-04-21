@@ -1,0 +1,56 @@
+action: schedule.execute (대상 없음 outcome)
+description: |
+  APScheduler 가 template_schedule 을 트리거했으나 발송 대상 예약이 0건인 경우.
+  3055009 커밋에서 outcome 태그가 추가돼 enter/exit 짝이 완성됨.
+
+  이 플로우는 사용자 요청이 아니라 스케줄러 시스템 이벤트라 req_id 가 '-' 로 찍힘.
+
+reference_commit: "3055009"
+reference_case: req=-, schedule_id=1, 2026-04-21 13:30:00
+created_at: 2026-04-21
+
+preconditions:
+  trigger_source: APScheduler (cron)
+  template_schedule.is_active: true
+  targets_count: 0  # 대상 예약이 없는 상태
+
+expected_trace:
+  - event: schedule.execute.enter
+    category: MANDATORY
+    fields:
+      manual: false
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 0  # 필터 사용 안하는 스케줄도 있음
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 0
+
+  - event: filter.apply.exit
+    category: VARIABLE_COUNT
+    min: 0
+
+  - event: schedule.execute.targets
+    category: MANDATORY
+    fields:
+      target_count: 0
+
+  - event: schedule.execute.exit
+    category: MANDATORY
+    fields:
+      outcome: no_targets
+      sent: 0
+      failed: 0
+      targets: 0
+
+forbidden_events:
+  - event: send_single_sms.enter
+    reason: target_count=0 이면 발송 로직 진입 금지
+  - event: aligo.send_sms.enter
+    reason: 동일
+
+notes: |
+  outcome 태그 누락(즉 schedule.execute.exit 이 outcome 없이 찍힘) 은 3055009
+  회귀. INV-3 으로도 감지됨.

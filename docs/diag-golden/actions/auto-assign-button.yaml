@@ -1,0 +1,59 @@
+action: auto_assign_button (자동 배정 버튼 클릭)
+description: |
+  RoomAssignment 페이지 상단의 "자동 배정" 버튼 클릭. 미배정 손님들을 비어있는
+  방에 알고리즘으로 자동 배정. 프론트에서 __diagAction=auto_assign_button 태그.
+
+reference_commit: bf8a0e3
+reference_case: 이전 로그 (11:28:24) 에서 관측
+created_at: 2026-04-21
+
+preconditions:
+  user_action: 자동 배정 버튼 클릭
+  has_unassigned: true  # 미배정 손님 1명 이상
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: POST
+      path: /api/rooms/auto-assign
+      action_prefix: auto_assign_button
+
+  - event: rooms.manual_auto_assign_trigger
+    category: MANDATORY
+    fields:
+      created_by: admin
+
+  - event: auto_assign.enter
+    category: MANDATORY
+    fields:
+      created_by: admin  # 버튼은 admin, 스케줄러는 scheduler/sync
+
+  - event: assign_room.enter
+    category: VARIABLE_COUNT
+    min: 0  # 배정 가능한 손님 수만큼
+
+  - event: assign_room.exit
+    category: VARIABLE_COUNT
+    min: 0
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: room_assign
+      created_by: admin
+
+  - event: auto_assign.exit
+    category: MANDATORY
+    fields:
+      candidates: "*"  # 숫자
+      # assigned + failed 는 상황마다 다름
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: cascade.clamped_to_today
+    reason: 자동 배정은 cascade 와 무관한 신규 배정 경로
