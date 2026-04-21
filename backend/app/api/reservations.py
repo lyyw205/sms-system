@@ -629,6 +629,21 @@ async def assign_room(
 
         end_date = db_reservation.check_out_date if apply_subsequent else None
 
+        # cascade 할 미래 구간이 없으면 (end_date <= today, 예: 오늘 체크아웃하는 단박자,
+        # 이미 퇴실 끝난 예약) apply_subsequent 를 false 로 강등 → 단건 배정으로 흐름.
+        # 연박자 "과거 보호" 는 미래 구간이 있을 때만 의미 있음.
+        if apply_subsequent and end_date and end_date <= today_str:
+            diag(
+                "cascade.downgraded_to_single",
+                level="critical",
+                reservation_id=reservation_id,
+                from_date=from_date,
+                check_out=end_date,
+                today=today_str,
+            )
+            apply_subsequent = False
+            end_date = None
+
         # 연박자 cascade(apply_subsequent)는 today 이전 날짜를 건드리지 않음.
         # 단건 배정(apply_subsequent=False)은 과거 셀 수정을 허용.
         if apply_subsequent and from_date < today_str:
