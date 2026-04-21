@@ -629,24 +629,16 @@ async def assign_room(
 
         end_date = db_reservation.check_out_date if apply_subsequent else None
 
-        # cascade 할 미래 구간이 없으면 (end_date <= today, 예: 오늘 체크아웃하는 단박자,
-        # 이미 퇴실 끝난 예약) apply_subsequent 를 false 로 강등 → 단건 배정으로 흐름.
-        # 연박자 "과거 보호" 는 미래 구간이 있을 때만 의미 있음.
-        if apply_subsequent and end_date and end_date <= today_str:
-            diag(
-                "cascade.downgraded_to_single",
-                level="critical",
-                reservation_id=reservation_id,
-                from_date=from_date,
-                check_out=end_date,
-                today=today_str,
-            )
-            apply_subsequent = False
-            end_date = None
-
-        # 연박자 cascade(apply_subsequent)는 today 이전 날짜를 건드리지 않음.
-        # 단건 배정(apply_subsequent=False)은 과거 셀 수정을 허용.
-        if apply_subsequent and from_date < today_str:
+        # 과거 보호는 오직 "연박자 + 모달에서 '오늘 이후 전체' 선택" 조합에서만 적용.
+        # 모달 라벨이 today~이후만 변경을 약속하므로 동작 일치 보장.
+        # 그 외(단박자 / "이 날만" / 완전 종료된 예약)는 과거 편집 자유.
+        if (
+            db_reservation.is_long_stay
+            and apply_subsequent
+            and from_date < today_str
+            and end_date
+            and end_date > today_str
+        ):
             diag(
                 "cascade.clamped_to_today",
                 level="critical",
@@ -655,22 +647,7 @@ async def assign_room(
                 clamped_to=today_str,
             )
             from_date = today_str
-            # 퇴실일까지 이미 지났으면 cascade 할 구간이 없음 → no-op
-            if end_date and from_date >= end_date:
-                diag(
-                    "cascade.full_past_noop",
-                    level="critical",
-                    reservation_id=reservation_id,
-                    check_in=db_reservation.check_in_date,
-                    check_out=end_date,
-                    today=today_str,
-                )
-                db.commit()
-                return RoomAssignResponse(
-                    reservation=_to_response(db_reservation, db=db),
-                    warnings=None,
-                    pushed_out=[],
-                )
+
         _result = room_assignment.assign_room(
             db,
             reservation_id,
@@ -697,30 +674,8 @@ async def assign_room(
                 Reservation.id != reservation_id,
             ).all()
             for member in group_members:
-                # 그룹 멤버 cascade 도 today 이전은 스킵
-                original_member_from = member.check_in_date
-                member_from = max(original_member_from, today_str)
+                member_from = member.check_in_date
                 member_end = member.check_out_date
-                if member_from != original_member_from:
-                    diag(
-                        "cascade.group_member_clamped",
-                        level="verbose",
-                        group_id=db_reservation.stay_group_id,
-                        member_res_id=member.id,
-                        original_from=original_member_from,
-                        clamped_to=member_from,
-                    )
-                if member_end and member_from >= member_end:
-                    diag(
-                        "cascade.group_member_skipped",
-                        level="critical",
-                        group_id=db_reservation.stay_group_id,
-                        member_res_id=member.id,
-                        check_in=original_member_from,
-                        check_out=member_end,
-                        today=today_str,
-                    )
-                    continue  # 이미 퇴실 지난 멤버
                 try:
                     room_assignment.assign_room(
                         db,
