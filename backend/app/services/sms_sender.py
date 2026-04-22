@@ -86,6 +86,7 @@ async def send_single_sms(
         date=effective_date,
         custom_vars=custom_vars,
         room_assignment=ra,
+        template_key=template_key,
     )
 
     # ★ 3-1b: 방 정보 변수를 쓰는 템플릿인데 room_num/building이 비어있으면 차단
