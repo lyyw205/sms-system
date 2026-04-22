@@ -476,6 +476,26 @@ async def update_reservation(
     # 날짜 변경 감지 (orphan RoomAssignment 정리용)
     old_dates = (db_reservation.check_in_date, db_reservation.check_out_date)
 
+    # Reservation 업데이트 추적용 diag
+    # (성별/인원 invariant 깨짐 원인 추적 — gender 단독 업데이트 등 식별)
+    try:
+        _watched = {"gender", "male_count", "female_count", "party_size", "gender_manual"}
+        diag(
+            "reservation.updated",
+            level="verbose",
+            reservation_id=reservation_id,
+            actor=current_user.username if current_user else None,
+            changed_fields=sorted(update_data.keys()),
+            gender_before=db_reservation.gender,
+            male_before=db_reservation.male_count,
+            female_before=db_reservation.female_count,
+            party_size_before=db_reservation.party_size,
+            gender_manual_before=db_reservation.gender_manual,
+            watched_changes={k: update_data[k] for k in _watched & update_data.keys()},
+        )
+    except Exception:
+        pass
+
     for field, value in update_data.items():
         setattr(db_reservation, field, value)
 
