@@ -72,6 +72,7 @@ def _make_reservation(db, *, male=0, female=0, check_in=None, check_out=None):
         status=ReservationStatus.CONFIRMED,
         male_count=male,
         female_count=female,
+        notes='테스트',  # [테스트 마커] surcharge 발송 대상 조건
     )
     db.add(res)
     db.flush()

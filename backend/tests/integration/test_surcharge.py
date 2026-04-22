@@ -66,6 +66,7 @@ def _make_reservation(db, check_in=DATE, check_out="2026-04-16",
         party_size=party_size,
         male_count=male_count,
         female_count=female_count,
+        notes='테스트',  # [테스트 마커] surcharge 발송 대상 조건
     )
     db.add(res)
     db.flush()
