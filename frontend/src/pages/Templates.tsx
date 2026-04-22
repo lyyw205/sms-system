@@ -644,7 +644,7 @@ const Templates: React.FC = () => {
 
   const handleSaveTemplate = async () => {
     if (!tKey.trim()) { setTKeyError('템플릿 키를 입력하세요'); return; }
-    if (!/^[a-z_]+$/.test(tKey)) { setTKeyError('영문 소문자와 언더스코어(_)만 사용 가능합니다'); return; }
+    if (!/^[a-z_][a-z0-9_]*$/.test(tKey)) { setTKeyError('영문 소문자로 시작, 이후 영문 소문자/숫자/언더스코어(_)만 사용 가능합니다'); return; }
     if (!tName.trim()) { toast.error('템플릿 이름을 입력하세요'); return; }
     if (!tContent.trim()) { toast.error('메시지 내용을 입력하세요'); return; }
 
