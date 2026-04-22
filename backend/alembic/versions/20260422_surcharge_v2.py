@@ -29,13 +29,24 @@ logger = logging.getLogger('alembic.runtime.migration')
 def upgrade():
     conn = op.get_bind()
 
-    # 1. Tenant 컬럼 2개 추가
-    op.add_column('tenants', sa.Column(
-        'surcharge_unit_standard', sa.Integer(), nullable=False, server_default='20000'
-    ))
-    op.add_column('tenants', sa.Column(
-        'surcharge_unit_double', sa.Integer(), nullable=False, server_default='25000'
-    ))
+    # 1. Tenant 컬럼 2개 추가 (idempotent — init_db auto-migrate 와 충돌 방지)
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    tenant_cols = {c['name'] for c in insp.get_columns('tenants')}
+    if 'surcharge_unit_standard' not in tenant_cols:
+        op.add_column('tenants', sa.Column(
+            'surcharge_unit_standard', sa.Integer(), nullable=False, server_default='20000'
+        ))
+        logger.info("surcharge_v2: tenants.surcharge_unit_standard 컬럼 추가")
+    else:
+        logger.info("surcharge_v2: tenants.surcharge_unit_standard 이미 존재, skip")
+    if 'surcharge_unit_double' not in tenant_cols:
+        op.add_column('tenants', sa.Column(
+            'surcharge_unit_double', sa.Integer(), nullable=False, server_default='25000'
+        ))
+        logger.info("surcharge_v2: tenants.surcharge_unit_double 컬럼 추가")
+    else:
+        logger.info("surcharge_v2: tenants.surcharge_unit_double 이미 존재, skip")
 
     # 2. 템플릿 key 변경 (id=24: add_one_person → add_standard)
     row = conn.execute(text("SELECT id FROM message_templates WHERE id=24")).fetchone()
