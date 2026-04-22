@@ -187,3 +187,75 @@ class TestCustomScheduleExclusion:
             ReservationSmsAssignment.schedule_id == custom_sched.id,
         ).all()
         assert len(remaining) == 1, "custom_schedule 칩은 standard reconcile에서 삭제되면 안 됨"
+
+
+class TestNonCandidateChipPreservation:
+    """reconcile_chips_for_schedule 은 candidate 범위 밖 예약의 칩을 건드리면 안 됨.
+
+    회귀 방지: 과거 버그에서는 scope_dates 에 우연히 포함된 타 예약의 칩까지
+    existing 으로 잡혀 `expected_pairs` 에 없다는 이유로 삭제됐다.
+    (2026-04-22 운영 중 스케줄 저장 시 테스트 예약 칩 10개가 연쇄 삭제된 사건)
+    """
+
+    def test_non_candidate_chip_not_deleted(self, db):
+        """candidate 밖 예약의 칩은 scope_dates 겹쳐도 삭제되면 안 됨."""
+        from datetime import timedelta
+        from app.config import today_kst_date
+
+        tpl = _make_template(db, key="tpl_overlap")
+        # date_target=yesterday + target_mode=last_night → target_date=today-1
+        sched = _make_schedule(db, tpl, target_mode='last_night', date_target='yesterday')
+
+        today = today_kst_date()
+        ystd = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+        tmrw = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # Candidate A: target_date(ystd) stay-coverage PASS
+        # check_in=ystd-2, check_out=tmrw+1 (2박) → last_night=tmrw (scope_dates 에 tmrw 추가됨)
+        res_a = Reservation(
+            tenant_id=1, customer_name="A", phone="01011112222",
+            check_in_date=(today - timedelta(days=2)).strftime('%Y-%m-%d'),
+            check_out_date=(today + timedelta(days=2)).strftime('%Y-%m-%d'),
+            check_in_time="15:00",
+            status=ReservationStatus.CONFIRMED,
+        )
+        db.add(res_a)
+        db.flush()
+
+        # Innocent B: tmrw 체크인 — target_date=ystd stay-coverage FAIL → candidate 아님
+        # 하지만 date=tmrw 인 칩이 이미 있음 (다른 경로로 생성된 정상 칩)
+        res_b = Reservation(
+            tenant_id=1, customer_name="B", phone="01033334444",
+            check_in_date=tmrw,
+            check_out_date=None,
+            check_in_time="15:00",
+            status=ReservationStatus.CONFIRMED,
+        )
+        db.add(res_b)
+        db.flush()
+
+        # B 의 tmrw 칩 pre-seed (reservation-centric reconcile 로 생성됐다고 가정)
+        innocent_chip = ReservationSmsAssignment(
+            tenant_id=1,
+            reservation_id=res_b.id,
+            template_key=tpl.template_key,
+            date=tmrw,
+            assigned_by='auto',
+            schedule_id=sched.id,
+        )
+        db.add(innocent_chip)
+        db.flush()
+
+        # schedule-centric reconcile 실행 (스케줄 저장 시 발화)
+        reconcile_chips_for_schedule(db, sched)
+        db.flush()
+
+        # B 의 칩이 살아있어야 함 (버그 시 삭제됨)
+        survivors = db.query(ReservationSmsAssignment).filter(
+            ReservationSmsAssignment.reservation_id == res_b.id,
+            ReservationSmsAssignment.schedule_id == sched.id,
+            ReservationSmsAssignment.date == tmrw,
+        ).all()
+        assert len(survivors) == 1, (
+            "candidate 범위 밖 예약의 칩이 scope_dates 겹침만으로 삭제되면 안 됨"
+        )

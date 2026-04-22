@@ -163,6 +163,7 @@ def reconcile_chips_for_schedule(
     # 활성: 후보 예약 조회 (날짜 무관 필터만) + per-date 필터링
     target_date = resolve_target_date(schedule.date_target) if schedule.date_target else today_kst()
     candidates = _get_candidate_reservations(db, schedule, target_date)
+    candidate_ids = [r.id for r in candidates]
 
     # scope_dates: 후보 예약의 전체 스케줄 날짜 범위 (필터링 전)
     # → stale 칩 삭제 누락 방지
@@ -176,11 +177,14 @@ def reconcile_chips_for_schedule(
             if _reservation_matches_schedule(db, schedule, reservation, d):
                 expected_pairs.add((reservation.id, d))
 
-    # scope_dates 범위 내 자기 칩만 diff 대상
+    # scope_dates 범위 내 + candidate 범위 내 자기 칩만 diff 대상
+    # ★ reservation_id 필터가 없으면, scope_dates 에 우연히 포함된
+    #   타 예약의 칩(예: 다른 예약의 last_night 이 같은 날짜)까지 잘못 삭제됨.
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.template_key == template_key,
         ReservationSmsAssignment.schedule_id == schedule.id,
         ReservationSmsAssignment.date.in_(scope_dates),
+        ReservationSmsAssignment.reservation_id.in_(candidate_ids) if candidate_ids else False,
     ).all()
 
     created = _sync_chips_for_schedule(db, expected_pairs, existing, template_key, schedule.id)
