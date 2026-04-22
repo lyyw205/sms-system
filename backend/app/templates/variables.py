@@ -204,12 +204,84 @@ def refresh_snapshot(db: Session, target_date: str) -> Optional[ParticipantSnaps
     return snapshot
 
 
+def _calculate_stay_nights(reservation) -> int:
+    """체크인~체크아웃 박수. NULL 이면 1박."""
+    if not reservation.check_out_date or not reservation.check_in_date:
+        return 1
+    try:
+        ci = datetime.strptime(reservation.check_in_date, "%Y-%m-%d").date()
+        co = datetime.strptime(reservation.check_out_date, "%Y-%m-%d").date()
+        diff = (co - ci).days
+        return max(1, diff)
+    except (ValueError, TypeError):
+        return 1
+
+
+def _format_man_won(amount_won: int) -> str:
+    """원 단위를 '만원' 표기로 변환. 정수면 정수(str), 소수면 소수(str).
+
+    Examples:
+        20000 → '2'
+        25000 → '2.5'
+        60000 → '6'
+        75000 → '7.5'
+        120000 → '12'
+    """
+    v = amount_won / 10000
+    if v == int(v):
+        return str(int(v))
+    return f"{v:g}"
+
+
+def _inject_surcharge_vars(context: Dict[str, Any], reservation, room_assignment, db: Session) -> None:
+    """surcharge 템플릿용 변수 주입 — excess/nights/per_night/total."""
+    from app.services.surcharge import _is_double_room
+    from app.db.models import Room, Tenant
+    from app.db.tenant_context import current_tenant_id
+
+    # Room / is_double 판단
+    room = None
+    is_double = False
+    if room_assignment:
+        room = db.query(Room).filter(Room.id == room_assignment.room_id).first()
+        if room:
+            is_double = _is_double_room(db, room)
+
+    # 단가 조회 (Tenant 설정)
+    tenant_id = current_tenant_id.get()
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first() if tenant_id else None
+    unit_standard = getattr(tenant, 'surcharge_unit_standard', 20000) if tenant else 20000
+    unit_double = getattr(tenant, 'surcharge_unit_double', 25000) if tenant else 25000
+    unit_price = unit_double if is_double else unit_standard
+
+    # guest_count / excess / nights 계산
+    guest_count = (
+        getattr(reservation, 'party_size', None)
+        or (reservation.male_count or 0) + (reservation.female_count or 0)
+        or 1
+    )
+    base_capacity = room.base_capacity if room else 0
+    excess = max(0, guest_count - base_capacity)
+    nights = _calculate_stay_nights(reservation)
+
+    per_night = unit_price * excess
+    total = per_night * nights
+
+    context['base_capacity'] = base_capacity
+    context['guest_count'] = guest_count
+    context['excess'] = excess
+    context['nights'] = nights
+    context['surcharge_per_night'] = _format_man_won(per_night)
+    context['total_surcharge'] = _format_man_won(total)
+
+
 def calculate_template_variables(
     reservation: Reservation,
     db: Session,
     date: Optional[str] = None,
     custom_vars: Optional[Dict[str, Any]] = None,
     room_assignment=None,
+    template_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate all template variables for a reservation
@@ -219,6 +291,8 @@ def calculate_template_variables(
         db: Database session
         date: Optional date for party statistics
         custom_vars: Custom variables to override defaults
+        room_assignment: Optional RoomAssignment object
+        template_key: Optional template key for template-specific variable injection
 
     Returns:
         Dictionary of all calculated variables
@@ -295,6 +369,10 @@ def calculate_template_variables(
         variables[f'{_prefix}_male_count'] = str(_pm)
         variables[f'{_prefix}_female_count'] = str(_pf)
         variables[f'{_prefix}_total_count'] = str(_pt)
+
+    # surcharge 변수 (add_standard / add_double 템플릿용)
+    if template_key in ('add_standard', 'add_double'):
+        _inject_surcharge_vars(variables, reservation, room_assignment, db)
 
     # Custom variables override (excluding internal _prefixed keys)
     if custom_vars:

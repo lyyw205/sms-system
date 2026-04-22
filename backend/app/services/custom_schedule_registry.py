@@ -19,10 +19,8 @@ from sqlalchemy.orm import Session
 # key: custom_type 값 (DB에 저장됨)
 # label: UI에 표시되는 한글 라벨
 CUSTOM_SCHEDULE_TYPES = {
-    "surcharge_1": "추가 인원 1인 초과",
-    "surcharge_2": "추가 인원 2인 초과",
-    "surcharge_3": "추가 인원 3인 초과",
-    "surcharge_4": "추가 인원 4인 초과",
+    "surcharge_standard": "인원 초과 (일반 객실)",
+    "surcharge_double": "인원 초과 (더블 객실, 업그레이드비 포함)",
 }
 
 
@@ -57,10 +55,8 @@ def _refresh_surcharge(db: Session, target_date: str) -> None:
 # custom_type → (db, target_date) -> None
 # 같은 reconcile 로직을 공유하는 타입은 같은 handler 를 가리키면 됨.
 PRE_SEND_REFRESH_HANDLERS: dict[str, Callable[[Session, str], None]] = {
-    "surcharge_1": _refresh_surcharge,
-    "surcharge_2": _refresh_surcharge,
-    "surcharge_3": _refresh_surcharge,
-    "surcharge_4": _refresh_surcharge,
+    "surcharge_standard": _refresh_surcharge,
+    "surcharge_double": _refresh_surcharge,
 }
 
 

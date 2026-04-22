@@ -1,17 +1,30 @@
-"""surcharge.py 통합 테스트 — in-memory SQLite."""
+"""surcharge.py 통합 테스트 — in-memory SQLite (2-type 재설계 기준).
+
+2-type 구조:
+  - surcharge_standard: 일반 객실 인원 초과
+  - surcharge_double:   더블룸 인원 초과 (DOUBLE_ROOM_BIZ_ITEM_IDS 기반)
+"""
 import pytest
 from datetime import datetime, timezone
 
 from app.db.models import (
     Reservation, Room, Building, RoomAssignment,
     ReservationStatus, TemplateSchedule, MessageTemplate,
-    ReservationSmsAssignment,
+    ReservationSmsAssignment, RoomBizItemLink,
 )
-from app.services.surcharge import reconcile_surcharge, reconcile_surcharge_batch
+from app.services.surcharge import (
+    reconcile_surcharge, reconcile_surcharge_batch,
+    SURCHARGE_STANDARD, SURCHARGE_DOUBLE, DOUBLE_ROOM_BIZ_ITEM_IDS,
+)
 
 
 DATE = "2026-04-15"
+DOUBLE_BIZ_ID = next(iter(DOUBLE_ROOM_BIZ_ITEM_IDS))
 
+
+# ---------------------------------------------------------------------------
+# Fixtures / helpers
+# ---------------------------------------------------------------------------
 
 def _make_building(db, name="본관"):
     b = Building(tenant_id=1, name=name, is_active=True)
@@ -31,8 +44,20 @@ def _make_room(db, building_id, room_number="R101", base_capacity=2, is_dormitor
     return r
 
 
+def _link_double_biz_item(db, room_id, biz_item_id=DOUBLE_BIZ_ID):
+    """방을 더블룸으로 표시하는 RoomBizItemLink 생성."""
+    link = RoomBizItemLink(
+        tenant_id=1,
+        room_id=room_id,
+        biz_item_id=biz_item_id,
+    )
+    db.add(link)
+    db.flush()
+    return link
+
+
 def _make_reservation(db, check_in=DATE, check_out="2026-04-16",
-                       party_size=None, male_count=None, female_count=None):
+                      party_size=None, male_count=None, female_count=None):
     res = Reservation(
         tenant_id=1, customer_name="테스트", phone="01012345678",
         check_in_date=check_in, check_in_time="15:00",
@@ -57,7 +82,7 @@ def _make_assignment(db, reservation_id, room_id, date=DATE):
     return ra
 
 
-def _make_template(db, key="add_one_person", name="1인추가"):
+def _make_template(db, key="add_standard", name="일반추가요금"):
     t = MessageTemplate(
         tenant_id=1, template_key=key, name=name,
         content="추가요금 안내", is_active=True,
@@ -67,7 +92,7 @@ def _make_template(db, key="add_one_person", name="1인추가"):
     return t
 
 
-def _make_surcharge_schedule(db, template, custom_type="surcharge_1"):
+def _make_surcharge_schedule(db, template, custom_type=SURCHARGE_STANDARD):
     s = TemplateSchedule(
         tenant_id=1, template_id=template.id,
         schedule_name=f"테스트 {custom_type}",
@@ -97,66 +122,62 @@ def _surcharge_chips(db, reservation_id, date=DATE):
     ).all()
 
 
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
 class TestReconcileSurcharge:
-    def test_creates_chip_when_excess_matches(self, db):
-        """base_capacity=2, party_size=3 → excess=1 → surcharge_1 칩 생성."""
+    def test_standard_room_excess_creates_standard_chip(self, db):
+        """일반 객실, 2인 초과 → surcharge_standard 칩 생성, surcharge_double 칩 없음."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
         res = _make_reservation(db, party_size=3)
         _make_assignment(db, res.id, room.id)
 
-        tpl = _make_template(db, key="add_one_person")
-        schedule = _make_surcharge_schedule(db, tpl, custom_type="surcharge_1")
-
-        reconcile_surcharge(db, res.id, DATE)
-
-        chips = _surcharge_chips(db, res.id)
-        assert len(chips) == 1
-        assert chips[0].schedule_id == schedule.id
-        assert chips[0].assigned_by == "auto"
-
-    def test_deletes_stale_chip_when_excess_changes(self, db):
-        """초과 인원이 1→2로 바뀌면 surcharge_1 칩 삭제 + surcharge_2 칩 생성."""
-        b = _make_building(db)
-        room = _make_room(db, b.id, base_capacity=2)
-        res = _make_reservation(db, party_size=4)  # excess=2
-
-        tpl1 = _make_template(db, key="add_one_person", name="1인추가")
-        s1 = _make_surcharge_schedule(db, tpl1, custom_type="surcharge_1")
-
-        tpl2 = _make_template(db, key="add_two_person", name="2인추가")
-        s2 = _make_surcharge_schedule(db, tpl2, custom_type="surcharge_2")
-
-        _make_assignment(db, res.id, room.id)
-
-        # Pre-insert stale surcharge_1 chip (excess was 1 before)
-        stale = ReservationSmsAssignment(
-            tenant_id=1, reservation_id=res.id,
-            template_key=tpl1.template_key, date=DATE,
-            assigned_by="auto", schedule_id=s1.id, sent_at=None,
-        )
-        db.add(stale)
-        db.flush()
+        tpl = _make_template(db, key="add_standard", name="일반추가요금")
+        schedule_std = _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
+        tpl_dbl = _make_template(db, key="add_double", name="더블추가요금")
+        schedule_dbl = _make_surcharge_schedule(db, tpl_dbl, custom_type=SURCHARGE_DOUBLE)
 
         reconcile_surcharge(db, res.id, DATE)
 
         chips = _surcharge_chips(db, res.id)
         schedule_ids = {c.schedule_id for c in chips}
-        assert s1.id not in schedule_ids, "surcharge_1 chip should be deleted"
-        assert s2.id in schedule_ids, "surcharge_2 chip should be created"
+        assert schedule_std.id in schedule_ids, "surcharge_standard 칩이 생성되어야 함"
+        assert schedule_dbl.id not in schedule_ids, "surcharge_double 칩이 없어야 함"
+
+    def test_double_room_excess_creates_double_chip(self, db):
+        """더블룸 (biz_item_id=DOUBLE_BIZ_ID), 1인 초과 → surcharge_double 칩 생성, surcharge_standard 칩 없음."""
+        b = _make_building(db)
+        room = _make_room(db, b.id, base_capacity=2)
+        _link_double_biz_item(db, room.id)
+        res = _make_reservation(db, party_size=3)
+        _make_assignment(db, res.id, room.id)
+
+        tpl_std = _make_template(db, key="add_standard", name="일반추가요금")
+        schedule_std = _make_surcharge_schedule(db, tpl_std, custom_type=SURCHARGE_STANDARD)
+        tpl_dbl = _make_template(db, key="add_double", name="더블추가요금")
+        schedule_dbl = _make_surcharge_schedule(db, tpl_dbl, custom_type=SURCHARGE_DOUBLE)
+
+        reconcile_surcharge(db, res.id, DATE)
+
+        chips = _surcharge_chips(db, res.id)
+        schedule_ids = {c.schedule_id for c in chips}
+        assert schedule_dbl.id in schedule_ids, "surcharge_double 칩이 생성되어야 함"
+        assert schedule_std.id not in schedule_ids, "surcharge_standard 칩이 없어야 함"
 
     def test_no_chip_when_no_excess(self, db):
-        """party_size == base_capacity → excess=0 → 모든 surcharge 칩 삭제."""
+        """일반 객실, party_size == base_capacity → excess=0 → 칩 없음."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
         res = _make_reservation(db, party_size=2)
 
-        tpl = _make_template(db, key="add_one_person")
-        s = _make_surcharge_schedule(db, tpl, custom_type="surcharge_1")
+        tpl = _make_template(db, key="add_standard")
+        s = _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
 
         _make_assignment(db, res.id, room.id)
 
-        # Pre-insert a stale surcharge_1 chip
+        # Pre-insert a stale chip to verify it gets cleaned up
         stale = ReservationSmsAssignment(
             tenant_id=1, reservation_id=res.id,
             template_key=tpl.template_key, date=DATE,
@@ -168,30 +189,30 @@ class TestReconcileSurcharge:
         reconcile_surcharge(db, res.id, DATE)
 
         chips = _surcharge_chips(db, res.id)
-        assert len(chips) == 0
+        assert len(chips) == 0, "excess=0 이므로 칩이 없어야 함"
 
-    def test_skips_dormitory(self, db):
+    def test_dormitory_creates_no_chip(self, db):
         """도미토리 객실은 surcharge 칩 생성 안 함."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2, is_dormitory=True)
         res = _make_reservation(db, party_size=5)
 
-        tpl = _make_template(db, key="add_one_person")
-        _make_surcharge_schedule(db, tpl, custom_type="surcharge_1")
+        tpl = _make_template(db, key="add_standard")
+        _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
 
         _make_assignment(db, res.id, room.id)
 
         reconcile_surcharge(db, res.id, DATE)
 
         chips = _surcharge_chips(db, res.id)
-        assert len(chips) == 0
+        assert len(chips) == 0, "도미토리는 칩 없어야 함"
 
     def test_deletes_all_when_no_assignment(self, db):
         """RoomAssignment 없으면 기존 surcharge 칩 전부 삭제."""
         res = _make_reservation(db, party_size=3)
 
-        tpl = _make_template(db, key="add_one_person")
-        s = _make_surcharge_schedule(db, tpl, custom_type="surcharge_1")
+        tpl = _make_template(db, key="add_standard")
+        s = _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
 
         # Pre-insert chip (no room assignment)
         stale = ReservationSmsAssignment(
@@ -205,54 +226,40 @@ class TestReconcileSurcharge:
         reconcile_surcharge(db, res.id, DATE)
 
         chips = _surcharge_chips(db, res.id)
-        assert len(chips) == 0
+        assert len(chips) == 0, "배정 없으면 기존 칩도 삭제되어야 함"
 
-    def test_preserves_sent_chip(self, db):
-        """sent_at 있는 칩은 보존 — 삭제 안 됨."""
+    def test_type_switch_standard_to_double(self, db):
+        """일반 → 더블룸으로 이동 후 reconcile → standard 칩 삭제, double 칩 생성."""
         b = _make_building(db)
+        # Double room
         room = _make_room(db, b.id, base_capacity=2)
-        res = _make_reservation(db, party_size=4)  # excess=2
+        _link_double_biz_item(db, room.id)
 
-        tpl1 = _make_template(db, key="add_one_person", name="1인추가")
-        s1 = _make_surcharge_schedule(db, tpl1, custom_type="surcharge_1")
-
-        tpl2 = _make_template(db, key="add_two_person", name="2인추가")
-        s2 = _make_surcharge_schedule(db, tpl2, custom_type="surcharge_2")
-
+        res = _make_reservation(db, party_size=3)
         _make_assignment(db, res.id, room.id)
 
-        # Pre-insert surcharge_1 chip that was already sent
-        sent_chip = ReservationSmsAssignment(
+        tpl_std = _make_template(db, key="add_standard", name="일반추가요금")
+        s_std = _make_surcharge_schedule(db, tpl_std, custom_type=SURCHARGE_STANDARD)
+        tpl_dbl = _make_template(db, key="add_double", name="더블추가요금")
+        s_dbl = _make_surcharge_schedule(db, tpl_dbl, custom_type=SURCHARGE_DOUBLE)
+
+        # Stale standard chip from when it was a regular room
+        stale = ReservationSmsAssignment(
             tenant_id=1, reservation_id=res.id,
-            template_key=tpl1.template_key, date=DATE,
-            assigned_by="auto", schedule_id=s1.id,
-            sent_at=datetime.now(timezone.utc),
+            template_key=tpl_std.template_key, date=DATE,
+            assigned_by="auto", schedule_id=s_std.id, sent_at=None,
         )
-        db.add(sent_chip)
+        db.add(stale)
         db.flush()
 
         reconcile_surcharge(db, res.id, DATE)
 
         chips = _surcharge_chips(db, res.id)
         schedule_ids = {c.schedule_id for c in chips}
-        assert s1.id in schedule_ids, "sent surcharge_1 chip should be preserved"
-        assert s2.id in schedule_ids, "surcharge_2 chip should be created"
+        assert s_std.id not in schedule_ids, "standard 칩이 삭제되어야 함 (타입 전환)"
+        assert s_dbl.id in schedule_ids, "double 칩이 생성되어야 함"
 
-    def test_no_chip_when_schedule_missing(self, db):
-        """surcharge_1 스케줄이 없으면 칩 생성 안 함 — 예외도 없음."""
-        b = _make_building(db)
-        room = _make_room(db, b.id, base_capacity=2)
-        res = _make_reservation(db, party_size=3)  # excess=1
-
-        _make_assignment(db, res.id, room.id)
-        # No surcharge schedule created
-
-        reconcile_surcharge(db, res.id, DATE)  # should not raise
-
-        chips = _surcharge_chips(db, res.id)
-        assert len(chips) == 0
-
-    def test_batch_handles_multiple_reservations(self, db):
+    def test_batch_handles_multiple_reservations_individually(self, db):
         """reconcile_surcharge_batch: 초과 예약만 칩 생성, 정원 내 예약은 칩 없음."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
@@ -265,8 +272,8 @@ class TestReconcileSurcharge:
         res2 = _make_reservation(db, party_size=2)
         _make_assignment(db, res2.id, room.id)
 
-        tpl = _make_template(db, key="add_one_person")
-        _make_surcharge_schedule(db, tpl, custom_type="surcharge_1")
+        tpl = _make_template(db, key="add_standard")
+        _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
 
         reconcile_surcharge_batch(db, [res1.id, res2.id], DATE)
 
@@ -274,3 +281,76 @@ class TestReconcileSurcharge:
         chips2 = _surcharge_chips(db, res2.id)
         assert len(chips1) == 1, "초과 예약에 칩이 생성되어야 함"
         assert len(chips2) == 0, "정원 내 예약에 칩이 없어야 함"
+
+    def test_batch_continues_on_individual_failure(self, db, monkeypatch):
+        """배치 reconcile — 한 건 예외가 나머지 처리를 막지 않음."""
+        b = _make_building(db)
+        room = _make_room(db, b.id, base_capacity=2)
+
+        res1 = _make_reservation(db, party_size=3)
+        _make_assignment(db, res1.id, room.id)
+        res2 = _make_reservation(db, party_size=3)
+        _make_assignment(db, res2.id, room.id)
+
+        tpl = _make_template(db, key="add_standard")
+        _make_surcharge_schedule(db, tpl, custom_type=SURCHARGE_STANDARD)
+
+        call_count = {"n": 0}
+        original = reconcile_surcharge
+
+        def _failing_once(db_arg, rid, date_arg, room_id=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("첫 번째 실패 시뮬레이션")
+            original(db_arg, rid, date_arg, room_id=room_id)
+
+        import app.services.surcharge as surcharge_mod
+        monkeypatch.setattr(surcharge_mod, "reconcile_surcharge", _failing_once)
+
+        # Should not raise even though first call fails
+        reconcile_surcharge_batch(db, [res1.id, res2.id], DATE)
+
+        # Only res2 was processed successfully (res1 failed)
+        chips2 = _surcharge_chips(db, res2.id)
+        assert len(chips2) == 1, "두 번째 예약은 처리되어야 함"
+
+    def test_no_chip_when_schedule_missing(self, db):
+        """surcharge_standard 스케줄이 없으면 칩 생성 안 함 — 예외도 없음."""
+        b = _make_building(db)
+        room = _make_room(db, b.id, base_capacity=2)
+        res = _make_reservation(db, party_size=3)  # excess=1
+
+        _make_assignment(db, res.id, room.id)
+        # No surcharge schedule created
+
+        reconcile_surcharge(db, res.id, DATE)  # should not raise
+
+        chips = _surcharge_chips(db, res.id)
+        assert len(chips) == 0
+
+    def test_preserves_sent_standard_chip(self, db):
+        """sent_at 있는 standard 칩은 보존 — 삭제 안 됨."""
+        b = _make_building(db)
+        room = _make_room(db, b.id, base_capacity=2)
+        res = _make_reservation(db, party_size=3)  # excess=1
+
+        tpl_std = _make_template(db, key="add_standard", name="일반추가요금")
+        s_std = _make_surcharge_schedule(db, tpl_std, custom_type=SURCHARGE_STANDARD)
+
+        _make_assignment(db, res.id, room.id)
+
+        # Pre-insert standard chip that was already sent
+        sent_chip = ReservationSmsAssignment(
+            tenant_id=1, reservation_id=res.id,
+            template_key=tpl_std.template_key, date=DATE,
+            assigned_by="auto", schedule_id=s_std.id,
+            sent_at=datetime.now(timezone.utc),
+        )
+        db.add(sent_chip)
+        db.flush()
+
+        reconcile_surcharge(db, res.id, DATE)
+
+        chips = _surcharge_chips(db, res.id)
+        schedule_ids = {c.schedule_id for c in chips}
+        assert s_std.id in schedule_ids, "이미 발송된 standard 칩은 보존되어야 함"

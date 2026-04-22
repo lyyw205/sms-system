@@ -362,6 +362,16 @@ def init_db():
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN unstable_cookie TEXT"))
                 print("AUTO-MIGRATE: Added unstable_cookie column to tenants table")
 
+        # tenants: surcharge 단가 설정 (인원 초과 1인/1박, 원 단위)
+        if "tenants" in inspector.get_table_names():
+            cols = [c["name"] for c in inspector.get_columns("tenants")]
+            if "surcharge_unit_standard" not in cols:
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN surcharge_unit_standard INTEGER DEFAULT 20000 NOT NULL"))
+                print("AUTO-MIGRATE: Added surcharge_unit_standard column to tenants table")
+            if "surcharge_unit_double" not in cols:
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN surcharge_unit_double INTEGER DEFAULT 25000 NOT NULL"))
+                print("AUTO-MIGRATE: Added surcharge_unit_double column to tenants table")
+
     # Task 1.5: admin 기본 비밀번호 환경변수화
     db = SessionLocal()
     try:

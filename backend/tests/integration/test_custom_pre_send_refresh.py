@@ -91,12 +91,13 @@ def _assign(db, reservation, room, date=None):
     return ra
 
 
-def _surcharge_template(db, level):
+def _surcharge_template(db, surcharge_type="standard"):
+    """surcharge_type: 'standard' or 'double'."""
     t = MessageTemplate(
         tenant_id=1,
-        template_key=f"add_{level}_person",
-        name=f"{level}인 추가요금",
-        content=f"{level}인 추가요금 안내",
+        template_key=f"add_{surcharge_type}",
+        name=f"{surcharge_type} 추가요금",
+        content=f"{surcharge_type} 추가요금 안내",
         is_active=True,
     )
     db.add(t)
@@ -104,16 +105,18 @@ def _surcharge_template(db, level):
     return t
 
 
-def _surcharge_schedule(db, template, level):
+def _surcharge_schedule(db, template, surcharge_type="standard"):
+    """surcharge_type: 'standard' or 'double'."""
+    custom_type = f"surcharge_{surcharge_type}"
     s = TemplateSchedule(
         tenant_id=1,
         template_id=template.id,
-        schedule_name=f"surcharge_{level}",
+        schedule_name=custom_type,
         schedule_type="daily",
         hour=13,
         minute=25,
         schedule_category="custom_schedule",
-        custom_type=f"surcharge_{level}",
+        custom_type=custom_type,
         is_active=True,
     )
     db.add(s)
@@ -126,8 +129,8 @@ class TestPreSendRefresh:
         """trigger 경로가 한 번도 안 돌아 칩이 없던 경우에도 발송 직전 refresh 로 생성된다."""
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         # excess=1 조건이지만 chip 생성 trigger 가 한 번도 호출되지 않음
         res = _make_reservation(db, male=3)
@@ -150,8 +153,8 @@ class TestPreSendRefresh:
         """과거엔 excess 였으나 지금은 조건 불만족인 예약: refresh 가 stale 칩 제거."""
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=4)  # 기준 4인
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         # 현재 시점: 4인 예약 (excess=0) — 추가요금 대상 아님
         res = _make_reservation(db, male=4)
@@ -178,42 +181,54 @@ class TestPreSendRefresh:
         ).all()
         assert remaining == [], "stale 칩이 refresh 로 삭제되어야 함"
 
-    def test_refresh_moves_chip_to_correct_level(self, db):
-        """excess 레벨이 바뀐 경우: 과거 레벨 칩 제거 + 현재 레벨 칩 생성."""
-        building = _make_building(db)
-        room = _make_room(db, building, base_capacity=2)
-        tpl1 = _surcharge_template(db, 1)
-        sched1 = _surcharge_schedule(db, tpl1, 1)
-        tpl2 = _surcharge_template(db, 2)
-        sched2 = _surcharge_schedule(db, tpl2, 2)
+    def test_refresh_moves_chip_to_correct_type(self, db):
+        """객실 타입이 바뀐 경우: standard 칩 제거 + double 칩 생성.
 
-        # 현재 상태: 4명 (excess=2)
-        res = _make_reservation(db, male=4)
+        더블룸으로 재배정됐을 때 refresh 가 타입 전환을 처리하는지 확인한다.
+        """
+        from app.db.models import RoomBizItemLink
+        from app.services.surcharge import DOUBLE_ROOM_BIZ_ITEM_IDS
+        double_biz_id = next(iter(DOUBLE_ROOM_BIZ_ITEM_IDS))
+
+        building = _make_building(db)
+        # 더블룸으로 설정된 방
+        room = _make_room(db, building, base_capacity=2)
+        link = RoomBizItemLink(tenant_id=1, room_id=room.id, biz_item_id=double_biz_id)
+        db.add(link)
+        db.flush()
+
+        tpl_std = _surcharge_template(db, "standard")
+        sched_std = _surcharge_schedule(db, tpl_std, "standard")
+        tpl_dbl = _surcharge_template(db, "double")
+        sched_dbl = _surcharge_schedule(db, tpl_dbl, "double")
+
+        # 현재 상태: 더블룸에 3명 (excess=1)
+        res = _make_reservation(db, male=3)
         _assign(db, res, room)
 
-        # 과거 상태: excess=1 로 sched1 칩이 박혀있었음 (stale)
+        # 과거에 standard 칩이 박혀있었음 (일반 방이었을 때 생성된 stale)
         stale = ReservationSmsAssignment(
             tenant_id=1,
             reservation_id=res.id,
-            template_key=tpl1.template_key,
+            template_key=tpl_std.template_key,
             date=today_kst(),
             assigned_by="auto",
-            schedule_id=sched1.id,
+            schedule_id=sched_std.id,
         )
         db.add(stale)
         db.flush()
 
-        # sched2 를 실행 — refresh 가 sched1 stale 칩 삭제 + sched2 칩 생성
-        targets = _executor(db).get_targets(sched2)
+        # sched_dbl 실행 — refresh 가 standard stale 칩 삭제 + double 칩 생성
+        targets = _executor(db).get_targets(sched_dbl)
 
         assert [t.id for t in targets] == [res.id]
-        # sched1 칩은 사라져야 함
+        # standard 칩은 사라져야 함
         assert db.query(ReservationSmsAssignment).filter(
-            ReservationSmsAssignment.schedule_id == sched1.id,
+            ReservationSmsAssignment.schedule_id == sched_std.id,
         ).count() == 0
-        # sched2 칩이 새로 생겨야 함
+        # double 칩이 새로 생겨야 함
         assert db.query(ReservationSmsAssignment).filter(
-            ReservationSmsAssignment.schedule_id == sched2.id,
+            ReservationSmsAssignment.schedule_id == sched_dbl.id,
             ReservationSmsAssignment.sent_at.is_(None),
         ).count() == 1
 
@@ -221,8 +236,8 @@ class TestPreSendRefresh:
         """도미토리는 refresh 후에도 대상 아님."""
         building = _make_building(db)
         dorm = _make_room(db, building, base_capacity=2, is_dormitory=True, room_number="D101")
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         res = _make_reservation(db, male=3)
         _assign(db, res, dorm)
@@ -266,8 +281,8 @@ class TestPreSendRefresh:
         """preview_targets / for_preview=True 호출 시 refresh 훅을 안 탐 — DB 쓰기 부작용 방지."""
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         # refresh 가 돌면 칩이 생성될 조건이지만, 지금은 칩이 없는 상태
         res = _make_reservation(db, male=3)
@@ -288,8 +303,8 @@ class TestPreSendRefresh:
         """preview_targets 메서드가 내부적으로 for_preview=True 를 넘겨 refresh 를 막음."""
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         res = _make_reservation(db, male=3)
         _assign(db, res, room)
@@ -350,8 +365,8 @@ class TestRefreshResilience:
         """
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         res = _make_reservation(db, male=3)
         _assign(db, res, room)
@@ -374,7 +389,7 @@ class TestRefreshResilience:
 
         import app.services.custom_schedule_registry as registry
         monkeypatch.setitem(
-            registry.PRE_SEND_REFRESH_HANDLERS, "surcharge_1", _raising_handler,
+            registry.PRE_SEND_REFRESH_HANDLERS, "surcharge_standard", _raising_handler,
         )
 
         # get_targets 가 예외 없이 완주해야 함
@@ -385,13 +400,13 @@ class TestRefreshResilience:
     def test_refresh_is_idempotent_on_repeated_calls(self, db):
         """같은 스케줄 refresh 를 연속 호출해도 칩 상태가 바뀌지 않음.
 
-        surcharge_1/2/3/4 가 13:25 동시 트리거될 때 reconcile 이 여러 번 돌아도
-        정합성 문제가 없음을 문서화한다.
+        surcharge_standard / surcharge_double 이 13:25 동시 트리거될 때 reconcile 이
+        여러 번 돌아도 정합성 문제가 없음을 문서화한다.
         """
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
-        sched = _surcharge_schedule(db, tpl, 1)
+        tpl = _surcharge_template(db, "standard")
+        sched = _surcharge_schedule(db, tpl, "standard")
 
         res = _make_reservation(db, male=3)
         _assign(db, res, room)
@@ -423,7 +438,7 @@ class TestCustomSendConditionGuard:
         """custom 스케줄 + send_condition 불만족 상황에서도 get_targets 까지 도달."""
         building = _make_building(db)
         room = _make_room(db, building, base_capacity=2)
-        tpl = _surcharge_template(db, 1)
+        tpl = _surcharge_template(db, "standard")
 
         # 말도 안 되는 비율(100 이상)로 설정 — standard 라면 무조건 skip
         sched = TemplateSchedule(
@@ -434,7 +449,7 @@ class TestCustomSendConditionGuard:
             hour=13,
             minute=25,
             schedule_category="custom_schedule",
-            custom_type="surcharge_1",
+            custom_type="surcharge_standard",
             is_active=True,
             send_condition_date="today",
             send_condition_ratio=100.0,
