@@ -73,6 +73,37 @@ AVAILABLE_VARIABLES = {
     "yesterday_male_count": {"description": "어제 남성 인원", "example": "10", "category": "party"},
     "yesterday_female_count": {"description": "어제 여성 인원", "example": "11", "category": "party"},
     "yesterday_total_count": {"description": "어제 총 인원", "example": "21", "category": "party"},
+    # 인원 초과 추가요금 (add_standard / add_double 템플릿 전용)
+    "base_capacity": {
+        "description": "객실 기본 정원 (add_standard/add_double 전용)",
+        "example": "4",
+        "category": "surcharge",
+    },
+    "guest_count": {
+        "description": "실제 예약 인원 (add_standard/add_double 전용)",
+        "example": "6",
+        "category": "surcharge",
+    },
+    "excess": {
+        "description": "초과 인원 수 (add_standard/add_double 전용)",
+        "example": "2",
+        "category": "surcharge",
+    },
+    "nights": {
+        "description": "체류 박수 — NULL checkout 은 1박 (add_standard/add_double 전용)",
+        "example": "3",
+        "category": "surcharge",
+    },
+    "surcharge_per_night": {
+        "description": "1박당 추가 금액 (만원 단위, 정수면 정수 / 소수면 소수 표기)",
+        "example": "2.5",
+        "category": "surcharge",
+    },
+    "total_surcharge": {
+        "description": "총 추가 금액 (만원 단위) = surcharge_per_night × nights",
+        "example": "7.5",
+        "category": "surcharge",
+    },
 }
 
 
