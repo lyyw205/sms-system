@@ -4,6 +4,7 @@ API 문서: https://smartsms.aligo.in/admin/api/spec.html
 """
 from typing import Dict, Any, List
 from datetime import datetime
+from pathlib import Path
 import httpx
 import logging
 from app.config import settings
@@ -14,6 +15,11 @@ logger = logging.getLogger(__name__)
 ALIGO_SEND_URL = "https://apis.aligo.in/send/"
 ALIGO_SEND_MASS_URL = "https://apis.aligo.in/send_mass/"
 ALIGO_REMAIN_URL = "https://apis.aligo.in/remain/"
+
+# 파티 MMS 이미지 디렉토리 — 현재 레포 내부에 배치하여 Aligo /send_mass/ 로 직접 첨부.
+# 운영자는 backend/app/static/mms/party0{1,2,3}.jpg 파일을 배치해야 함.
+PARTY_MMS_IMAGE_DIR = Path(__file__).resolve().parent.parent / "static" / "mms"
+PARTY_MMS_IMAGE_FILES = ("party01.jpg", "party02.jpg", "party03.jpg")
 
 # SMS: 90바이트 이하, LMS: 90바이트 초과
 SMS_BYTE_LIMIT = 90
@@ -168,6 +174,133 @@ class RealSMSProvider:
             }
         except Exception as e:
             logger.error(f"[Aligo] 예외 (단건 발송): {e}")
+            return {
+                "success": False,
+                "message_id": message_id,
+                "to": to,
+                "message": message,
+                "timestamp": timestamp,
+                "provider": "real",
+                "error": str(e),
+            }
+
+    async def send_party_mms(self, to: str, message: str, **kwargs) -> Dict[str, Any]:
+        """파티 MMS 발송 — Aligo /send_mass/ 에 msg_type=MMS + 이미지 3장 직접 첨부.
+
+        - 이미지: backend/app/static/mms/party0{1,2,3}.jpg (PARTY_MMS_IMAGE_DIR)
+        - 인증: 일반 SMS 와 동일한 현재 tenant 의 Aligo 계정 사용
+          (settings.ALIGO_API_KEY / user_id, self.sender)
+        - 본문 길이: msg_type=MMS 는 최대 2000바이트 (Aligo 스펙)
+
+        Returns: SMSProvider.send_sms 와 동일한 dict 형태.
+        """
+        timestamp = datetime.now().isoformat()
+        message_id = f"real_mms_{int(datetime.now().timestamp())}"
+        testmode_yn = kwargs.get("testmode_yn", "Y" if self.testmode else "N")
+
+        # 1. 이미지 파일 존재 검증
+        image_paths = [PARTY_MMS_IMAGE_DIR / name for name in PARTY_MMS_IMAGE_FILES]
+        missing = [str(p) for p in image_paths if not p.is_file()]
+        if missing:
+            err = f"MMS 이미지 누락: {', '.join(missing)}"
+            logger.error(f"[Aligo MMS] {err}")
+            return {
+                "success": False,
+                "message_id": message_id,
+                "to": to,
+                "message": message,
+                "timestamp": timestamp,
+                "provider": "real",
+                "error": err,
+            }
+
+        # 2. multipart form-data 구성 (httpx 가 files/data 를 자동 병합)
+        data = {
+            **_build_auth_params(),
+            "sender": self.sender,
+            "rec_1": to,
+            "msg_1": message,
+            "cnt": "1",
+            "msg_type": "MMS",
+            "testmode_yn": testmode_yn,
+        }
+        title = kwargs.get("title", "")
+        if title:
+            data["title"] = title
+
+        files = [
+            (f"image{i}", (p.name, p.read_bytes(), "image/jpeg"))
+            for i, p in enumerate(image_paths, start=1)
+        ]
+
+        logger.info(
+            f"[Aligo MMS] 요청 — to={to}, testmode={testmode_yn}, "
+            f"images={len(files)}, bytes={len(message.encode('utf-8', errors='replace'))}"
+        )
+
+        try:
+            diag(
+                "aligo.send_mms.enter",
+                level="verbose",
+                to=mask_phone(to),
+                testmode=testmode_yn,
+                image_count=len(files),
+            )
+        except Exception:
+            pass
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    ALIGO_SEND_MASS_URL,
+                    data=data,
+                    files=files,
+                    timeout=60.0,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+            logger.info(f"[Aligo MMS] 응답: {result}")
+            try:
+                diag(
+                    "aligo.send_mms.exit",
+                    level="verbose",
+                    result_code=result.get("result_code"),
+                )
+            except Exception:
+                pass
+
+            success = str(result.get("result_code")) == "1"
+            if not success:
+                logger.warning(
+                    f"[Aligo MMS] 발송 실패: result_code={result.get('result_code')}, "
+                    f"message={result.get('message')}"
+                )
+
+            return {
+                "success": success,
+                "message_id": str(result.get("msg_id", message_id)),
+                "to": to,
+                "message": message,
+                "timestamp": timestamp,
+                "provider": "real",
+                "error": None if success else result.get("message", "알 수 없는 오류"),
+                "raw": result,
+            }
+
+        except httpx.HTTPError as e:
+            logger.error(f"[Aligo MMS] HTTP 오류: {e}")
+            return {
+                "success": False,
+                "message_id": message_id,
+                "to": to,
+                "message": message,
+                "timestamp": timestamp,
+                "provider": "real",
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"[Aligo MMS] 예외: {e}")
             return {
                 "success": False,
                 "message_id": message_id,

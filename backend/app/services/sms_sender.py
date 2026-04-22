@@ -16,6 +16,11 @@ from app.services.activity_logger import log_activity
 
 logger = logging.getLogger(__name__)
 
+# MMS(이미지 첨부) 경로로 발송할 템플릿 키 집합.
+# 일반 SMS 경로(sms_provider.send_sms) 대신 sms_provider.send_party_mms 로 라우팅.
+# 새 MMS 템플릿 추가 시 이 집합과 provider 메서드만 맞추면 됨.
+MMS_TEMPLATES: frozenset[str] = frozenset({"party3_today_mms"})
+
 
 def find_unreplaced_vars(text: str) -> list[str]:
     """텍스트에서 미치환 {{변수}} 를 찾아 변수명 리스트로 반환."""
@@ -123,15 +128,31 @@ async def send_single_sms(
         logger.error(f"[{template_key}] {error_msg} - 발송 차단됨 (수신자: {reservation.phone})")
         return {"success": False, "message_id": None, "error": error_msg, "message": message_content}
 
+    is_mms = template_key in MMS_TEMPLATES
+
     diag(
         "sms_sender.provider_call",
         level="verbose",
         res_id=reservation.id,
         template_key=template_key,
         provider=type(sms_provider).__name__,
+        mms=is_mms,
     )
 
-    result = await sms_provider.send_sms(to=reservation.phone, message=message_content)
+    if is_mms:
+        # MMS 템플릿은 전용 프록시 경로로 라우팅. 프로바이더가 메서드 미구현이면
+        # 즉시 실패로 기록 (예: 테스트 mock). 런타임 중에는 Real 만 사용.
+        send_party_mms = getattr(sms_provider, "send_party_mms", None)
+        if send_party_mms is None:
+            result = {
+                "success": False,
+                "message_id": None,
+                "error": f"MMS 미지원 provider: {type(sms_provider).__name__}",
+            }
+        else:
+            result = await send_party_mms(to=reservation.phone, message=message_content)
+    else:
+        result = await sms_provider.send_sms(to=reservation.phone, message=message_content)
 
     success = bool(result.get("success"))
     if not skip_activity_log:

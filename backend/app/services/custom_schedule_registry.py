@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 CUSTOM_SCHEDULE_TYPES = {
     "surcharge_standard": "인원 초과 (일반 객실)",
     "surcharge_double": "인원 초과 (더블 객실, 업그레이드비 포함)",
+    "party3_today_mms": "파티 당일 안내 (MMS, 2차 참여자)",
 }
 
 
@@ -52,11 +53,22 @@ def _refresh_surcharge(db: Session, target_date: str) -> None:
     reconcile_surcharge_batch(db, reservation_ids, target_date)
 
 
+def _refresh_party3_today_mms(db: Session, target_date: str) -> None:
+    """party3_today_mms 발송 직전 칩 상태 최신화.
+
+    target_date 에 체크인하는 CONFIRMED 예약 중 party_type ∈ {'2','2차만'} 만
+    칩으로 유지 (조건 불만족 미발송 칩은 삭제).
+    """
+    from app.services.party3_mms import reconcile_party3_mms
+    reconcile_party3_mms(db, target_date)
+
+
 # custom_type → (db, target_date) -> None
 # 같은 reconcile 로직을 공유하는 타입은 같은 handler 를 가리키면 됨.
 PRE_SEND_REFRESH_HANDLERS: dict[str, Callable[[Session, str], None]] = {
     "surcharge_standard": _refresh_surcharge,
     "surcharge_double": _refresh_surcharge,
+    "party3_today_mms": _refresh_party3_today_mms,
 }
 
 

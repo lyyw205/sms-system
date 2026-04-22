@@ -1,0 +1,125 @@
+"""party3_mms.py — 오늘 체크인 중 party_type='2'/'2차만' 예약용 MMS 칩 자동 생성.
+
+스케줄(custom_schedule, custom_type='party3_today_mms')이 지정 시각에 실행되기
+직전에 pre_send_refresh 로 이 모듈의 reconcile 가 호출된다. 그 시점에
+target_date 에 체크인하는 CONFIRMED 예약을 스캔해서:
+
+  - 유효 party_type (ReservationDailyInfo.party_type 우선, 없으면 Reservation.party_type)
+    가 PARTY3_TYPES 안에 들면 → MMS 칩 생성 (없으면 유지)
+  - 아니면 → 미발송 MMS 칩 삭제 (이미 발송된 칩은 건드리지 않음)
+
+실제 MMS 발송은 services/sms_sender.send_single_sms 의 MMS_TEMPLATES 분기에서
+레거시 프록시(http://15.164.246.59:3000/sendMass/image)로 라우팅된다.
+"""
+import logging
+from typing import Optional
+from sqlalchemy.orm import Session
+
+from app.db.models import (
+    Reservation,
+    ReservationStatus,
+    ReservationDailyInfo,
+    ReservationSmsAssignment,
+    TemplateSchedule,
+)
+from app.db.tenant_context import current_tenant_id
+from app.diag_logger import diag
+
+logger = logging.getLogger(__name__)
+
+PARTY3_MMS_CUSTOM_TYPE = "party3_today_mms"
+PARTY3_TYPES = ("2", "2차만")
+
+
+def _find_schedule(db: Session) -> Optional[TemplateSchedule]:
+    return db.query(TemplateSchedule).filter(
+        TemplateSchedule.schedule_category == 'custom_schedule',
+        TemplateSchedule.custom_type == PARTY3_MMS_CUSTOM_TYPE,
+        TemplateSchedule.is_active == True,
+    ).first()
+
+
+def reconcile_party3_mms(db: Session, date: str) -> None:
+    """target_date 기준 party3 MMS 칩 재조정.
+
+    - 대상: check_in_date == date, status==CONFIRMED, 유효 party_type ∈ PARTY3_TYPES
+    - 유효 party_type = ReservationDailyInfo(date).party_type or Reservation.party_type
+    - stale 칩은 미발송인 경우만 삭제 (이미 발송된 칩 보존)
+    """
+    diag("party3_mms.reconcile.enter", level="verbose", date=date)
+    schedule = _find_schedule(db)
+    if not schedule or not schedule.template:
+        diag("party3_mms.no_schedule", level="verbose", date=date)
+        return
+
+    template_key = schedule.template.template_key
+
+    # 1. 당일 체크인 CONFIRMED 예약 전체
+    reservations = db.query(Reservation).filter(
+        Reservation.check_in_date == date,
+        Reservation.status == ReservationStatus.CONFIRMED,
+    ).all()
+
+    if not reservations:
+        diag("party3_mms.no_reservations", level="verbose", date=date)
+        # 그럼에도 고아 칩이 있을 수 있으므로 계속 진행 (existing 정리)
+
+    reservation_ids = [r.id for r in reservations]
+
+    # 2. 해당 예약들의 당일 daily info 한 번에 조회
+    daily_party_map: dict[int, Optional[str]] = {}
+    if reservation_ids:
+        daily_rows = db.query(ReservationDailyInfo).filter(
+            ReservationDailyInfo.reservation_id.in_(reservation_ids),
+            ReservationDailyInfo.date == date,
+        ).all()
+        daily_party_map = {d.reservation_id: d.party_type for d in daily_rows}
+
+    # 3. 유효 party_type 계산 → 타겟 집합
+    target_ids: set[int] = set()
+    for r in reservations:
+        effective = daily_party_map.get(r.id) or r.party_type
+        if effective in PARTY3_TYPES:
+            target_ids.add(r.id)
+
+    # 4. 기존 칩 조회
+    existing_chips = db.query(ReservationSmsAssignment).filter(
+        ReservationSmsAssignment.schedule_id == schedule.id,
+        ReservationSmsAssignment.date == date,
+    ).all()
+    existing_ids = {c.reservation_id for c in existing_chips}
+
+    # 5. 생성 (target - existing)
+    tenant_id = current_tenant_id.get()
+    created = 0
+    for rid in (target_ids - existing_ids):
+        db.add(ReservationSmsAssignment(
+            reservation_id=rid,
+            template_key=template_key,
+            date=date,
+            assigned_by='auto',
+            schedule_id=schedule.id,
+            sent_at=None,
+            tenant_id=tenant_id,
+        ))
+        created += 1
+
+    # 6. 삭제 (existing - target, 미발송만)
+    deleted = 0
+    for chip in existing_chips:
+        if chip.reservation_id not in target_ids and chip.sent_at is None:
+            db.delete(chip)
+            deleted += 1
+
+    if created or deleted:
+        db.flush()
+
+    diag(
+        "party3_mms.reconcile.done",
+        level="verbose",
+        date=date,
+        targets=len(target_ids),
+        existing=len(existing_ids),
+        created=created,
+        deleted=deleted,
+    )
