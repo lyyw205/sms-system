@@ -32,7 +32,7 @@ def _setup(db):
     sched = TemplateSchedule(
         tenant_id=1, template_id=tpl.id, schedule_name="객실안내 발송",
         schedule_type="daily", hour=15, minute=0,
-        date_target="today", target_mode="once",
+        date_target="today", target_mode="first_night",
         filters=json.dumps([
             {"type": "assignment", "value": "room"},
             {"type": "building", "value": str(building.id)},

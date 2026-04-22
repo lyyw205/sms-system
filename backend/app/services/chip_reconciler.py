@@ -15,6 +15,7 @@
 칩 보호: assigned_by='manual'/'excluded' 또는 sent_at 있으면 삭제 안 됨.
 """
 import logging
+from datetime import timedelta
 from typing import List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session
@@ -26,9 +27,9 @@ from app.db.models import (
     ReservationStatus,
     TemplateSchedule,
 )
-from app.config import today_kst
+from app.config import today_kst, today_kst_date
 from app.diag_logger import diag
-from app.services.filters import apply_structural_filters
+from app.services.filters import apply_structural_filters, extract_stay_filter
 from app.services.schedule_utils import get_schedule_dates, resolve_target_date
 
 logger = logging.getLogger(__name__)
@@ -204,23 +205,9 @@ def _reservation_matches_schedule(
     reservation: Reservation,
     target_date: str,
 ) -> bool:
-    """Check if a reservation matches a schedule's structural filters for a specific date.
-
-    For checkout dates (no RoomAssignment), falls back to check_out - 1 day
-    for building/room filters.
-    """
-    from datetime import datetime, timedelta
-
-    # checkout일 fallback: checkout일에는 RoomAssignment 없으므로
-    # check_out - 1일의 배정을 기준으로 체크
-    effective_date = target_date
-    if reservation.check_out_date == target_date:
-        prev_day = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-        if prev_day >= (reservation.check_in_date or target_date):
-            effective_date = prev_day
-
+    """Check if a reservation matches a schedule's structural filters for target_date."""
     query = db.query(Reservation).filter(Reservation.id == reservation.id)
-    query = apply_structural_filters(db, query, schedule, effective_date)
+    query = apply_structural_filters(db, query, schedule, target_date)
     return query.first() is not None
 
 
@@ -238,30 +225,38 @@ def _get_candidate_reservations(
         Reservation.status == ReservationStatus.CONFIRMED,
     )
 
+    # Safety guard: check_in 이 ±7일 범위 내 (A 경로와 동일)
+    # — 너무 과거/미래 예약에 칩이 만들어졌다가 safety guard 로 발송 못 되는 stale 방지
+    min_date = (today_kst_date() - timedelta(days=7)).strftime('%Y-%m-%d')
+    max_date = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
+    query = query.filter(
+        Reservation.check_in_date >= min_date,
+        Reservation.check_in_date <= max_date,
+    )
+
     # Date range: include reservations active on target_date
-    date_target_val = schedule.date_target
-    if date_target_val and date_target_val.endswith('_checkout'):
-        query = query.filter(
-            Reservation.check_out_date.isnot(None),
-            Reservation.check_out_date == target_date,
+    target_mode = schedule.target_mode
+    # 기본: stay-coverage
+    query = query.filter(
+        or_(
+            and_(
+                Reservation.check_in_date <= target_date,
+                Reservation.check_out_date > target_date,
+            ),
+            and_(
+                Reservation.check_in_date == target_date,
+                Reservation.check_out_date.is_(None),
+            ),
         )
-    else:
-        target_mode = schedule.target_mode or 'once'
-        if target_mode in ('daily', 'last_day'):
-            query = query.filter(
-                or_(
-                    and_(
-                        Reservation.check_in_date <= target_date,
-                        Reservation.check_out_date > target_date,
-                    ),
-                    and_(
-                        Reservation.check_in_date == target_date,
-                        Reservation.check_out_date.is_(None),
-                    ),
-                )
-            )
-        else:
-            query = query.filter(Reservation.check_in_date == target_date)
+    )
+    # first_night narrow
+    if target_mode == 'first_night':
+        query = query.filter(Reservation.check_in_date == target_date)
+    # last_night 는 post-filter 없이 stay-coverage 면 충분 (실행 시점에 _filter_last_day)
+
+    # stay_filter='exclude': 연박자는 칩 대상에서 제외 (A 경로와 동일)
+    if extract_stay_filter(schedule) == 'exclude':
+        query = query.filter(Reservation.is_long_stay == False)  # noqa: E712
 
     # 날짜 무관 필터만 적용 (assignment, gender, naver_room_type 등)
     query = apply_structural_filters(db, query, schedule, target_date, only_date_independent=True)

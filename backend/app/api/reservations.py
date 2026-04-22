@@ -143,7 +143,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
                 from app.db.models import TemplateSchedule
                 daily_keys = {
                     s.template.template_key
-                    for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
+                    for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode.is_(None)).all()
                     if s.template
                 }
             source = [a for a in source if (a.date or '') == filter_date or ((a.date or '') < filter_date and a.sent_at is not None and a.template_key not in daily_keys) or ((a.date or '') > filter_date and a.sent_at is None and a.template_key not in daily_keys)]
@@ -329,7 +329,7 @@ async def get_reservations(
         from app.db.models import TemplateSchedule
         _daily_keys = {
             s.template.template_key
-            for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode == 'daily').all()
+            for s in db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True, TemplateSchedule.target_mode.is_(None)).all()
             if s.template
         }
 

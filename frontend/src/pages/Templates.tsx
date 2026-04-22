@@ -91,9 +91,62 @@ interface TemplateSchedule {
   send_condition_operator?: 'gte' | 'lte' | null;
 }
 
-interface ScheduleFilter {
-  type: string;
+interface AssignmentFilter {
+  type: 'assignment';
+  value: 'room' | 'party' | 'unstable' | 'unassigned';
+  buildings?: number[];
+  include_unassigned?: boolean;
+  stay_filter?: 'exclude' | null;
+}
+
+interface ColumnMatchFilter {
+  type: 'column_match';
   value: string;
+}
+
+type ScheduleFilter = AssignmentFilter | ColumnMatchFilter | { type: string; value: string };
+
+interface AssignmentState {
+  room: boolean;
+  room_buildings: number[];
+  room_include_unassigned: boolean;
+  room_stay_exclude: boolean;
+  party: boolean;
+  unstable: boolean;
+}
+
+function buildAssignmentFilters(state: AssignmentState): AssignmentFilter[] {
+  const out: AssignmentFilter[] = [];
+  if (state.room) {
+    const f: AssignmentFilter = { type: 'assignment', value: 'room' };
+    if (state.room_buildings.length) f.buildings = state.room_buildings;
+    if (state.room_include_unassigned) f.include_unassigned = true;
+    if (state.room_stay_exclude) f.stay_filter = 'exclude';
+    out.push(f);
+  }
+  if (state.party) out.push({ type: 'assignment', value: 'party' });
+  if (state.unstable) out.push({ type: 'assignment', value: 'unstable' });
+  return out;
+}
+
+function parseAssignmentState(filters: ScheduleFilter[]): AssignmentState {
+  const state: AssignmentState = {
+    room: false, room_buildings: [], room_include_unassigned: false,
+    room_stay_exclude: false,
+    party: false, unstable: false,
+  };
+  for (const f of filters) {
+    if (f.type !== 'assignment') continue;
+    const af = f as AssignmentFilter;
+    if (af.value === 'room') {
+      state.room = true;
+      state.room_buildings = af.buildings ?? [];
+      state.room_include_unassigned = !!af.include_unassigned;
+      state.room_stay_exclude = af.stay_filter === 'exclude';
+    } else if (af.value === 'party') state.party = true;
+    else if (af.value === 'unstable') state.unstable = true;
+  }
+  return state;
 }
 
 interface Building {
@@ -199,19 +252,21 @@ function getScheduleTypeLabel(type: string): string {
 
 function getFilterLabel(f: ScheduleFilter, buildingList?: Building[]): string {
   if (f.type === 'assignment') {
-    if (f.value === 'room') return '객실 배정';
-    if (f.value === 'party') return '파티만';
-    if (f.value === 'unassigned') return '미배정';
-    return `배정: ${f.value}`;
-  }
-  if (f.type === 'building') {
-    if (buildingList) {
-      const b = buildingList.find(b => String(b.id) === f.value);
-      return b ? b.name : `건물 #${f.value}`;
+    const af = f as AssignmentFilter;
+    if (af.value === 'room') {
+      const parts = ['객실 예약'];
+      if (af.buildings?.length) {
+        const names = af.buildings.map(id => buildingList?.find(b => b.id === id)?.name ?? `#${id}`);
+        parts.push(`(${names.join(', ')})`);
+      }
+      if (af.include_unassigned) parts.push('+ 미배정');
+      if (af.stay_filter === 'exclude') parts.push('· 연박자 제외');
+      return parts.join(' ');
     }
-    return `건물: ${f.value}`;
+    if (af.value === 'party') return '파티만';
+    if (af.value === 'unassigned') return '미배정';
+    if (af.value === 'unstable') return '언스테이블';
   }
-  if (f.type === 'room') return `객실: ${f.value}`;
   if (f.type === 'column_match') {
     const parsed = parseColumnMatchValue(f.value);
     if (parsed) {
@@ -222,10 +277,7 @@ function getFilterLabel(f: ScheduleFilter, buildingList?: Building[]): string {
       return `${colLabel}에 '${parsed.text}' ${opLabel}`;
     }
   }
-  // legacy backward compat
-  if (f.type === 'room_assigned') return '객실배정자';
-  if (f.type === 'party_only') return '파티만';
-  return `${f.type}: ${f.value}`;
+  return '';
 }
 
 function parseFilters(raw: unknown): ScheduleFilter[] {
@@ -238,11 +290,10 @@ function parseFilters(raw: unknown): ScheduleFilter[] {
 
 function getScheduleDateLabel(record: TemplateSchedule): string {
   switch (record.date_target) {
+    case 'yesterday': return '어제';
     case 'today': return '오늘';
     case 'tomorrow': return '내일';
-    case 'today_checkout': return '오늘 체크아웃';
-    case 'tomorrow_checkout': return '내일 체크아웃';
-    default: return '오늘';
+    default: return record.date_target || '';
   }
 }
 
@@ -277,36 +328,30 @@ function getTargetSummary(record: TemplateSchedule, buildingList?: Building[]): 
   const filters = parseFilters(record.filters);
   const dateLabel = getScheduleDateLabel(record);
 
-  const buildingFilters = filters.filter(f => f.type === 'building');
-  const assignmentFilters = filters.filter(f => f.type === 'assignment');
+  const assignmentFilters = filters.filter(f => f.type === 'assignment') as AssignmentFilter[];
   const columnMatchFilters = filters.filter(f => f.type === 'column_match');
 
-  const buildingText = buildingFilters.length > 0
-    ? buildingFilters.map(f => {
-        if (buildingList) {
-          const b = buildingList.find(b => String(b.id) === f.value);
-          return b?.name || f.value;
-        }
-        return f.value;
-      }).join('·')
-    : '';
+  const assignmentTexts = assignmentFilters.map(f => {
+    if (f.value === 'room') {
+      const parts = ['객실배정'];
+      if (f.buildings?.length && buildingList) {
+        const names = f.buildings.map(id => buildingList.find(b => b.id === id)?.name ?? `#${id}`);
+        parts.push(`(${names.join('·')})`);
+      }
+      return parts.join(' ');
+    }
+    if (f.value === 'party') return '파티만';
+    if (f.value === 'unassigned') return '미배정';
+    if (f.value === 'unstable') return '언스테이블';
+    return f.value;
+  });
 
-  const assignmentText = assignmentFilters.length > 0
-    ? assignmentFilters.map(f => {
-        if (f.value === 'room') return '객실배정';
-        if (f.value === 'party') return '파티만';
-        if (f.value === 'unassigned') return '미배정';
-        return f.value;
-      }).join('·')
-    : '';
-
-  if (!buildingText && !assignmentText && columnMatchFilters.length === 0) {
+  if (assignmentTexts.length === 0 && columnMatchFilters.length === 0) {
     return <span className="text-caption text-[#8B95A1]">{dateLabel} 전체 예약자</span>;
   }
 
   const parts: string[] = [];
-  if (buildingText) parts.push(buildingText);
-  if (assignmentText) parts.push(`${assignmentText} 상태`);
+  if (assignmentTexts.length > 0) parts.push(assignmentTexts.join('·'));
   if (columnMatchFilters.length > 0) {
     const cmTexts = columnMatchFilters.map(f => {
       const parsed = parseColumnMatchValue(f.value);
@@ -320,7 +365,7 @@ function getTargetSummary(record: TemplateSchedule, buildingList?: Building[]): 
     if (cmTexts.length > 0) parts.push(cmTexts.join(', '));
   }
 
-  return <span className="text-caption text-[#4E5968] dark:text-gray-400">{parts.join('의 ')}의 {dateLabel} 예약자</span>;
+  return <span className="text-caption text-[#4E5968] dark:text-gray-400">{parts.join(' · ')}의 {dateLabel} 예약자</span>;
 }
 
 const CATEGORY_ICON: Record<string, string> = {
@@ -426,10 +471,15 @@ const Templates: React.FC = () => {
   const [sActiveEndHour, setSActiveEndHour] = useState<string>('');
 
   const [sFilters, setSFilters] = useState<ScheduleFilter[]>([]);
-  const [sTargetMode, setSTargetMode] = useState<'once' | 'daily' | 'last_day'>('once');
+  const [sTargetMode, setSTargetMode] = useState<'first_night' | 'last_night' | ''>('');
   const [sDateTarget, setSDateTarget] = useState<string>('today');
   const [sStayFilter, setSStayFilter] = useState<string>('');
   const sExcludeSent = true; // 항상 발송 완료 대상 제외
+  const [assignmentState, setAssignmentState] = useState<AssignmentState>({
+    room: false, room_buildings: [], room_include_unassigned: false,
+    room_stay_exclude: false,
+    party: false, unstable: false,
+  });
   const [cmRows, setCmRows] = useState<{ column: string; operator: '' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty'; text: string }[]>([{ column: 'party_type', operator: '', text: '' }]);
   const [sActive, setSActive] = useState(true);
 
@@ -649,7 +699,7 @@ const Templates: React.FC = () => {
     setSHour('9'); setSMinute('0'); setSDayOfWeek([]);
     setSIntervalMinutes('10'); setSActiveStartHour(''); setSActiveEndHour('');
     setSFilters([]);
-    setSTargetMode('once');
+    setSTargetMode('');
     setSDateTarget('today');
     setSStayFilter('');
     setCmRows([{ column: 'party_type', operator: '', text: '' }]);
@@ -664,6 +714,11 @@ const Templates: React.FC = () => {
     setSSendConditionDate('tomorrow');
     setSSendConditionRatio('');
     setSSendConditionOperator('gte');
+    setAssignmentState({
+      room: false, room_buildings: [], room_include_unassigned: false,
+      room_stay_exclude: false,
+      party: false, unstable: false,
+    });
   };
 
   const openCreateSchedule = () => {
@@ -689,7 +744,9 @@ const Templates: React.FC = () => {
       const parsed = parseColumnMatchValue(f.value);
       return parsed ? { column: parsed.column, operator: parsed.operator as any, text: parsed.text } : { column: 'party_type', operator: 'contains' as const, text: '' };
     }));
-    setSTargetMode(s.target_mode === 'daily' ? 'daily' : s.target_mode === 'last_day' ? 'last_day' : 'once');
+    setAssignmentState(parseAssignmentState(parsedFilters));
+    const legacyMap: Record<string, string> = { once: 'first_night', daily: '', last_day: 'last_night' };
+    setSTargetMode((legacyMap[s.target_mode ?? ''] ?? s.target_mode ?? '') as 'first_night' | 'last_night' | '');
     setSDateTarget(s.date_target || 'today');
     setSStayFilter(s.stay_filter || '');
     // sExcludeSent는 항상 true 고정
@@ -711,6 +768,11 @@ const Templates: React.FC = () => {
     const hasActiveHours = (sType === 'hourly' || sType === 'interval')
       && sActiveStartHour !== '' && sActiveEndHour !== '';
 
+    // Build v2 filters: assignment filters from assignmentState + column_match filters
+    const assignmentFilters = sCategory === 'standard' ? buildAssignmentFilters(assignmentState) : [];
+    const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
+    const allFilters: ScheduleFilter[] = [...assignmentFilters, ...columnMatchFilters];
+
     return {
       schedule_name: sName,
       template_id: Number(sTemplateId),
@@ -722,11 +784,10 @@ const Templates: React.FC = () => {
       active_start_hour: hasActiveHours ? Number(sActiveStartHour) : null,
       active_end_hour: hasActiveHours ? Number(sActiveEndHour) : null,
       timezone: 'Asia/Seoul',
-      filters: sFilters.length > 0 ? sFilters : undefined,
+      filters: allFilters.length > 0 ? allFilters : undefined,
       date_target: sCategory === 'event' ? null : (sDateTarget || null),
-      stay_filter: sCategory === 'event' ? null : (sStayFilter || null),
-      target_mode: sCategory === 'event' ? 'once' : sTargetMode,
-      once_per_stay: sCategory === 'event' ? true : sTargetMode === 'once',
+      stay_filter: null, // v2: stay options live inside room assignment filter
+      target_mode: sCategory === 'event' ? null : (sTargetMode || null),
       exclude_sent: sExcludeSent,
       active: sActive,
       schedule_category: sCategory,
@@ -1086,7 +1147,8 @@ const Templates: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-1">
                           {getTargetSummary(s, buildings)}
                           {s.stay_filter === 'exclude' && <Badge color="warning" size="sm">연박제외</Badge>}
-                          {s.target_mode === 'last_day' && <Badge color="info" size="sm">마지막날만</Badge>}
+                          {(s.target_mode === 'last_night' || s.target_mode === 'last_day') && <Badge color="info" size="sm">마지막날만</Badge>}
+                          {(s.target_mode === 'first_night' || s.target_mode === 'once') && <Badge color="purple" size="sm">첫날만</Badge>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1535,7 +1597,7 @@ const Templates: React.FC = () => {
                     setSCategory(opt.value);
                     if (opt.value === 'event') {
                       setSDateTarget('today');
-                      setSTargetMode('once');
+                      setSTargetMode('');
                       setSStayFilter('');
                       setSCustomType('');
                     } else if (opt.value === 'custom_schedule') {
@@ -1751,24 +1813,20 @@ const Templates: React.FC = () => {
           <div className="space-y-3">
             <Label>발송 대상 필터</Label>
 
-            {/* Row 1: 대상 (v4 unified date_target) */}
+            {/* Row 1: 대상 (v2 date_target) */}
             {sCategory === 'standard' && (
             <div className="space-y-1.5">
               <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">대상</div>
               <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
                 {[
+                  { value: 'yesterday', label: '어제' },
                   { value: 'today', label: '오늘' },
                   { value: 'tomorrow', label: '내일' },
-                  { value: 'today_checkout', label: '오늘 체크아웃' },
-                  { value: 'tomorrow_checkout', label: '내일 체크아웃' },
                 ].map(opt => (
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => {
-                      setSDateTarget(opt.value);
-                      if (opt.value.endsWith('_checkout')) setSTargetMode('once');
-                    }}
+                    onClick={() => setSDateTarget(opt.value)}
                     className={`px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
                       ${sDateTarget === opt.value
                         ? 'bg-[#3182F6] text-white'
@@ -1782,62 +1840,165 @@ const Templates: React.FC = () => {
             </div>
             )}
 
-            {/* Row 2: Assignment status */}
-            <div className="space-y-1.5">
-              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">배정 상태</div>
+            {/* Row 2: Assignment status (segmented button) */}
+            <div className="space-y-2">
+              <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">예약 유형</div>
+
+              {/* Segmented button group — 다중 선택 */}
               <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
                 {[
-                  { value: 'room', label: '객실배정' },
-                  { value: 'party', label: '파티만' },
-                  { value: 'unassigned', label: '미배정' },
-                  ...(hasUnstable ? [{ value: 'unstable', label: '언스테이블' }] : []),
-                ].map(opt => {
-                  const isActive = isFilterActive('assignment', opt.value);
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => toggleScheduleFilter('assignment', opt.value)}
-                      className={`w-24 px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                        ${isActive
-                          ? 'bg-[#3182F6] text-white'
-                          : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                        }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
+                  {
+                    value: 'room',
+                    label: '객실 예약',
+                    active: assignmentState.room,
+                    toggle: () => {
+                      const next = !assignmentState.room;
+                      setAssignmentState(prev => ({
+                        ...prev,
+                        room: next,
+                        ...(next ? {} : { room_buildings: [], room_include_unassigned: false, room_stay_exclude: false }),
+                      }));
+                      if (!next) setSTargetMode('');
+                    },
+                  },
+                  {
+                    value: 'party',
+                    label: '파티만',
+                    active: assignmentState.party,
+                    toggle: () => setAssignmentState(prev => ({ ...prev, party: !prev.party })),
+                  },
+                  ...(hasUnstable ? [{
+                    value: 'unstable',
+                    label: '언스테이블',
+                    active: assignmentState.unstable,
+                    toggle: () => setAssignmentState(prev => ({ ...prev, unstable: !prev.unstable })),
+                  }] : []),
+                ].map(btn => (
+                  <button
+                    key={btn.value}
+                    type="button"
+                    onClick={btn.toggle}
+                    className={`px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
+                      ${btn.active
+                        ? 'bg-[#3182F6] text-white'
+                        : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                      }`}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
               </div>
+
+              {/* 객실 배정 활성 시 하단 옵션 박스 */}
+              {assignmentState.room && (
+                <div className="space-y-3 rounded-xl border border-[#E5E8EB] dark:border-gray-700 p-3 mt-2">
+                  {/* 건물 */}
+                  {buildings.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-caption text-[#8B95A1] dark:text-gray-500">건물</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(() => {
+                          const allSelected = assignmentState.room_buildings.length === 0;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setAssignmentState(prev => ({ ...prev, room_buildings: [] }))}
+                              className={`rounded-lg border px-3 py-1.5 text-body font-medium transition-colors cursor-pointer
+                                ${allSelected
+                                  ? 'border-[#3182F6] bg-[#3182F6] text-white'
+                                  : 'border-[#E5E8EB] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-300 dark:hover:bg-[#2C2C34]'
+                                }`}
+                            >
+                              전체
+                            </button>
+                          );
+                        })()}
+                        {[...buildings].reverse().map(b => {
+                          const isSelected = assignmentState.room_buildings.includes(b.id);
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setAssignmentState(prev => ({
+                                ...prev,
+                                room_buildings: isSelected
+                                  ? prev.room_buildings.filter(id => id !== b.id)
+                                  : [...prev.room_buildings, b.id],
+                              }))}
+                              className={`rounded-lg border px-3 py-1.5 text-body font-medium transition-colors cursor-pointer
+                                ${isSelected
+                                  ? 'border-[#3182F6] bg-[#3182F6] text-white'
+                                  : 'border-[#E5E8EB] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-300 dark:hover:bg-[#2C2C34]'
+                                }`}
+                            >
+                              {b.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 발송 주기 */}
+                  <div className="space-y-1.5">
+                    <div className="text-caption text-[#8B95A1] dark:text-gray-500">발송 주기</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { value: '' as const, label: '매일' },
+                        { value: 'first_night' as const, label: '첫 투숙일' },
+                        { value: 'last_night' as const, label: '마지막 투숙일' },
+                      ].map(opt => (
+                        <label
+                          key={opt.value}
+                          className={`rounded-lg border px-3 py-1.5 text-body font-medium cursor-pointer transition-colors
+                            ${sTargetMode === opt.value
+                              ? 'border-[#3182F6] bg-[#3182F6] text-white'
+                              : 'border-[#E5E8EB] bg-white text-[#4E5968] hover:bg-[#F2F4F6] dark:border-gray-600 dark:bg-[#1E1E24] dark:text-gray-300 dark:hover:bg-[#2C2C34]'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="target_mode"
+                            value={opt.value}
+                            checked={sTargetMode === opt.value}
+                            onChange={() => setSTargetMode(opt.value)}
+                            className="sr-only"
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 추가 옵션 */}
+                  <div className="space-y-1.5">
+                    <div className="text-caption text-[#8B95A1] dark:text-gray-500">추가 옵션</div>
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={assignmentState.room_include_unassigned}
+                          onChange={e => setAssignmentState(prev => ({ ...prev, room_include_unassigned: e.target.checked }))}
+                          className="rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-body text-[#4E5968] dark:text-gray-300">미배정 상태도 포함</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={assignmentState.room_stay_exclude}
+                          onChange={e => setAssignmentState(prev => ({ ...prev, room_stay_exclude: e.target.checked }))}
+                          className="rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-body text-[#4E5968] dark:text-gray-300">연박자 제외</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Row 3: Building */}
-            {buildings.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">건물</div>
-                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
-                  {[...buildings].reverse().map(b => {
-                    const isActive = isFilterActive('building', String(b.id));
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => toggleScheduleFilter('building', String(b.id))}
-                        className={`w-24 px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                          ${isActive
-                            ? 'bg-[#3182F6] text-white'
-                            : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                          }`}
-                      >
-                        {b.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Row 4: Column match */}
+            {/* Row 3: Column match */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">컬럼 조건</div>
@@ -2034,73 +2195,6 @@ const Templates: React.FC = () => {
           </>
           )}
 
-          {/* 연박자 발송 설정 — 표준 모드에서만 표시 */}
-          {sCategory === 'standard' && (
-          <>
-          <div className="border-t border-[#E5E8EB] dark:border-gray-700" />
-
-          <div className="space-y-3">
-            <Label>연박자 발송 설정</Label>
-
-            {/* 포함 / 제외 라디오 */}
-            <div className="flex gap-2">
-              {[
-                { value: '', label: '포함', desc: '연박자에게도 발송합니다' },
-                { value: 'exclude', label: '제외', desc: '연박자에게는 발송하지 않습니다' },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    setSStayFilter(opt.value);
-                    if (opt.value === 'exclude') setSTargetMode('once');
-                  }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer flex-1
-                    ${sStayFilter === opt.value
-                      ? 'border-[#3182F6] bg-[#E8F3FF] dark:bg-[#3182F6]/15 dark:border-[#3182F6]'
-                      : 'border-[#E5E8EB] bg-white hover:bg-[#F8F9FA] dark:border-gray-700 dark:bg-[#1E1E24] dark:hover:bg-[#2C2C34]'
-                    }`}
-                >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                    ${sStayFilter === opt.value ? 'border-[#3182F6]' : 'border-[#B0B8C1] dark:border-gray-500'}`}>
-                    {sStayFilter === opt.value && <div className="w-2 h-2 rounded-full bg-[#3182F6]" />}
-                  </div>
-                  <div>
-                    <p className={`text-body font-medium ${sStayFilter === opt.value ? 'text-[#3182F6]' : 'text-[#191F28] dark:text-white'}`}>{opt.label}</p>
-                    <p className="text-caption text-[#8B95A1] dark:text-gray-500">{opt.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* 발송 시점 — 체크아웃 계열 또는 연박 제외 시 비활성화 */}
-              <div className={`space-y-1.5 ml-2 ${sStayFilter === 'exclude' || sDateTarget.endsWith('_checkout') ? 'opacity-40 pointer-events-none' : ''}`}>
-                <div className="text-caption font-medium text-[#8B95A1] dark:text-gray-400">발송 시점</div>
-                <div className="inline-flex rounded-lg overflow-hidden border border-[#E5E8EB] dark:border-gray-600">
-                  {[
-                    { value: 'once' as const, label: '체크인' },
-                    { value: 'daily' as const, label: '매일' },
-                    { value: 'last_day' as const, label: '체크아웃' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setSTargetMode(opt.value)}
-                      className={`px-3 py-2.5 text-body font-medium transition-colors cursor-pointer border-r border-[#E5E8EB] dark:border-gray-600 last:border-r-0
-                        ${sTargetMode === opt.value
-                          ? 'bg-[#3182F6] text-white'
-                          : 'bg-white text-[#B0B8C1] hover:bg-[#F2F4F6] dark:bg-[#1E1E24] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                        }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-          </div>
-          </>
-          )}
-
           <div className="border-t border-[#E5E8EB] dark:border-gray-700" />
 
         </div>
@@ -2133,32 +2227,28 @@ const Templates: React.FC = () => {
 
             const dateValue = (() => {
               switch (sDateTarget) {
-                case 'today_checkout': return '오늘 체크아웃';
-                case 'tomorrow_checkout': return '내일 체크아웃';
+                case 'yesterday': return '어제';
                 case 'tomorrow': return '내일';
                 default: return '오늘';
               }
             })();
 
-            const buildingFilters = sFilters.filter(f => f.type === 'building');
-            const assignmentFilters = sFilters.filter(f => f.type === 'assignment');
             const columnMatchFilters = sFilters.filter(f => f.type === 'column_match');
 
-            const buildingValue = buildingFilters.length > 0
-              ? buildingFilters.map(f => {
-                  const b = buildings.find(b => String(b.id) === f.value);
-                  return b?.name || f.value;
-                }).join(', ')
-              : '';
-
-            const assignmentValue = assignmentFilters.length > 0
-              ? assignmentFilters.map(f => {
-                  if (f.value === 'room') return '객실배정';
-                  if (f.value === 'party') return '파티만';
-                  if (f.value === 'unassigned') return '미배정';
-                  return f.value;
-                }).join(', ')
-              : '';
+            // Build assignment value label from assignmentState
+            const assignmentParts: string[] = [];
+            if (assignmentState.room) {
+              const roomParts = ['객실배정'];
+              if (assignmentState.room_buildings.length) {
+                const names = assignmentState.room_buildings.map(id => buildings.find(b => b.id === id)?.name ?? `#${id}`);
+                roomParts.push(`(${names.join(', ')})`);
+              }
+              if (assignmentState.room_include_unassigned) roomParts.push('+미배정');
+              assignmentParts.push(roomParts.join(' '));
+            }
+            if (assignmentState.party) assignmentParts.push('파티만');
+            if (assignmentState.unstable) assignmentParts.push('언스테이블');
+            const assignmentValue = assignmentParts.join(', ');
 
             const cmValue = columnMatchFilters.map(f => {
               const parsed = parseColumnMatchValue(f.value);
@@ -2174,10 +2264,10 @@ const Templates: React.FC = () => {
               { value: dateValue, color: 'bg-[#E8F3FF] text-[#3182F6] dark:bg-[#3182F6]/15 dark:text-blue-300' },
             ];
             if (assignmentValue) chips.push({ value: assignmentValue, color: 'bg-[#E8FAF5] text-[#00C9A7] dark:bg-[#00C9A7]/15 dark:text-green-300' });
-            if (buildingValue) chips.push({ value: buildingValue, color: 'bg-[#F3E8FF] text-[#8B5CF6] dark:bg-[#8B5CF6]/15 dark:text-purple-300' });
             if (cmValue) chips.push({ value: cmValue, color: 'bg-[#FFF4E8] text-[#FF9F00] dark:bg-[#FF9F00]/15 dark:text-yellow-300' });
 
             const stayChipColor = 'bg-[#F2F4F6] text-[#4E5968] dark:bg-gray-700 dark:text-gray-300';
+            const showStayExclude = assignmentState.room && assignmentState.room_stay_exclude;
 
             return (
               <div className="flex items-center gap-1.5 flex-wrap text-caption flex-1 min-w-0">
@@ -2189,16 +2279,16 @@ const Templates: React.FC = () => {
                 ))}
                 <span className="text-[#8B95A1] dark:text-gray-500">예약자에게 발송</span>
                 <span className="mx-1 h-3 w-px bg-[#8B95A1] dark:bg-gray-400 inline-block" />
-                {sStayFilter === 'exclude' ? (
+                {showStayExclude ? (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     <span className="text-[#8B95A1] dark:text-gray-500">연박자</span>
-                    <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-red-300`}>제외</span>
+                    <span className="inline-flex rounded-md px-1.5 py-0.5 font-medium bg-[#FFEBEE] text-[#F04452] dark:bg-[#F04452]/15 dark:text-red-300">제외</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     <span className="text-[#8B95A1] dark:text-gray-500">연박일 경우,</span>
                     <span className={`inline-flex rounded-md px-1.5 py-0.5 font-medium ${stayChipColor}`}>
-                      {sTargetMode === 'once' ? '체크인 일에만' : sTargetMode === 'daily' ? '매일' : '체크아웃 일에만'}
+                      {sTargetMode === 'first_night' ? '첫 투숙일에만' : sTargetMode === 'last_night' ? '마지막 투숙일에만' : '매일'}
                     </span>
                     <span className="text-[#8B95A1] dark:text-gray-500">발송</span>
                   </span>

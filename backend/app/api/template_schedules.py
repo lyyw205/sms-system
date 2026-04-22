@@ -22,13 +22,9 @@ router = APIRouter(prefix="/api/template-schedules", tags=["template-schedules"]
 
 def _schedule_to_response(schedule: TemplateSchedule) -> dict:
     """Convert a TemplateSchedule ORM object to a response dict."""
-    # Parse filters JSON for response
-    filters = []
-    if schedule.filters:
-        try:
-            filters = json.loads(schedule.filters)
-        except (json.JSONDecodeError, TypeError):
-            filters = []
+    from app.services.filters import _parse_filters
+    # Parse filters JSON for response (normalises v1 → v2 automatically)
+    filters = _parse_filters(schedule.filters)
 
     # Get real-time next_run from APScheduler (DB value can be stale)
     next_run = schedule.next_run_at
@@ -57,7 +53,6 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "target_mode": schedule.target_mode or "once",
         "exclude_sent": schedule.exclude_sent,
         "active": schedule.is_active,
-        "once_per_stay": schedule.once_per_stay or False,
         "date_target": schedule.date_target,
         "stay_filter": schedule.stay_filter,
         "send_condition_date": schedule.send_condition_date,
@@ -90,11 +85,10 @@ class TemplateScheduleCreate(BaseModel):
     active_end_hour: Optional[int] = None
     timezone: str = "Asia/Seoul"
     filters: Optional[List[dict]] = None  # [{"type": "tag", "value": "객후"}, ...]
-    target_mode: Optional[Literal['once', 'daily', 'last_day']] = "once"
+    target_mode: Optional[Literal['first_night', 'last_night']] = None
     exclude_sent: bool = True
     active: bool = True
-    once_per_stay: Optional[bool] = False
-    date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
+    date_target: Optional[Literal['yesterday', 'today', 'tomorrow']] = None
     stay_filter: Optional[Literal['exclude']] = None
     # Send condition fields
     send_condition_date: Optional[Literal['today', 'tomorrow']] = None
@@ -121,11 +115,10 @@ class TemplateScheduleUpdate(BaseModel):
     active_end_hour: Optional[int] = None
     timezone: Optional[str] = None
     filters: Optional[List[dict]] = None
-    target_mode: Optional[Literal['once', 'daily', 'last_day']] = None
+    target_mode: Optional[Literal['first_night', 'last_night']] = None
     exclude_sent: Optional[bool] = None
     active: Optional[bool] = None
-    once_per_stay: Optional[bool] = None
-    date_target: Optional[Literal['today', 'tomorrow', 'today_checkout', 'tomorrow_checkout']] = None
+    date_target: Optional[Literal['yesterday', 'today', 'tomorrow']] = None
     stay_filter: Optional[Literal['exclude']] = None
     # Send condition fields
     send_condition_date: Optional[Literal['today', 'tomorrow']] = None
@@ -155,10 +148,9 @@ class TemplateScheduleResponse(BaseModel):
     active_end_hour: Optional[int] = None
     timezone: str
     filters: Optional[List[dict]] = None
-    target_mode: Optional[str] = "once"
+    target_mode: Optional[str] = None
     exclude_sent: bool
     active: bool
-    once_per_stay: Optional[bool] = False
     date_target: Optional[str] = None
     stay_filter: Optional[str] = None
     # Send condition fields
@@ -260,6 +252,13 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     if schedule.schedule_category == 'event' and not schedule.hours_since_booking:
         raise HTTPException(status_code=400, detail="이벤트 스케줄은 hours_since_booking을 지정해야 합니다")
 
+    # stay option guard: room 배정 필터 없으면 stay_filter 자동 null화
+    from app.services.filters import _parse_filters
+    parsed = _parse_filters(schedule.filters) if schedule.filters else []
+    has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
+    if not has_room:
+        schedule.stay_filter = None
+
     # Calculate expires_at from expires_after_days
     expires_at = None
     if schedule.expires_after_days:
@@ -282,7 +281,6 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         target_mode=schedule.target_mode or "once",
         exclude_sent=schedule.exclude_sent,
         is_active=schedule.active,
-        once_per_stay=schedule.once_per_stay or False,
         date_target=schedule.date_target,
         stay_filter=schedule.stay_filter,
         send_condition_date=schedule.send_condition_date,
@@ -348,6 +346,13 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
         update_data["filters"] = json.dumps(update_data["filters"], ensure_ascii=False)
     # Remap Pydantic 'active' field to ORM 'is_active' column
     _remap_active_field(update_data)
+    # stay option guard: filters 가 변경됐고 room 배정 없으면 stay_filter null화
+    if 'filters' in update_data:
+        from app.services.filters import _parse_filters
+        parsed = _parse_filters(update_data['filters']) if update_data['filters'] else []
+        has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
+        if not has_room:
+            update_data['stay_filter'] = None
     # Recalculate expires_at when expires_after_days changes
     if "expires_after_days" in update_data:
         if update_data["expires_after_days"]:
@@ -361,6 +366,7 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     db_schedule.updated_at = datetime.now(timezone.utc)
 
     # Reconcile chips when filter-affecting fields change
+    # (v2: stay_filter 가 filters JSON 안으로 이관되어 별도 트래킹 불필요)
     _FILTER_FIELDS = {'filters', 'target_mode', 'date_target', 'schedule_category', 'is_active', 'template_id'}
     if _FILTER_FIELDS & set(update_data.keys()):
         from app.services.chip_reconciler import reconcile_chips_for_schedule

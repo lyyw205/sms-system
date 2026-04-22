@@ -382,7 +382,7 @@ class TemplateSchedule(TenantMixin, Base):
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
 
-    target_mode = Column(String(20), default='once')  # 'once' | 'daily' | 'last_day' (체크아웃 전날만)
+    target_mode = Column(String(20), nullable=True, default=None)  # None(기본, stay-coverage) | 'first_night' | 'last_night'
     once_per_stay = Column("is_once_per_stay", Boolean, default=False)  # True: 연박 그룹 내 최초 체크인에만 발송
     date_target = Column(String(30), nullable=True)   # 'today' | 'tomorrow' | 'today_checkout' | 'tomorrow_checkout'
     stay_filter = Column(String(20), nullable=True)    # null(include) | 'exclude'(no consecutive)

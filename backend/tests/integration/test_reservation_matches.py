@@ -93,21 +93,6 @@ class TestReservationMatchesSchedule:
 
         assert _reservation_matches_schedule(db, sched, res, "2026-04-10") is False
 
-    def test_checkout_date_fallback_to_prev_day(self, db):
-        """checkout 당일에는 전날 배정 기준으로 체크."""
-        b = _make_building(db)
-        room = _make_room(db, b.id)
-        tpl = _make_template(db, key="tpl_checkout")
-        sched = _make_schedule(db, tpl, [{"type": "building", "value": str(b.id)}])
-        res = _make_reservation(db, check_in="2026-04-10", check_out="2026-04-12")
-
-        # Assign on check_out - 1 day (2026-04-11)
-        _assign_room(db, res.id, room.id, "2026-04-11")
-
-        # Match on checkout date → fallback to 2026-04-11 assignment
-        result = _reservation_matches_schedule(db, sched, res, "2026-04-12")
-        assert result is True
-
     def test_building_filter_no_assignment_no_match(self, db):
         """건물 필터 있는데 배정 없음 → 미매칭."""
         b = _make_building(db)

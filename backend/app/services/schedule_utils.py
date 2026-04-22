@@ -11,41 +11,38 @@ from app.config import today_kst, today_kst_date
 
 
 def get_schedule_dates(schedule, reservation) -> List[str]:
-    """Get target dates for a schedule+reservation pair based on target_mode and date_target."""
-    # event schedule: return check-in date only
+    """Get target dates for a schedule+reservation pair."""
     if (schedule.schedule_category or 'standard') == 'event':
         return [reservation.check_in_date] if reservation.check_in_date else []
 
-    date_target = schedule.date_target
+    target_mode = schedule.target_mode  # first_night | last_night | None
 
-    # last_day mode: only create chip for last-in-group reservation
-    if (schedule.target_mode or 'once') == 'last_day':
+    # last_night: 마지막 투숙일 1개
+    if target_mode == 'last_night':
         if not reservation.check_out_date:
-            return []
+            # 당일 예약 (파티만 등): 체크인일이 곧 마지막 투숙일
+            return [reservation.check_in_date] if reservation.check_in_date else []
         if reservation.stay_group_id:
             if reservation.is_last_in_group:
                 last_day = (datetime.strptime(reservation.check_out_date, "%Y-%m-%d")
                             - timedelta(days=1)).strftime("%Y-%m-%d")
                 return [last_day]
-            else:
-                return []  # Not last in group
-        else:
-            last_day = (datetime.strptime(reservation.check_out_date, "%Y-%m-%d")
-                        - timedelta(days=1)).strftime("%Y-%m-%d")
-            return [last_day]
+            return []
+        last_day = (datetime.strptime(reservation.check_out_date, "%Y-%m-%d")
+                    - timedelta(days=1)).strftime("%Y-%m-%d")
+        return [last_day]
 
-    # daily mode always uses full date range
-    if (
-        (schedule.target_mode or 'once') == 'daily'
-        and reservation.check_out_date
-        and reservation.check_out_date > (reservation.check_in_date or '')
-    ):
+    # first_night: 체크인일 1개 (stay_group 내에서는 첫 멤버만)
+    if target_mode == 'first_night':
+        if reservation.stay_group_id:
+            if reservation.stay_group_order == 0:
+                return [reservation.check_in_date or '']
+            return []  # 그룹의 첫 멤버가 아니면 칩 생성 안 함
+        return [reservation.check_in_date or '']
+
+    # 기본(None): stay-coverage 전체 일정 매일 칩 (옛 daily 동작)
+    if reservation.check_out_date and reservation.check_out_date > (reservation.check_in_date or ''):
         return date_range(reservation.check_in_date, reservation.check_out_date)
-
-    # checkout-based date_target
-    if date_target and date_target.endswith('_checkout'):
-        return [reservation.check_out_date or reservation.check_in_date or '']
-
     return [reservation.check_in_date or '']
 
 
@@ -74,14 +71,17 @@ def date_range(from_date: str, end_date: Optional[str]) -> List[str]:
 
 
 def resolve_target_date(date_target_val: str) -> str:
-    """Convert a date_target enum value to a concrete YYYY-MM-DD date string.
-
-    Args:
-        date_target_val: One of 'today', 'tomorrow', 'today_checkout', 'tomorrow_checkout'
-
-    Returns:
-        Date string for today or tomorrow, regardless of checkout suffix.
+    """Convert a date_target enum value to YYYY-MM-DD.
+    Supported: 'yesterday' | 'today' | 'tomorrow'.
+    Unknown values → today (safe fallback + diag log).
     """
-    if date_target_val and date_target_val.startswith('tomorrow'):
+    if date_target_val == 'yesterday':
+        return (today_kst_date() - timedelta(days=1)).strftime('%Y-%m-%d')
+    if date_target_val == 'tomorrow':
         return (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
+    if date_target_val and date_target_val not in ('today', 'yesterday', 'tomorrow'):
+        # Legacy *_checkout or other unknown: log and treat as today
+        from app.diag_logger import diag
+        diag("schedule.date_target.legacy_value", level="critical",
+             value=date_target_val)
     return today_kst()

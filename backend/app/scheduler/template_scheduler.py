@@ -426,7 +426,7 @@ class TemplateScheduleExecutor:
         Also serves custom_schedule via a pre-filter that narrows candidates to
         reservations holding a pending chip for this schedule on target_date.
         For custom_schedule, NULL fields are coerced to safe defaults so every
-        downstream guard (safety, date_target, once_per_stay, exclude_sent)
+        downstream guard (safety, date_target, exclude_sent)
         applies identically.
 
         for_preview=True suppresses side-effectful steps (chip refresh) so that
@@ -436,8 +436,9 @@ class TemplateScheduleExecutor:
 
         # Custom-only default coercion — leaves standard behavior untouched.
         date_target_val = schedule.date_target or ('today' if is_custom else None)
-        effective_target_mode = schedule.target_mode or ('daily' if is_custom else None)
-        effective_once_per_stay = True if is_custom else bool(schedule.once_per_stay)
+        effective_target_mode = schedule.target_mode  # custom default 도 None (기본)
+        from app.services.filters import extract_stay_filter
+        effective_stay_filter = extract_stay_filter(schedule)
         effective_exclude_sent_flag = True if is_custom else bool(schedule.exclude_sent)
 
         query = self.db.query(Reservation).filter(
@@ -469,46 +470,39 @@ class TemplateScheduleExecutor:
             )
             query = query.filter(Reservation.id.in_(eligible_ids))
 
-        # Safety guard: never send to reservations more than 1 day out
+        # Safety guard: target_date 는 오늘 ±N일 내여야 함
+        min_date = (today_kst_date() - timedelta(days=7)).strftime('%Y-%m-%d')
         max_date = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
-        if date_target_val and date_target_val.endswith('_checkout'):
-            query = query.filter(
-                Reservation.check_out_date.isnot(None),
-                Reservation.check_out_date <= max_date,
-            )
-        else:
-            query = query.filter(Reservation.check_in_date <= max_date)
+        query = query.filter(
+            Reservation.check_in_date >= min_date,
+            Reservation.check_in_date <= max_date,
+        )
 
         # Apply date_target filter
         target_date = None
         if date_target_val:
             target_date = self._resolve_date_target(date_target_val)
-            if date_target_val.endswith('_checkout'):
-                query = query.filter(
-                    Reservation.check_out_date.isnot(None),
-                    Reservation.check_out_date == target_date,
+            # 기본: stay-coverage (그 날 투숙중)
+            query = query.filter(
+                or_(
+                    and_(
+                        Reservation.check_in_date <= target_date,
+                        Reservation.check_out_date > target_date,
+                    ),
+                    and_(
+                        Reservation.check_in_date == target_date,
+                        Reservation.check_out_date.is_(None),
+                    ),
                 )
-            else:
-                if effective_target_mode in ('daily', 'last_day'):
-                    query = query.filter(
-                        or_(
-                            and_(
-                                Reservation.check_in_date <= target_date,
-                                Reservation.check_out_date > target_date,
-                            ),
-                            and_(
-                                Reservation.check_in_date == target_date,
-                                Reservation.check_out_date.is_(None),
-                            ),
-                        )
-                    )
-                else:
-                    query = query.filter(Reservation.check_in_date == target_date)
-        # Default target_date for filters that need it
+            )
+            # first_night narrow
+            if effective_target_mode == 'first_night':
+                query = query.filter(Reservation.check_in_date == target_date)
+            # last_night: post-filter in _filter_last_day 에서 처리
         if not target_date:
             target_date = today_kst()
 
-        # Apply structural filters (building/assignment/room/column_match)
+        # Apply v2 structural filters (assignment nested + column_match)
         query = self._apply_structural_filters(query, schedule, target_date)
 
         # Apply exclude_sent filter via join table (sent 또는 failed 모두 제외)
@@ -522,71 +516,20 @@ class TemplateScheduleExecutor:
                     ReservationSmsAssignment.send_status == 'failed',
                 ))
             )
-            if target_date:
+            # custom_schedule: 날짜 무관 중복 차단 (once_per_stay 대체)
+            # standard: 당일 date에 한정해서만 체크
+            if target_date and not is_custom:
                 done_conditions = done_conditions & (ReservationSmsAssignment.date == target_date)
             query = query.filter(~exists().where(done_conditions))
 
         results = query.all()
 
-        # last_day: keep only reservations on their group's last calendar day
-        if effective_target_mode == 'last_day' and results and target_date:
+        # last_night: keep only reservations on their group's last calendar day
+        if effective_target_mode == 'last_night' and results and target_date:
             results = self._filter_last_day(results, target_date)
 
-        # once_per_stay: 연박/연장 그룹 내 가장 빠른 체크인 예약에만 발송
-        if effective_once_per_stay and results:
-            from sqlalchemy import exists as sa_exists
-            filtered = []
-            seen_groups: set[str] = set()
-            # Sort by check_in_date to ensure earliest first
-            results.sort(key=lambda r: r.check_in_date)
-            for res in results:
-                if res.is_long_stay:
-                    if res.stay_group_id:
-                        # 연장자: 그룹 내 중복 방지
-                        if res.stay_group_id in seen_groups:
-                            continue  # Skip: group already has a target
-                        # Check if an earlier group member already received this template
-                        earlier_sent = self.db.query(sa_exists().where(
-                            (ReservationSmsAssignment.template_key == schedule.template.template_key) &
-                            (ReservationSmsAssignment.sent_at.isnot(None)) &
-                            (ReservationSmsAssignment.reservation_id.in_(
-                                self.db.query(Reservation.id).filter(
-                                    Reservation.stay_group_id == res.stay_group_id,
-                                    Reservation.id != res.id,
-                                )
-                            ))
-                        )).scalar()
-                        if earlier_sent:
-                            seen_groups.add(res.stay_group_id)
-                            continue  # Skip: another group member already sent
-                        seen_groups.add(res.stay_group_id)
-                    else:
-                        # D6: standalone(stay_group_id=None) — 같은 사람(이름+전화)의
-                        # 모든 예약에서 기발송 체크. 그룹 해제된 뒤에도 중복 발송 방지.
-                        already_sent = self.db.query(sa_exists().where(
-                            (ReservationSmsAssignment.template_key == schedule.template.template_key) &
-                            (ReservationSmsAssignment.sent_at.isnot(None)) &
-                            (ReservationSmsAssignment.reservation_id.in_(
-                                self.db.query(Reservation.id).filter(
-                                    Reservation.customer_name == res.customer_name,
-                                    Reservation.phone == res.phone,
-                                )
-                            ))
-                        )).scalar()
-                        if already_sent:
-                            diag(
-                                "once_per_stay.dedup_hit",
-                                level="verbose",
-                                reservation_id=res.id,
-                                template_key=schedule.template.template_key,
-                                customer_name=res.customer_name,
-                            )
-                            continue
-                filtered.append(res)
-            results = filtered
-
         # Stay filter
-        if schedule.stay_filter == 'exclude':
+        if effective_stay_filter == 'exclude':
             results = [r for r in results if not r.is_long_stay]
 
         return results
@@ -690,22 +633,14 @@ class TemplateScheduleExecutor:
 
     @staticmethod
     def _resolve_date_target(date_target_val: str) -> str:
-        """Convert a date_target enum value to a concrete YYYY-MM-DD date string.
-
-        Args:
-            date_target_val: One of 'today', 'tomorrow', 'today_checkout', 'tomorrow_checkout'
-
-        Returns:
-            Date string for today or tomorrow, regardless of checkout suffix.
-        """
-        if date_target_val.startswith('tomorrow'):
-            return (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
-        return today_kst()
+        from app.services.schedule_utils import resolve_target_date
+        return resolve_target_date(date_target_val)
 
     def _filter_last_day(self, results: List[Reservation], target_date: str) -> List[Reservation]:
         """Keep only reservations whose stay group's last checkout date - 1 == target_date.
         For standalone guests: checkout_date - 1 == target_date.
-        Reservations with NULL check_out_date are excluded.
+        For reservations with NULL check_out_date (당일 예약, 파티만 이동 케이스):
+            check_in_date == target_date 이면 마지막 투숙일로 간주.
         """
         from datetime import datetime as dt
 
@@ -728,7 +663,10 @@ class TemplateScheduleExecutor:
 
         for res in results:
             if res.check_out_date is None:
-                continue  # NULL checkout → exclude
+                # 당일 예약: check_in 이 곧 마지막 투숙일
+                if res.check_in_date == target_date:
+                    filtered.append(res)
+                continue
 
             if res.stay_group_id:
                 max_co = group_max_checkout.get(res.stay_group_id)

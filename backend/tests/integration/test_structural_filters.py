@@ -218,3 +218,97 @@ class TestEmptyFilter:
 
         assert r1.id in ids
         assert r2.id in ids
+
+
+class TestV2NestedSchema:
+    """v2 중첩 스키마 직접 사용 케이스."""
+
+    def test_v2_assignment_buildings_single(self, db):
+        """v2: assignment.buildings=[b1] — 해당 건물 배정 예약만 포함."""
+        b1 = _make_building(db, "본관")
+        b2 = _make_building(db, "별관")
+        room1 = _make_room(db, b1.id, "101")
+        room2 = _make_room(db, b2.id, "201")
+        r1 = _make_reservation(db, "본관손님")
+        r2 = _make_reservation(db, "별관손님")
+        _assign_room(db, r1, room1)
+        _assign_room(db, r2, room2)
+
+        tpl = _make_template(db, "v2_single_bld")
+        sched = _make_schedule(db, tpl, [
+            {"type": "assignment", "value": "room", "buildings": [b1.id]},
+        ])
+
+        query = db.query(Reservation)
+        result = apply_structural_filters(db, query, sched, "2026-04-10")
+        ids = {r.id for r in result.all()}
+
+        assert r1.id in ids
+        assert r2.id not in ids
+
+    def test_v2_assignment_buildings_multiple(self, db):
+        """v2: assignment.buildings=[b1,b2] — 두 건물 모두 포함."""
+        b1 = _make_building(db, "A동")
+        b2 = _make_building(db, "B동")
+        b3 = _make_building(db, "C동")
+        room1 = _make_room(db, b1.id, "A101")
+        room2 = _make_room(db, b2.id, "B101")
+        room3 = _make_room(db, b3.id, "C101")
+        r1 = _make_reservation(db, "A동손님")
+        r2 = _make_reservation(db, "B동손님")
+        r3 = _make_reservation(db, "C동손님")
+        _assign_room(db, r1, room1)
+        _assign_room(db, r2, room2)
+        _assign_room(db, r3, room3)
+
+        tpl = _make_template(db, "v2_multi_bld")
+        sched = _make_schedule(db, tpl, [
+            {"type": "assignment", "value": "room", "buildings": [b1.id, b2.id]},
+        ])
+
+        query = db.query(Reservation)
+        result = apply_structural_filters(db, query, sched, "2026-04-10")
+        ids = {r.id for r in result.all()}
+
+        assert r1.id in ids
+        assert r2.id in ids
+        assert r3.id not in ids
+
+    def test_v2_include_unassigned(self, db):
+        """v2: include_unassigned=True — room 배정 + unassigned 동시 포함."""
+        b1 = _make_building(db, "본관")
+        room1 = _make_room(db, b1.id, "101")
+        r_room = _make_reservation(db, "방배정손님", section="room")
+        r_unassigned = _make_reservation(db, "미배정손님", section="unassigned")
+        r_party = _make_reservation(db, "파티손님", section="party")
+        _assign_room(db, r_room, room1)
+
+        tpl = _make_template(db, "v2_incl_unassigned")
+        sched = _make_schedule(db, tpl, [
+            {"type": "assignment", "value": "room", "include_unassigned": True},
+        ])
+
+        query = db.query(Reservation)
+        result = apply_structural_filters(db, query, sched, "2026-04-10")
+        ids = {r.id for r in result.all()}
+
+        assert r_room.id in ids
+        assert r_unassigned.id in ids
+        assert r_party.id not in ids
+
+    def test_v2_party_assignment(self, db):
+        """v2: assignment=party — 파티 예약만 포함."""
+        r_party = _make_reservation(db, "파티", section="party")
+        r_room = _make_reservation(db, "방", section="room")
+
+        tpl = _make_template(db, "v2_party")
+        sched = _make_schedule(db, tpl, [
+            {"type": "assignment", "value": "party"},
+        ])
+
+        query = db.query(Reservation)
+        result = apply_structural_filters(db, query, sched, "2026-04-10")
+        ids = {r.id for r in result.all()}
+
+        assert r_party.id in ids
+        assert r_room.id not in ids

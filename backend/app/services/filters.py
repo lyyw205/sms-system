@@ -1,10 +1,34 @@
 """
-Schedule filter logic for template-based SMS scheduling.
+Schedule filter logic v2 — nested structure + normalize-on-read dual parser.
 
-Contains condition builders, filter parsing, and grouping.
+v2 Schema (persisted form):
+    assignment filter:
+        {"type": "assignment",
+         "value": "room" | "party" | "unstable" | "unassigned",
+         "buildings": [int, ...],        # room only, optional
+         "include_unassigned": bool,     # room only, optional (legacy has_unassigned trick)
+         "stay_filter": "exclude"|None}  # room only, optional (연박자 제외)
+
+    column_match filter (unchanged):
+        {"type": "column_match", "value": "{column}:{operator}:{text}"}
+
+v1 (legacy, still readable via dual-parse):
+    - {"type": "assignment", "value": "..."} + separate {"type": "building", "value": "N"}
+    - {"type": "room", "value": "N"}   (ghost, dropped)
+    - {"type": "room_assigned"} / {"type": "party_only"}  (legacy aliases)
+    - has_unassigned OR trick: absorbed into include_unassigned modifier
+
+Combining semantics:
+    - Multiple assignment filters: OR  (same as v1)
+    - Multiple column_match filters: AND (same as v1)
+    - assignment AND column_match: AND
+
+Stay options (stay_filter):
+    - Live inside the "room" assignment filter (v2)
+    - extract_stay_filter() returns stay_filter for the scheduler
+    - Falls back to legacy TemplateSchedule column during transition
 """
 import json
-from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
@@ -13,29 +37,237 @@ from app.db.models import (
     Reservation,
     Room,
     RoomAssignment,
-    TemplateSchedule,
     ReservationDailyInfo,
 )
 
 
 # ---------------------------------------------------------------------------
-# Condition builder functions: (value, ctx) -> condition
-# Each returns a SQLAlchemy condition (not applied to query directly).
-# Same-type conditions are OR-ed; different types are AND-ed.
+# Constants
 # ---------------------------------------------------------------------------
 
-def _condition_by_assignment(value, ctx):
-    """Return condition for assignment status: room / party / unassigned / unstable."""
-    if value == "room":
-        return Reservation.section == 'room'
-    elif value == "party":
+_ASSIGNMENT_VALUES = {"room", "party", "unassigned", "unstable"}
+_COLUMN_MATCH_COLUMNS = {"party_type", "gender", "naver_room_type", "notes"}
+
+
+# ---------------------------------------------------------------------------
+# Dual-parse: v1 → v2 normalization (normalize-on-read)
+# ---------------------------------------------------------------------------
+
+def _is_v2_shape(filters: list) -> bool:
+    """Heuristic: any v2 marker present (nested keys) and no v1 flat-only markers."""
+    has_nested = any(
+        f.get("type") == "assignment" and any(
+            k in f for k in ("buildings", "include_unassigned", "stay_filter")
+        )
+        for f in filters
+    )
+    has_v1_only = any(
+        f.get("type") in ("building", "room", "room_assigned", "party_only")
+        for f in filters
+    )
+    if has_nested and not has_v1_only:
+        return True
+    # Empty/assignment-only + column_match with no legacy types: already v2 (trivially compatible)
+    if not has_v1_only:
+        return True
+    return False
+
+
+def _normalize_to_v2(filters: list) -> list:
+    """Convert v1 filter list to v2 nested structure. Idempotent.
+
+    Rules:
+      - {"type":"room_assigned"}   → {"type":"assignment","value":"room"}
+      - {"type":"party_only"}      → {"type":"assignment","value":"party"}
+      - {"type":"room", ...}       → dropped (ghost)
+      - {"type":"building","value":N} items → merge into assignment.buildings
+        (attach to room assignment; if no room, create one)
+      - {"type":"assignment","value":"unassigned"} + any room/building → fold as
+        include_unassigned=true modifier on room
+      - {"type":"assignment","value":"unassigned"} alone → keep as peer (legacy)
+    """
+    if not filters:
+        return []
+
+    if _is_v2_shape(filters):
+        # Still strip ghost room type & legacy aliases (idempotent cleanup)
+        out: list = []
+        for f in filters:
+            t = f.get("type")
+            if t == "room":
+                continue
+            if t == "room_assigned":
+                out.append({"type": "assignment", "value": "room"})
+            elif t == "party_only":
+                out.append({"type": "assignment", "value": "party"})
+            else:
+                out.append(f)
+        return out
+
+    diag("filter.v1_normalize.hit", level="verbose", filter_count=len(filters))
+
+    assignments: list[str] = []
+    buildings: list[int] = []
+    has_unassigned = False
+    column_matches: list[dict] = []
+    # Preserve any unknown/pass-through items so we never silently drop data
+    passthrough: list[dict] = []
+
+    for f in filters:
+        t = f.get("type")
+        v = f.get("value")
+        if t == "assignment":
+            if v == "unassigned":
+                has_unassigned = True
+            elif v in _ASSIGNMENT_VALUES:
+                assignments.append(v)
+        elif t == "room_assigned":
+            assignments.append("room")
+        elif t == "party_only":
+            assignments.append("party")
+        elif t == "building":
+            try:
+                buildings.append(int(v))
+            except (ValueError, TypeError):
+                pass
+        elif t == "room":
+            continue  # ghost: drop
+        elif t == "column_match":
+            column_matches.append({"type": "column_match", "value": v})
+        else:
+            passthrough.append(f)
+
+    out: list = []
+    room_emitted = False
+
+    # Emit room assignment (if explicit OR implied by building filter)
+    if "room" in assignments or buildings:
+        room_filter: dict = {"type": "assignment", "value": "room"}
+        if buildings:
+            room_filter["buildings"] = sorted(set(buildings))
+        if has_unassigned:
+            room_filter["include_unassigned"] = True
+            has_unassigned = False  # consumed
+        out.append(room_filter)
+        room_emitted = True
+
+    # Emit non-room assignments (party/unstable)
+    for v in assignments:
+        if v == "room":
+            continue
+        out.append({"type": "assignment", "value": v})
+
+    # Standalone unassigned (no room filter to absorb into)
+    if has_unassigned and not room_emitted:
+        out.append({"type": "assignment", "value": "unassigned"})
+
+    out.extend(column_matches)
+    out.extend(passthrough)
+    return out
+
+
+def _parse_filters(raw_filters) -> list:
+    """Parse JSON/list filters and normalize to v2.
+
+    Accepts string (DB TEXT) or list (already parsed).
+    Invalid JSON → []. Unknown items preserved as passthrough.
+    """
+    if not raw_filters:
+        return []
+    if isinstance(raw_filters, str):
+        try:
+            parsed = json.loads(raw_filters)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    elif isinstance(raw_filters, list):
+        parsed = raw_filters
+    else:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return _normalize_to_v2(parsed)
+
+
+# ---------------------------------------------------------------------------
+# Stay options extraction (used by template_scheduler)
+# ---------------------------------------------------------------------------
+
+def extract_stay_filter(schedule) -> str | None:
+    """Return stay_filter from filter JSON's room assignment ('exclude' | None).
+
+    Reads from the v2 'room' assignment filter first. Falls back to legacy
+    TemplateSchedule column (`stay_filter`) if the schedule has no room
+    assignment filter (e.g. party-only or not yet migrated).
+    """
+    filters = _parse_filters(schedule.filters)
+    room_filter = next(
+        (f for f in filters if f.get("type") == "assignment" and f.get("value") == "room"),
+        None,
+    )
+    if room_filter is not None:
+        return room_filter.get("stay_filter") or None
+
+    # Legacy fallback
+    legacy_sf = getattr(schedule, "stay_filter", None)
+    if legacy_sf and filters:
+        has_non_room = any(
+            f.get("type") == "assignment" and f.get("value") != "room"
+            for f in filters
+        )
+        if has_non_room:
+            diag("schedule.section_guard.ui_violation", level="critical",
+                 schedule_id=getattr(schedule, "id", None),
+                 legacy_stay_filter=legacy_sf)
+    return legacy_sf
+
+
+# ---------------------------------------------------------------------------
+# Condition builders (v2)
+# ---------------------------------------------------------------------------
+
+def _condition_room(spec: dict, ctx: dict, *, with_buildings: bool = True):
+    """Room assignment condition, optionally narrowed by buildings.
+
+    Args:
+        with_buildings: When False, ignore buildings narrow (used by
+            only_date_independent mode for chip candidate prefilter).
+    """
+    target_date = ctx.get("target_date")
+    buildings = spec.get("buildings") if with_buildings else None
+    include_unassigned = bool(spec.get("include_unassigned"))
+
+    if buildings:
+        sub = (
+            ctx["db"].query(RoomAssignment.reservation_id)
+            .join(Room, and_(Room.id == RoomAssignment.room_id,
+                              Room.tenant_id == RoomAssignment.tenant_id))
+            .filter(
+                RoomAssignment.date == target_date,
+                Room.building_id.in_([int(b) for b in buildings]),
+            )
+        ).subquery()
+        room_cond = and_(
+            Reservation.section == 'room',
+            Reservation.id.in_(sub),
+        )
+    else:
+        room_cond = (Reservation.section == 'room')
+
+    if include_unassigned:
+        return or_(room_cond, Reservation.section == 'unassigned')
+    return room_cond
+
+
+def _condition_simple_assignment(spec: dict, ctx: dict):
+    """Party / unstable / unassigned (peer) condition."""
+    value = spec.get("value")
+    if value == "party":
         return Reservation.section == 'party'
-    elif value == "unassigned":
+    if value == "unassigned":
         return Reservation.section == 'unassigned'
-    elif value == "unstable":
+    if value == "unstable":
         target_date = ctx.get("target_date")
         if target_date:
-            # section="unstable" (순수 네이버) OR 해당 날짜에 unstable_party=true (복사된 예약자)
             sub = (
                 ctx["db"].query(ReservationDailyInfo.reservation_id)
                 .filter(
@@ -51,65 +283,33 @@ def _condition_by_assignment(value, ctx):
     return None
 
 
-def _condition_by_building(value, ctx):
-    """Return condition for building filter."""
-    target_date = ctx.get("target_date")
-    sub = (
-        ctx["db"].query(RoomAssignment.reservation_id)
-        .join(Room, and_(Room.id == RoomAssignment.room_id, Room.tenant_id == RoomAssignment.tenant_id))
-        .filter(
-            RoomAssignment.date == target_date,
-            Room.building_id == int(value),
-        )
-    ).subquery()
-    return Reservation.id.in_(sub)
-
-
-def _condition_by_room(value, ctx):
-    """Return condition for room id."""
-    target_date = ctx.get("target_date")
-    try:
-        room_id_val = int(value)
-    except (ValueError, TypeError):
-        return None
-    sub = (
-        ctx["db"].query(RoomAssignment.reservation_id)
-        .filter(
-            RoomAssignment.date == target_date,
-            RoomAssignment.room_id == room_id_val,
-        )
-    ).subquery()
-    return Reservation.id.in_(sub)
-
-
-# Whitelist of allowed columns for column_match filter
-_COLUMN_MATCH_COLUMNS = {"party_type", "gender", "naver_room_type", "notes"}
+def _condition_assignment(spec: dict, ctx: dict, *, only_date_independent: bool):
+    value = spec.get("value")
+    if value == "room":
+        return _condition_room(spec, ctx, with_buildings=not only_date_independent)
+    return _condition_simple_assignment(spec, ctx)
 
 
 def _escape_like(text: str) -> str:
-    """Escape LIKE wildcard characters so they are matched literally."""
+    """Escape LIKE wildcards so they match literally."""
     return text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
-def _condition_by_column_match(value, ctx):
-    """Return condition for column text match filter.
+def _condition_column_match(spec: dict, ctx: dict):
+    """column_match filter: {column}:{operator}:{text}.
 
-    value format: '{column}:{operator}:{text}'
-    operator: 'contains', 'not_contains', 'is_empty', 'is_not_empty'
-
-    For party_type: uses per-date ReservationDailyInfo if available,
-    falling back to Reservation.party_type.
+    For party_type / notes: resolves effective value via ReservationDailyInfo
+    override, falling back to the reservation column.
     """
+    value = spec.get("value", "")
     parts = value.split(':', 2)
     if len(parts) < 2:
         return None
-    column = parts[0]
-    operator = parts[1]
+    column, operator = parts[0], parts[1]
     text = parts[2] if len(parts) == 3 else ''
     if column not in _COLUMN_MATCH_COLUMNS:
         return None
 
-    # For party_type / notes: resolve effective value as daily info override OR reservation fallback
     if column in ('party_type', 'notes'):
         target_date = ctx.get('target_date')
         daily_col = getattr(ReservationDailyInfo, column)
@@ -125,11 +325,11 @@ def _condition_by_column_match(value, ctx):
         effective = func.coalesce(daily_sub, getattr(Reservation, column))
         if operator == 'is_empty':
             return effective.is_(None) | (effective == '')
-        elif operator == 'is_not_empty':
+        if operator == 'is_not_empty':
             return effective.isnot(None) & (effective != '')
-        elif operator == 'contains' and text:
+        if operator == 'contains' and text:
             return effective.like(f'%{_escape_like(text)}%', escape='\\')
-        elif operator == 'not_contains' and text:
+        if operator == 'not_contains' and text:
             return ~effective.like(f'%{_escape_like(text)}%', escape='\\') | effective.is_(None)
         return None
 
@@ -138,113 +338,82 @@ def _condition_by_column_match(value, ctx):
         return None
     if operator == 'is_empty':
         return col_attr.is_(None) | (col_attr == '')
-    elif operator == 'is_not_empty':
+    if operator == 'is_not_empty':
         return col_attr.isnot(None) & (col_attr != '')
-    elif operator == 'contains' and text:
+    if operator == 'contains' and text:
         return col_attr.like(f'%{_escape_like(text)}%', escape='\\')
-    elif operator == 'not_contains' and text:
+    if operator == 'not_contains' and text:
         return ~col_attr.like(f'%{_escape_like(text)}%', escape='\\') | col_attr.is_(None)
     return None
 
 
-FILTER_BUILDERS = {
-    "assignment": _condition_by_assignment,
-    "building": _condition_by_building,
-    "room": _condition_by_room,
-    "column_match": _condition_by_column_match,
-    # 레거시 호환
-    "room_assigned": lambda v, ctx: _condition_by_assignment("room", ctx),
-    "party_only": lambda v, ctx: _condition_by_assignment("party", ctx),
-}
+# ---------------------------------------------------------------------------
+# Main entrypoint
+# ---------------------------------------------------------------------------
+
+_COLUMN_MATCH_DATE_DEPENDENT = {"party_type", "notes"}
 
 
 def apply_structural_filters(
     db: Session, query, schedule, target_date: str,
     *, only_date_independent: bool = False,
 ):
-    """Apply structural filters (building/assignment/room/column_match) to a query.
-
-    Standalone version of TemplateScheduleExecutor._apply_structural_filters.
-    Used by chip_reconciler for unified matching.
+    """Apply v2 filters to a SQLAlchemy query.
 
     Args:
-        db: Database session
-        query: SQLAlchemy query to filter
-        schedule: TemplateSchedule instance (needs .filters attribute)
-        target_date: Resolved date string (YYYY-MM-DD)
-        only_date_independent: True이면 날짜 의존 필터(building/room/column_match의
-            party_type·notes)를 스킵. 후보 예약 조회용.
+        db: session
+        query: existing query on Reservation
+        schedule: TemplateSchedule-like with .filters attribute (JSON string or list)
+        target_date: YYYY-MM-DD string (needed by date-dependent filters)
+        only_date_independent: When True, skip filters that depend on target_date.
+            Used by chip_reconciler._get_candidate_reservations for per-date
+            refinement later.
 
     Returns:
-        Filtered query
+        Filtered query.
     """
-    diag("filter.apply.enter", level="verbose", schedule_id=getattr(schedule, 'id', None), target_date=target_date, only_date_independent=only_date_independent)
-    filters = _parse_filters(schedule.filters)
+    diag(
+        "filter.apply.enter", level="verbose",
+        schedule_id=getattr(schedule, 'id', None),
+        target_date=target_date,
+        only_date_independent=only_date_independent,
+    )
 
+    filters = _parse_filters(schedule.filters)
     ctx = {"db": db, "target_date": target_date}
 
-    filter_groups, has_unassigned = _build_filter_groups(filters)
+    assignment_conds: list = []
+    cm_conds: list = []
 
-    # 날짜 의존 필터 타입 (building, room은 RoomAssignment.date 사용)
-    _DATE_DEPENDENT_TYPES = {"building", "room"}
-    # column_match 중 ReservationDailyInfo를 사용하는 날짜 의존 컬럼
-    _DATE_DEPENDENT_COLUMNS = {"party_type", "notes"}
-
-    for group_key, values in filter_groups.items():
-        filter_type = group_key.split(':')[0] if group_key.startswith('column_match:') else group_key
-
-        if only_date_independent:
-            if filter_type in _DATE_DEPENDENT_TYPES:
-                continue
-            if filter_type == "column_match" and values:
-                column = values[0].split(':')[0] if values[0] else ''
-                if column in _DATE_DEPENDENT_COLUMNS:
+    for f in filters:
+        ftype = f.get("type")
+        if ftype == "assignment":
+            cond = _condition_assignment(f, ctx, only_date_independent=only_date_independent)
+            if cond is not None:
+                assignment_conds.append(cond)
+        elif ftype == "column_match":
+            if only_date_independent:
+                col = (f.get("value") or "").split(':', 1)[0]
+                if col in _COLUMN_MATCH_DATE_DEPENDENT:
                     continue
+            cond = _condition_column_match(f, ctx)
+            if cond is not None:
+                cm_conds.append(cond)
+        # else: passthrough/unknown types silently ignored
 
-        builder = FILTER_BUILDERS.get(filter_type)
-        if not builder:
-            continue
-        conditions = [c for c in (builder(v, ctx) for v in values) if c is not None]
-        if conditions:
-            diag("filter.applied", level="verbose", filter_type=filter_type, conditions_count=len(conditions))
-            combined = or_(*conditions) if len(conditions) > 1 else conditions[0]
-            if filter_type in ("building", "room") and has_unassigned:
-                combined = or_(combined, Reservation.section == 'unassigned')
-            query = query.filter(combined)
+    # assignment group: OR
+    if assignment_conds:
+        combined = or_(*assignment_conds) if len(assignment_conds) > 1 else assignment_conds[0]
+        query = query.filter(combined)
+        diag("filter.applied", level="verbose",
+             filter_type="assignment", conditions_count=len(assignment_conds))
+
+    # column_match: each AND
+    for cm in cm_conds:
+        query = query.filter(cm)
+    if cm_conds:
+        diag("filter.applied", level="verbose",
+             filter_type="column_match", conditions_count=len(cm_conds))
 
     diag("filter.apply.exit", level="verbose")
     return query
-
-
-def _parse_filters(raw_filters) -> list:
-    """Parse filters from string or list format."""
-    if not raw_filters:
-        return []
-    if isinstance(raw_filters, str):
-        try:
-            return json.loads(raw_filters)
-        except (json.JSONDecodeError, TypeError):
-            return []
-    return raw_filters if isinstance(raw_filters, list) else []
-
-
-def _build_filter_groups(filters: list) -> tuple:
-    """Group filters by type for OR/AND combination.
-
-    Returns: (filter_groups dict, has_unassigned bool)
-    """
-    filter_groups: dict = defaultdict(list)
-    _cm_idx = 0
-    for f in filters:
-        ftype = f.get("type", "")
-        fval = f.get("value", "")
-        if ftype == "column_match":
-            # Each column_match gets its own group → AND between all column_match filters.
-            # Other types (building, assignment) share a group → OR within same type.
-            group_key = f"column_match:{_cm_idx}"
-            _cm_idx += 1
-        else:
-            group_key = ftype
-        filter_groups[group_key].append(fval)
-    has_unassigned = 'unassigned' in filter_groups.get('assignment', [])
-    return filter_groups, has_unassigned

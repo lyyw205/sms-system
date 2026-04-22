@@ -15,25 +15,12 @@ class TestResolveDateTarget:
         expected = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
         assert result == expected
 
-    def test_today_checkout(self):
-        result = TemplateScheduleExecutor._resolve_date_target('today_checkout')
-        assert result == today_kst()
-
-    def test_tomorrow_checkout(self):
-        result = TemplateScheduleExecutor._resolve_date_target('tomorrow_checkout')
-        expected = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
+    def test_yesterday(self):
+        result = TemplateScheduleExecutor._resolve_date_target('yesterday')
+        expected = (today_kst_date() - timedelta(days=1)).strftime('%Y-%m-%d')
         assert result == expected
 
-    def test_consistency_today_variants(self):
-        """today와 today_checkout은 같은 날짜를 반환."""
-        assert (
-            TemplateScheduleExecutor._resolve_date_target('today')
-            == TemplateScheduleExecutor._resolve_date_target('today_checkout')
-        )
-
-    def test_consistency_tomorrow_variants(self):
-        """tomorrow과 tomorrow_checkout은 같은 날짜를 반환."""
-        assert (
-            TemplateScheduleExecutor._resolve_date_target('tomorrow')
-            == TemplateScheduleExecutor._resolve_date_target('tomorrow_checkout')
-        )
+    def test_unknown_falls_back_to_today(self):
+        """알 수 없는 값(레거시 포함)은 today로 fallback."""
+        result = TemplateScheduleExecutor._resolve_date_target('today_checkout')
+        assert result == today_kst()

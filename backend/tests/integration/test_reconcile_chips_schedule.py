@@ -20,7 +20,7 @@ def _make_template(db, key="tpl_test"):
     return tpl
 
 
-def _make_schedule(db, template, is_active=True, target_mode='once', date_target='today'):
+def _make_schedule(db, template, is_active=True, target_mode='first_night', date_target='today'):
     sched = TemplateSchedule(
         tenant_id=1, template_id=template.id, schedule_name="test",
         schedule_type="daily", hour=9, minute=0,

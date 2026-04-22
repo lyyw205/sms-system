@@ -325,15 +325,15 @@ def init_db():
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN chip_priority_keys TEXT"))
                 print("AUTO-MIGRATE: Added chip_priority_keys column to tenants table")
 
-        # v5: migrate stay_filter='last_only' → target_mode='last_day' + stay_filter=NULL
+        # v5: migrate stay_filter='last_only' → target_mode='last_night' + stay_filter=NULL
         if "template_schedules" in inspector.get_table_names():
             result = conn.execute(text("""
                 UPDATE template_schedules
-                SET target_mode = 'last_day', stay_filter = NULL
+                SET target_mode = 'last_night', stay_filter = NULL
                 WHERE stay_filter = 'last_only'
             """))
             if result.rowcount > 0:
-                print(f"AUTO-MIGRATE: Migrated {result.rowcount} schedules from stay_filter='last_only' to target_mode='last_day'")
+                print(f"AUTO-MIGRATE: Migrated {result.rowcount} schedules from stay_filter='last_only' to target_mode='last_night'")
 
         # reservation_sms_assignments: schedule_id
         if "reservation_sms_assignments" in inspector.get_table_names():

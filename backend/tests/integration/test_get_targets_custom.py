@@ -26,7 +26,7 @@ def _make_template(db, key="add_one_person"):
 
 
 def _make_custom_schedule(db, template, custom_type="surcharge_1",
-                          date_target=None, target_mode=None, exclude_sent=None, once_per_stay=None):
+                          date_target=None, target_mode=None, exclude_sent=None):
     """custom_schedule — NULL 필드 기본값에 의존하도록 미설정 가능."""
     kwargs = dict(
         tenant_id=1,
@@ -45,8 +45,6 @@ def _make_custom_schedule(db, template, custom_type="surcharge_1",
         kwargs["target_mode"] = target_mode
     if exclude_sent is not None:
         kwargs["exclude_sent"] = exclude_sent
-    if once_per_stay is not None:
-        kwargs["once_per_stay"] = once_per_stay
     sched = TemplateSchedule(**kwargs)
     db.add(sched)
     db.flush()
@@ -141,7 +139,7 @@ class TestCustomEligibility:
 
 class TestCustomLongStayDeduplication:
     def test_long_stay_blocked_after_first_send(self, db):
-        """연박자: 첫날 발송 후 둘째 날 pending 칩이 있어도 once_per_stay로 차단 — 패턴 A."""
+        """연박자: 첫날 발송 후 둘째 날 pending 칩이 있어도 exclude_sent로 차단 — 패턴 A."""
         tpl = _make_template(db)
         sched = _make_custom_schedule(db, tpl)
 
@@ -164,7 +162,7 @@ class TestCustomLongStayDeduplication:
         assert targets == [], "연박자에게 같은 템플릿을 하루 뒤 또 보내면 안 됨"
 
     def test_single_night_still_sends(self, db):
-        """단박 예약은 once_per_stay 영향 없이 정상 발송."""
+        """단박 예약은 정상 발송."""
         tpl = _make_template(db)
         sched = _make_custom_schedule(db, tpl)
 
@@ -198,7 +196,7 @@ class TestCustomDefaultCoercion:
     def test_custom_schedule_with_date_target_tomorrow(self, db):
         """custom 스케줄이 date_target='tomorrow' 로 명시 설정되면 내일 칩만 eligibility 통과."""
         tpl = _make_template(db)
-        sched = _make_custom_schedule(db, tpl, date_target='tomorrow', target_mode='daily')
+        sched = _make_custom_schedule(db, tpl, date_target='tomorrow', target_mode=None)
 
         tomorrow = (today_kst_date() + timedelta(days=1)).strftime("%Y-%m-%d")
         checkout = (today_kst_date() + timedelta(days=2)).strftime("%Y-%m-%d")
@@ -230,7 +228,7 @@ class TestStandardRegression:
             schedule_type="daily",
             hour=9,
             minute=0,
-            target_mode="once",
+            target_mode="first_night",
             date_target="today",
             schedule_category="standard",
             is_active=True,
@@ -253,7 +251,7 @@ class TestStandardRegression:
             schedule_type="daily",
             hour=9,
             minute=0,
-            target_mode="once",
+            target_mode="first_night",
             date_target="today",
             is_active=True,
         )
