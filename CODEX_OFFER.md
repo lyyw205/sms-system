@@ -260,6 +260,584 @@ CUSTOM_SCHEDULE_TYPES에는 새 타입을 추가함
 PRE_SEND_REFRESH_HANDLERS에는 추가를 깜빡함
 ```
 
+---
+
+# room_auto_assign.py 수정 제안
+
+이 문서는 `backend/app/services/room_auto_assign.py`를 기준으로, 현재 코드에서 버그 우려 지점, 충돌 가능성, 논리적 모순, 드문 케이스 리스크, 중복 및 삭제 후보를 정리한 내용입니다.
+
+## 핵심 요약
+
+이 파일은 특정 날짜의 **미배정 예약만** 골라 자동으로 객실을 채우는 서비스입니다.
+
+기본 아이디어는 맞습니다.
+
+- 예약의 `naver_biz_item_id`로 후보 객실 찾기
+- 연박이면 전날 객실 우선 선호
+- 도미토리면 수용 인원 체크
+- 도미토리면 성별 혼숙 방지
+- 기존 배정은 건드리지 않고 빈 배정만 채우기
+
+하지만 현재 구현에는 아래 문제가 섞여 있습니다.
+
+- 도메인 의미와 저장 구조가 충돌하는 부분
+- 날짜 범위를 끝까지 보지 않는 검증
+- 후보 객실 순서에 따라 결과가 달라지는 비직관적 분기
+- 동시 실행 시 깨질 수 있는 부분
+- 숫자 집계가 실제 의미와 어긋날 수 있는 부분
+
+특히 가장 먼저 손봐야 할 곳은 **일반실 `booking_count` 처리**와 **도미토리 성별 검사의 날짜 범위**입니다.
+
+## 전제: booking_count 해석은 맞지만 구현이 위험함
+
+먼저 도메인 해석은 분명히 맞습니다.
+
+```text
+booking_count = 2
+→ 한 사람이 방을 2개 예약한 예약 1건
+→ "같은 예약이 같은 날짜에 방 2개를 점유"해야 함
+```
+
+즉 이 값은 "사람 2명"이 아니라 "객실 수량 2개"일 수 있습니다.
+
+문제는 현재 `RoomAssignment` 저장 구조가 이 의미를 그대로 표현하지 못한다는 점입니다.
+
+관련 위치:
+
+- `backend/app/services/room_auto_assign.py`
+- `backend/app/services/room_assignment.py`
+- `backend/app/db/models.py`
+
+현재 `RoomAssignment`는 아래 제약이 있습니다.
+
+```text
+UniqueConstraint("reservation_id", "date")
+```
+
+즉 같은 예약은 같은 날짜에 **방 1개만** 가질 수 있습니다.
+
+그런데 자동배정 코드는 일반실에서 아래처럼 동작하려고 합니다.
+
+```text
+booking_count = 2
+→ 방 2개 필요하다고 판단
+→ 후보 방을 2개까지 assign_room() 호출
+```
+
+이 의도 자체는 도메인상 자연스럽습니다.
+
+하지만 실제 저장 구조는 그걸 허용하지 않기 때문에, 현재 로직은 "지원하는 것처럼 보이지만 실제로는 깨질 수 있는 상태"입니다.
+
+우선순위: 매우 높음
+
+## 1. 일반실 booking_count 처리와 DB 구조가 충돌함
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:379`
+- `backend/app/db/models.py:308`
+- `backend/app/services/room_assignment.py:514`
+
+현재 일반실 분기는 아래 의미로 동작합니다.
+
+```text
+rooms_needed = booking_count
+후보 일반실을 순서대로 돌면서
+가능한 방을 여러 개 assign_room()
+```
+
+문제는 `assign_room()`이 새 방을 넣기 전에 **같은 reservation_id + 날짜 범위의 기존 RoomAssignment를 삭제**한다는 점입니다.
+
+즉 이런 일이 가능합니다.
+
+```text
+1차 호출: R101 배정
+2차 호출: 같은 reservation/date 범위의 기존 배정 삭제
+2차 호출: R102 배정
+결과: 마지막 방만 남음
+```
+
+이건 비즈니스 의도와 다릅니다.
+
+의도:
+
+```text
+예약 1건이 방 2개를 점유
+```
+
+실제 저장 결과:
+
+```text
+예약 1건이 마지막 방 1개만 점유
+```
+
+이 문제 때문에 같이 따라오는 부작용도 있습니다.
+
+- `assigned_details`에는 성공 2건처럼 쌓일 수 있음
+- 실제 DB에는 마지막 객실만 남을 수 있음
+- `assigned_count`와 실제 배정 상태가 다를 수 있음
+- `unassigned` 계산이 음수가 되거나 왜곡될 수 있음
+
+수정 제안:
+
+- 선택지 A: 현재 모델을 유지할 거면 일반실에서 `booking_count > 1` 자동배정을 금지
+- 선택지 B: 진짜 멀티룸을 지원할 거면 `RoomAssignment` 모델과 관련 로직을 다중 객실 점유가 가능하도록 재설계
+
+개인적으로는 지금 상태에서 가장 안전한 방향은 아래입니다.
+
+```text
+단기:
+  자동배정에서는 일반실 booking_count > 1 지원 중단 또는 명시적 실패 처리
+
+중장기:
+  멀티룸을 표현 가능한 스키마/모델로 재설계
+```
+
+우선순위: 매우 높음
+
+## 2. assigned / unassigned 집계값이 실제 의미와 어긋날 수 있음
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:71`
+- `backend/app/services/room_auto_assign.py:148`
+
+현재 집계는 대략 이런 식입니다.
+
+```text
+assigned_count = len(assigned_details)
+unassigned = len(unassigned_candidates) - assigned_count
+```
+
+이 방식은 "배정 단위"가 항상 예약 1건당 1번일 때만 안전합니다.
+
+그런데 현재 일반실 로직은 예약 1건에 대해 `assigned_details`를 여러 번 추가하려고 합니다.
+
+그러면 다음 문제가 생깁니다.
+
+- `assigned`가 예약 수인지 방 수인지 모호해짐
+- `unassigned`가 실제 미배정 예약 수와 맞지 않음
+- 활동 로그의 성공 수치도 왜곡될 수 있음
+
+이건 운영자가 보고 판단하는 숫자를 틀리게 만들기 때문에 단순 표시 문제가 아닙니다.
+
+수정 제안:
+
+- `assigned`의 의미를 명확히 정해야 함
+  - 예약 수 기준인지
+  - 객실 수 기준인지
+- 지금 API/로그/프론트 문구를 보면 예약 수처럼 읽히므로, 예약 기준 집계가 더 자연스럽습니다
+
+우선순위: 높음
+
+## 3. 도미토리 성별 충돌 검사가 target_date 하루만 봄
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:342`
+- `backend/app/services/room_auto_assign.py:367`
+
+현재 도미토리 성별 락 검사는 **배정 시작일 하루만** 확인합니다.
+
+하지만 실제 배정은 아래처럼 체크아웃 전까지 전체 날짜에 대해 생성됩니다.
+
+```text
+assign_room(db, res.id, room.id, target_date, res.check_out_date, ...)
+```
+
+즉 아래 같은 케이스가 생길 수 있습니다.
+
+```text
+예약 A: 남성 / 4월 24일~26일
+객실 D1:
+  4월 24일은 비어 있음
+  4월 25일에는 여성 예약이 이미 있음
+```
+
+현재 로직은 4월 24일만 보고 통과시킬 수 있습니다.
+
+그러면 결과는:
+
+```text
+4월 24일 배정 성공
+4월 25일도 같은 방으로 배정 생성
+→ 다음날 성별 혼합 발생 가능
+```
+
+상식적으로는 **숙박 기간 전체에 대해 성별 락을 검사**해야 맞습니다.
+
+수정 제안:
+
+- 도미토리 후보 검증 시 `target_date ~ check_out_date` 전체 날짜를 확인
+- 각 날짜마다 기존 점유자의 성별을 확인해 하나라도 충돌하면 실패 처리
+
+우선순위: 매우 높음
+
+## 4. 후보 객실 순서에 따라 도미토리를 아예 시도하지 않을 수 있음
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:332`
+- `backend/app/services/room_auto_assign.py:378`
+
+현재 후보 객실 목록은 `biz_item_id -> rooms`로 한 리스트에 들어옵니다.
+
+즉 같은 상품에 아래처럼 섞여 있을 수 있습니다.
+
+```text
+후보 = [일반실 R101, 도미토리 D1, 도미토리 D2]
+```
+
+문제는 바깥 루프가 첫 번째 후보를 보고 분기를 정해버린다는 점입니다.
+
+```text
+첫 후보가 일반실이면
+→ 일반실 분기 진입
+→ break
+→ 뒤에 있는 도미토리 후보는 검사조차 안 함
+```
+
+이건 굉장히 비직관적입니다.
+
+같은 예약이라도 후보 순서가 아래처럼 달라지면 결과가 바뀔 수 있습니다.
+
+```text
+[일반실, 도미토리] → 실패
+[도미토리, 일반실] → 성공
+```
+
+수정 제안:
+
+- 일반실 후보와 도미토리 후보를 먼저 분리
+- 예약 종류/상품 정책에 따라 어느 타입을 우선할지 명시적으로 결정
+- "후보 순서에 따라 우연히 결과가 달라지는 구조"는 제거
+
+우선순위: 높음
+
+## 5. 도미토리 자동배정은 동시 실행에 취약함
+
+위치:
+
+- `backend/app/services/room_auto_assign.py`
+- `backend/app/services/room_assignment.py`
+
+현재 일반실은 `assign_room()` 내부에서 `SELECT ... FOR UPDATE`로 충돌을 어느 정도 방어합니다.
+
+하지만 도미토리는 현재 흐름이 아래와 같습니다.
+
+```text
+1. check_capacity_all_dates()로 읽기
+2. 현재 점유자 성별 확인
+3. assign_room() 호출
+```
+
+이 사이에 다른 요청이나 스케줄러가 같은 도미토리 방에 배정하면:
+
+- 둘 다 "자리 있음"으로 보고 통과
+- 둘 다 insert 진행
+- 결과적으로 침대 수 초과 가능
+- bed_order 계산 꼬임 가능
+- 성별 혼합 가능
+
+특히 이 파일은 아래 경로로 동시에 들어올 수 있습니다.
+
+- 수동 버튼 `POST /api/rooms/auto-assign`
+- 매일 10:01 스케줄러
+- 네이버 sync 후 후속 auto-assign
+
+수정 제안:
+
+- 도미토리도 assign 직전 재검증 또는 잠금 필요
+- 가능하면 `(room_id, date)` 단위의 점유 계산에 대해 더 강한 동시성 제어 필요
+
+우선순위: 높음
+
+## 6. stay_group 선호 방 결정이 쿼리 순서에 의존함
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:265`
+- `backend/app/services/room_auto_assign.py:278`
+
+현재 `stay_group_room_map` 은 `target_date` 와 `prev_date` 둘 다 조회한 뒤, 마지막으로 읽힌 `room_id` 하나만 남깁니다.
+
+문제는:
+
+- 정렬 기준이 없음
+- "전날 방을 우선한다"는 정책이 코드상 보장되지 않음
+
+즉 DB가 어떤 순서로 결과를 주느냐에 따라 다음 선호 방이 달라질 수 있습니다.
+
+이건 재현이 어려운 유형이라 더 위험합니다.
+
+수정 제안:
+
+- 명시적으로 `prev_date` 우선
+- 혹은 날짜별로 분리 조회
+- "왜 이 방이 선호 방으로 선택됐는지" 코드에서 읽히게 만들기
+
+우선순위: 중간
+
+## 7. priority=0 주석 의미와 실제 정렬 동작이 어긋남
+
+위치:
+
+- `backend/app/db/models.py:220`
+- `backend/app/services/room_auto_assign.py:207`
+
+모델 주석은 아래 뜻으로 읽힙니다.
+
+```text
+0 = 미설정
+낮을수록 먼저
+```
+
+그런데 정렬은 단순 오름차순입니다.
+
+즉 실제 동작은:
+
+```text
+0인 방이 제일 먼저 온다
+```
+
+보통 "미설정"이면 아래처럼 기대합니다.
+
+```text
+명시 우선순위가 있는 방 먼저
+미설정은 뒤
+```
+
+현재는 반대로 작동할 수 있어서, 운영자가 우선순위를 열심히 넣어도 `0`이 섞이면 결과가 직관과 다를 수 있습니다.
+
+수정 제안:
+
+- 정책을 하나로 확정해야 함
+  - 정말 `0`이 최우선이면 주석 수정
+  - `0=미설정`이면 정렬 시 뒤로 보내기
+
+우선순위: 중간
+
+## 8. 실패 사유는 마지막 후보의 상태만 남아 운영 판단을 왜곡할 수 있음
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:330`
+- `backend/app/services/room_auto_assign.py:414`
+
+현재 `last_failure_reason` 하나만 기록합니다.
+
+예를 들어 후보 방이 3개일 때:
+
+```text
+방 A: gender_lock
+방 B: capacity_full
+방 C: capacity_full
+```
+
+최종 기록은 `capacity_full` 하나만 남습니다.
+
+하지만 운영자는 실제로는 아래처럼 이해해야 할 수 있습니다.
+
+```text
+일부 방은 성별 충돌
+일부 방은 정원 초과
+```
+
+현재 로그는 원인을 단순화해서 보여주기 때문에, 설정 문제인지 수용량 문제인지 판단이 흐려질 수 있습니다.
+
+수정 제안:
+
+- 최소한 내부 로그에는 후보별 실패 이유를 남기기
+- 사용자 표시용은 단일 reason 유지 가능
+- 활동 로그 detail에는 `reasons_seen` 같은 보조 정보 추가 가능
+
+우선순위: 중간
+
+## 9. section 필터는 legacy/NULL 데이터에서 애매할 수 있음
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:181`
+
+현재 자동배정 대상 필터는 아래 의미입니다.
+
+```text
+section NOT IN ('party', 'unstable')
+```
+
+이 방식은 대부분 괜찮지만, `section` 이 `NULL` 인 legacy 데이터가 섞이면 SQL에서 예상과 다르게 빠질 수 있습니다.
+
+즉 운영자는 "미배정인데 왜 후보에 안 잡히지?"라고 느낄 수 있습니다.
+
+수정 제안:
+
+- `section is null` 도 허용할지 정책 명시
+- legacy 데이터 정리 전이라면 `or section is null` 고려
+
+우선순위: 중간
+
+## 10. check_out_date가 비어 있는 예약은 과도하게 살아남을 수 있음
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:195`
+
+현재 후처리 필터는 아래 의미입니다.
+
+```text
+check_out_date가 없으면 계속 active처럼 간주
+```
+
+정상 데이터라면 큰 문제는 없지만, 외부 sync 데이터가 깨졌을 때 아래 상황이 가능합니다.
+
+```text
+체크아웃 날짜 누락
+→ 미래 날짜에도 계속 숙박 중으로 간주
+→ 자동배정 대상에 남음
+```
+
+이건 흔한 케이스는 아니지만, 한 번 발생하면 운영자가 원인을 찾기 어렵습니다.
+
+수정 제안:
+
+- `check_out_date is None` 예약에 대한 별도 진단 로그
+- 외부 sync 단계에서 데이터 품질 검증 강화
+
+우선순위: 낮음에서 중간
+
+## 11. 중복 후처리 가능성
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:72`
+- `backend/app/services/room_auto_assign.py:77`
+- `backend/app/services/room_auto_assign.py:83`
+
+현재 `assigned_reservation_ids` 는 중복 제거 없이 만듭니다.
+
+일반실 multi-room 로직이 살아 있는 현재 구조에서는 같은 예약 ID가 여러 번 들어갈 수 있습니다.
+
+그러면:
+
+- `sync_sms_tags()` 중복 실행
+- surcharge batch도 같은 예약을 중복 처리
+
+가 발생할 수 있습니다.
+
+지금 당장 큰 장애로 이어질 가능성은 낮지만, 불필요한 DB 부하와 로그 노이즈를 만듭니다.
+
+수정 제안:
+
+- 후처리 전 `reservation_id` dedupe
+
+우선순위: 중간
+
+## 12. flush가 과도하게 반복됨
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:75`
+- `backend/app/services/room_auto_assign.py:371`
+- `backend/app/services/room_auto_assign.py:398`
+- `backend/app/services/room_assignment.py:570`
+
+`assign_room()` 내부에서 이미 flush를 여러 번 수행하는데, auto-assign 쪽에서 직후 또 flush 합니다.
+
+기능상 꼭 필요한 부분이 아닌 곳이 섞여 있을 가능성이 높습니다.
+
+이건 기능 버그보다는 성능/가독성 문제에 가깝습니다.
+
+수정 제안:
+
+- 어떤 flush가 진짜 필요한지 구분
+- 중복 flush 정리
+
+우선순위: 낮음에서 중간
+
+## 삭제 후보 / 재설계 후보
+
+### 1. 가장 강한 재설계 후보
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:379`
+
+현재 일반실 `booking_count` 기반 다중 배정 블록은 도메인 의도는 맞지만, 현재 모델 구조와 충돌합니다.
+
+즉 이 코드는 단순 삭제보다는 아래 둘 중 하나가 필요합니다.
+
+- 현재 모델에 맞게 단순화
+- 멀티룸을 정식 지원하도록 전면 재설계
+
+### 2. 삭제 가능성이 높은 보조 코드
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:382`
+
+`assigned_room_ids` 는 지금 구조에서는 실질 효과가 제한적입니다.
+
+근본 문제는 "한 예약의 같은 날짜 다중 객실" 자체이기 때문에, 이 set은 표면만 가리는 코드에 가깝습니다.
+
+### 3. 정리 가능한 중복 코드
+
+위치:
+
+- `backend/app/services/room_auto_assign.py:371`
+- `backend/app/services/room_auto_assign.py:398`
+
+직전 `assign_room()` 이 이미 flush 하는 흐름이라면 추가 flush는 삭제 후보입니다.
+
+## 누락된 테스트
+
+현재 테스트는 기본적인 실패 사유와 연박 선호는 보지만, 아래 핵심 리스크를 직접 검증하지 않습니다.
+
+추가 권장 테스트:
+
+- 일반실 `booking_count=2` 예약이 현재 구조에서 어떻게 저장되는지
+- `assigned_count`, `unassigned` 가 왜곡되지 않는지
+- 도미토리 연박 중 둘째 날에 성별 충돌이 있는 경우 실패하는지
+- 후보 방에 일반실/도미토리가 같이 있을 때 순서에 따라 결과가 달라지지 않는지
+- priority가 `0`일 때 기대 순서가 맞는지
+- 동시 실행 시 도미토리 초과 배정이 없는지
+
+## 추천 수정 순서
+
+1. 일반실 `booking_count` 처리와 모델 구조 충돌부터 정리
+2. 도미토리 성별 검사를 전체 숙박 기간 기준으로 수정
+3. 후보 방 타입 혼합 시 분기 구조 정리
+4. 도미토리 동시성 방어 보강
+5. 집계값(`assigned`, `unassigned`) 의미 재정의
+6. priority `0` 정책 정리
+7. 중복 후처리/flush 정리
+
+## 결론
+
+이 파일은 방향 자체는 맞습니다.
+
+특히 아래 철학은 좋습니다.
+
+- 기존 배정을 덮어쓰지 않는 fill-only
+- 연박자는 가능하면 같은 방 유지
+- 도미토리 제약을 별도로 고려
+- 실패를 조용히 삼키지 않고 활동 로그와 SSE로 알림
+
+하지만 현재 구현은 몇 군데에서 **도메인 의도와 저장 구조가 어긋나고**, 그 결과 겉으로는 동작해도 실제 데이터나 집계가 틀어질 수 있습니다.
+
+가장 위험한 부분은 일반실 `booking_count` 처리입니다.
+
+이건 단순 if문 수정으로 끝나는 문제가 아니라,
+
+```text
+현재 시스템이 "예약 1건의 다중 객실 점유"를 진짜 지원하는지
+아니면 자동배정에서는 단일 객실만 허용할지
+```
+
+를 먼저 결정해야 해결됩니다.
+
+그 다음으로는 도미토리 성별 검사를 하루 단위가 아니라 **전체 숙박 날짜 범위**로 올리는 것이 필요합니다.
+```
+
 그러면 프론트 드롭다운에는 보이지만, 발송 직전 refresh는 실행되지 않습니다.
 
 반대도 가능합니다.
@@ -1637,3 +2215,340 @@ PARTY3_TYPES = ("2", "2차만")
 - 삭제 후보: `sync_denormalized_field()`는 deprecated이고 현재 실사용 호출이 없어 보입니다. 외부 스크립트 import만 확인 후 삭제 후보입니다.
 - 삭제/이동 후보: `password_display.py`의 `build_prefixed_password()`는 `room_assignment.py` 내부 helper로 옮기고 import를 제거하는 방향이 자연스럽습니다.
 - 리팩토링 후보: push-out 후처리, 인원 계산(`party_size or booking_count or 1`), 날짜별 충돌 정책이 여러 곳에 흩어져 있어 공통 helper로 통일하는 편이 안전합니다.
+
+---
+
+# room_lookup.py 수정 제안
+
+이 문서는 `backend/app/services/room_lookup.py`를 기준으로, 현재 코드에서 수정하면 좋은 부분과 충돌이 우려되는 부분, 논리적으로 애매한 부분, 삭제 가능 여부와 중복 여부를 정리한 내용입니다.
+
+## 핵심 요약
+
+이 파일은 객실 배정 자체를 하는 파일이 아닙니다.
+
+역할은 단순합니다.
+
+```text
+예약 여러 건의 room 정보를 한 번에 조회
+→ N+1 쿼리 방지
+→ API/스케줄러/미리보기에서 재사용
+```
+
+즉 `RoomAssignment`에 이미 저장된 객실 정보를 읽어와서,
+
+- 예약 목록 API
+- 파티 체크인 목록
+- 문자 발송 대상 미리보기
+
+같은 곳에서 빠르게 쓰게 해주는 조회 유틸입니다.
+
+방향 자체는 좋고 파일도 작습니다.
+
+다만 아래 문제는 정리할 가치가 있습니다.
+
+- 주석과 실제 동작이 다름
+- 날짜 없는 조회 의미가 애매함
+- 호출부가 별도 보정 로직을 또 가지고 있음
+- 얇은 wrapper 함수가 유지 가치 대비 단순함
+
+## 1. 주석은 earliest assignment라고 하지만 실제 구현은 보장하지 않음
+
+위치:
+
+- `backend/app/services/room_lookup.py:16`
+- `backend/app/services/room_lookup.py:27`
+- `backend/app/services/room_lookup.py:31`
+
+현재 docstring 은 아래처럼 읽힙니다.
+
+```text
+target_date가 없으면 예약별 가장 이른 assignment를 사용
+```
+
+하지만 실제 코드는:
+
+```text
+order_by 없음
+query.all() 결과를 순서대로 순회
+처음 본 assignment 하나만 채택
+```
+
+즉 "가장 이른 날짜"를 보장하지 않습니다.
+
+연박 중 객실 이동이 있었거나,
+DB가 다른 순서로 row를 반환하면 결과가 달라질 수 있습니다.
+
+문제 예시:
+
+```text
+예약 A
+4/10 → 101호
+4/11 → 102호
+
+target_date 없이 조회
+→ 기대: 4/10 기준 101호
+→ 실제: 우연히 102호가 먼저 오면 102호 가능
+```
+
+수정 제안:
+
+- 진짜 earliest 정책이면 `order_by(RoomAssignment.date.asc(), RoomAssignment.id.asc())` 추가
+- earliest가 아니라면 docstring을 실제 정책대로 수정
+
+우선순위: 높음
+
+## 2. target_date 없는 조회의 의미가 애매함
+
+위치:
+
+- `backend/app/services/room_lookup.py`
+
+이 함수는 두 가지 모드를 섞어 가지고 있습니다.
+
+```text
+1. target_date 있음
+   → 그 날짜의 객실 조회
+
+2. target_date 없음
+   → 대표 assignment 하나 조회
+```
+
+문제는 두 번째 의미가 너무 모호하다는 점입니다.
+
+대표 assignment 가 아래 중 무엇인지 코드에서 명확하지 않습니다.
+
+- 가장 이른 날짜
+- 가장 최근 날짜
+- 체크인 날짜
+- 그냥 첫 row
+
+이 모호함 때문에 호출부가 자기 필요에 맞는 보정 로직을 따로 갖게 됩니다.
+
+예를 들어 예약 목록 API는 target_date 가 없을 때
+"체크인 날짜 기준 room" 을 원해서 따로 보정하고 있습니다.
+
+위치:
+
+- `backend/app/api/reservations.py:299`
+
+즉 현재 구조는:
+
+```text
+room_lookup.py 기본 정책이 충분히 명확하지 않다
+→ 호출부가 추가 로직을 갖는다
+→ 중복과 혼란이 생긴다
+```
+
+수정 제안:
+
+- 함수 역할을 명확히 분리
+  - `batch_room_lookup_for_date(...)`
+  - `batch_room_lookup_for_checkin_date(...)`
+  - 또는 `target_date` 없는 모드를 제거
+
+우선순위: 높음
+
+## 3. reservations.py 호출부에 중복 보정 로직이 있음
+
+위치:
+
+- `backend/app/api/reservations.py:303`
+- `backend/app/api/reservations.py:311`
+
+현재 `date` 없는 예약 목록 조회는 아래처럼 동작합니다.
+
+```text
+1. RoomAssignment를 직접 한 번 조회
+2. check-in date와 맞는 reservation_id만 추림
+3. 다시 batch_room_lookup() 호출
+4. 다시 한 번 매핑
+```
+
+이건 조회 유틸을 쓰고 있는데도 호출부가 중복 계산을 하는 형태입니다.
+
+즉 `room_lookup.py` 가 아래 요구를 충분히 직접 지원하지 못한다는 뜻입니다.
+
+```text
+예약별 check-in date 기준 room lookup
+```
+
+수정 제안:
+
+- 이 로직을 `room_lookup.py` 안으로 옮겨 helper 함수로 분리
+- 호출부는 단순히 함수 하나만 호출하게 정리
+
+예상 효과:
+
+- 예약 API 코드 단순화
+- room lookup 정책이 한 군데로 모임
+- 버그 수정 시 수정 위치 감소
+
+우선순위: 중간에서 높음
+
+## 4. 반환 타입이 너무 느슨함
+
+위치:
+
+- `backend/app/services/room_lookup.py:12`
+
+현재 반환 타입은 `dict[int, dict]` 입니다.
+
+이건 간단해서 쓰기 쉽지만, 구조가 고정돼 있는 함수치고는 너무 넓습니다.
+
+실제 값 구조는 사실상 아래처럼 고정입니다.
+
+```text
+room_id
+room_number
+room_password
+assigned_by
+bed_order
+```
+
+문제는 호출부에서 키 이름 오타가 나도 타입 수준에서 잡기 어렵다는 점입니다.
+
+수정 제안:
+
+- `TypedDict` 나 별도 dataclass 사용 고려
+- 최소한 docstring 에 반환 필드 전체를 더 명확히 적기
+
+우선순위: 낮음에서 중간
+
+## 5. room_password를 항상 같이 반환하는 것이 과한지 검토 필요
+
+위치:
+
+- `backend/app/services/room_lookup.py:49`
+
+현재는 lookup 결과에 `room_password` 도 항상 들어갑니다.
+
+문제는 이 함수가 광범위한 조회 유틸이라는 점입니다.
+
+즉 사용처 중 일부는 단순히 아래만 필요합니다.
+
+- 방 번호
+- 배정 여부
+
+그런데 비밀번호까지 항상 실어 나르면,
+
+- 의미상 과도할 수 있고
+- 나중에 다른 API에서 무심코 노출 범위를 넓힐 위험이 있습니다
+
+지금 당장 취약점이라고 보기는 어렵지만,
+유틸 함수가 너무 많은 정보를 기본값으로 주는 구조는 점검할 가치가 있습니다.
+
+수정 제안:
+
+- 필요 필드만 반환하는 별도 함수 분리
+- 또는 password 포함 여부를 명시 옵션으로 받기
+
+우선순위: 낮음
+
+## 6. Room 조회에도 정책이 코드에 드러나지 않음
+
+위치:
+
+- `backend/app/services/room_lookup.py:40`
+
+현재 `Room.id.in_(room_ids)` 로 단순 조회만 합니다.
+
+대부분은 문제 없지만, 아래 정책이 코드상 명시돼 있지 않습니다.
+
+- 비활성 방도 조회할 것인가
+- 삭제 직전/legacy 데이터는 어떻게 볼 것인가
+
+배정 기록의 source of truth가 `RoomAssignment` 라는 점을 생각하면,
+이미 과거에 배정된 방이라면 비활성 room 이어도 조회하는 게 자연스럽습니다.
+
+즉 이 부분은 "버그"라기보다,
+정책이 암묵적이라는 점이 애매합니다.
+
+수정 제안:
+
+- docstring 또는 주석에 "과거 배정 기록 복원을 위해 Room.is_active 필터를 두지 않음" 같은 의도를 명시
+
+우선순위: 낮음
+
+## 7. batch_room_number_map()는 얇은 wrapper지만 실사용 가치는 있음
+
+위치:
+
+- `backend/app/services/room_lookup.py:56`
+- `backend/app/api/party_checkin.py:124`
+- `backend/app/scheduler/template_scheduler.py:619`
+
+이 함수는 사실상 한 줄 wrapper 입니다.
+
+```python
+lookup = batch_room_lookup(...)
+return {res_id: info["room_number"] or "" ...}
+```
+
+이런 함수는 종종 삭제 후보처럼 보일 수 있습니다.
+
+하지만 현재는:
+
+- 파티 체크인 API
+- 템플릿 스케줄 미리보기
+
+에서 의미 있게 쓰고 있어서, 당장 삭제할 정도는 아닙니다.
+
+즉 판단은 아래 정도가 적절합니다.
+
+```text
+안전 삭제 후보는 아님
+유지해도 무방
+다만 팀이 helper 최소화를 원하면 통합 가능
+```
+
+우선순위: 낮음
+
+## 삭제 가능 / 중복 여부 정리
+
+### 삭제하면 안 되는 함수
+
+- `batch_room_lookup()`
+  - 핵심 유틸이고 실제 사용 중
+
+- `batch_room_number_map()`
+  - 매우 얇지만 실사용 중
+
+### 삭제 후보라기보다 통합 후보
+
+- `batch_room_number_map()`
+  - 호출부에서 직접 `room_number`만 뽑게 바꿀 수는 있음
+  - 하지만 현재 상태도 가독성 측면에서는 나쁘지 않음
+
+### 실제 중복으로 보이는 부분
+
+- `backend/app/api/reservations.py:299` 이하의 date 없는 보정 로직
+  - 이건 `room_lookup.py` 정책이 애매해서 호출부가 중복 책임을 지는 상태로 보입니다.
+
+## 추천 수정 순서
+
+1. `target_date is None` 정책을 명확히 결정
+2. docstring 과 실제 구현을 일치시키기
+3. check-in date 기준 lookup helper 를 `room_lookup.py`로 이동
+4. `reservations.py` 중복 보정 로직 정리
+5. 필요하면 반환 타입과 password 노출 범위 다듬기
+
+## 결론
+
+이 파일은 구조가 작고 역할도 명확해서, 큰 구조적 문제를 가진 파일은 아닙니다.
+
+오히려 핵심 문제는 "잘못 만들었다"기보다 아래에 가깝습니다.
+
+```text
+정책이 애매한 부분이 하나 있고
+그 애매함을 호출부가 메우면서 중복이 생겼다
+```
+
+가장 먼저 손볼 것은 `target_date=None` 정책입니다.
+
+이 부분만 명확해지면:
+
+- 주석/구현 불일치 해소
+- 예약 목록 API의 보정 로직 축소
+- room lookup 관련 책임이 한 파일로 모임
+
+이라는 정리가 가능합니다.
