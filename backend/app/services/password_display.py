@@ -19,12 +19,13 @@ def build_prefixed_password(room) -> str:
     """Room.door_password 앞에 '{random 0-9}0' prefix 를 붙여 반환.
 
     - door_password 가 빈값이면 빈 문자열 반환
-    - door_password 가 비숫자이면 prefix 생략하고 원값 반환
-      (도어락이 숫자만 받는 것을 가정한 안전장치)
+    - 끝의 '*' / '#' (확인키) 은 무시하고 숫자 판정. 그래도 숫자가 아니면
+      prefix 생략하고 원값 반환 (도어락 호환 안전장치)
     """
     base = (room.door_password or "").strip()
     if not base:
         return ""
-    if not base.isdigit():
+    digit_part = base.rstrip("*#")
+    if not digit_part.isdigit():
         return base
     return f"{random.randint(0, 9)}0{base}"
