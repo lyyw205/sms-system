@@ -2,7 +2,7 @@
 Message Templates API
 """
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -91,7 +91,7 @@ def get_templates(
     current_user: User = Depends(get_current_user),
 ):
     """Get all message templates"""
-    query = db.query(MessageTemplate)
+    query = db.query(MessageTemplate).options(selectinload(MessageTemplate.schedules))
 
     if category:
         query = query.filter(MessageTemplate.category == category)
@@ -315,14 +315,21 @@ def delete_template(template_id: int, db: Session = Depends(get_tenant_scoped_db
     if not template:
         raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
 
-    # Check if template has active schedules
+    # template_schedules.template_id 가 NOT NULL 이라 SET NULL cascade 가 NotNullViolation 으로 터짐.
+    # 활성/비활성 무관하게 묶인 스케줄이 있으면 차단해서 사용자에게 명시적으로 알린다.
     if hasattr(template, 'schedules') and template.schedules:
-        active_schedules = [s for s in template.schedules if s.is_active]
-        if active_schedules:
-            raise HTTPException(
-                status_code=400,
-                detail=f"활성 스케줄이 {len(active_schedules)}개 있는 템플릿은 삭제할 수 없습니다"
-            )
+        total = len(template.schedules)
+        active_count = sum(1 for s in template.schedules if s.is_active)
+        inactive_count = total - active_count
+        parts = []
+        if active_count:
+            parts.append(f"활성 {active_count}개")
+        if inactive_count:
+            parts.append(f"비활성 {inactive_count}개")
+        raise HTTPException(
+            status_code=400,
+            detail=f"이 템플릿을 사용하는 스케줄({', '.join(parts)})을 먼저 삭제하세요",
+        )
 
     diag("template.deleted", level="critical", template_id=template_id)
     db.delete(template)

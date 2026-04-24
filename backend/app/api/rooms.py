@@ -352,7 +352,7 @@ async def get_room_groups(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(get_current_user),
 ):
-    groups = db.query(RoomGroup).order_by(RoomGroup.sort_order).all()
+    groups = db.query(RoomGroup).options(selectinload(RoomGroup.rooms)).order_by(RoomGroup.sort_order).all()
     return [
         RoomGroupResponse(
             id=g.id, name=g.name, sort_order=g.sort_order, color=g.color,

@@ -1420,25 +1420,18 @@ const Templates: React.FC = () => {
                 >
                   {varsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   사용 가능한 변수
-                  <span className="text-tiny text-[#B0B8C1] dark:text-gray-600">· 클릭하여 복사</span>
                 </button>
                 {varsOpen && (
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(availableVariables.variables ?? {}).map(([varName, v]: [string, any]) => (
-                      <button
+                      <span
                         key={varName}
-                        type="button"
                         title={`${v.description} (예: ${sampleExamples[varName] || v.example})`}
-                        onClick={() => {
-                          navigator.clipboard.writeText(`{{${varName}}}`).then(() => {
-                            toast.success(`{{${varName}}} 복사됨`);
-                          });
-                        }}
-                        className="inline-flex items-center gap-1 rounded-md border border-[#E5E8EB] dark:border-gray-700 px-1.5 py-0.5 text-caption font-medium text-[#3182F6] dark:text-blue-400 transition-colors hover:bg-[#E8F3FF] dark:hover:bg-[#3182F6]/15 cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-md border border-[#E5E8EB] dark:border-gray-700 px-1.5 py-0.5 text-caption font-medium text-[#3182F6] dark:text-blue-400"
                       >
                         <code className="font-mono">{varName}</code>
                         <span className="text-[#B0B8C1] dark:text-gray-600">{v.description}</span>
-                      </button>
+                      </span>
                     ))}
                   </div>
                 )}

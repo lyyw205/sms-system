@@ -97,7 +97,20 @@ class ScheduleManager:
                     TemplateSchedule.id == schedule_id_captured
                 ).first()
                 if not fresh_schedule:
+                    diag(
+                        "schedule.execute.fetch_miss",
+                        level="critical",
+                        schedule_id=schedule_id_captured,
+                        bypass_active=bypass_tenant_filter.get(),
+                        tenant_ctx=current_tenant_id.get(None),
+                        registered_jobs=len(self.scheduler.get_jobs()),
+                    )
                     logger.error(f"Schedule #{schedule_id_captured} not found")
+                    # 자기 잡 self-remove (DB에 정말 없으면 다음 트리거에서 또 찍히지 않게)
+                    try:
+                        self.scheduler.remove_job(f"template_schedule_{schedule_id_captured}")
+                    except JobLookupError:
+                        pass
                     return
 
                 schedule_tenant_id = fresh_schedule.tenant_id

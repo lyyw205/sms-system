@@ -3,7 +3,7 @@ Template Schedules API
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Literal, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
@@ -18,6 +18,63 @@ from app.api.shared_schemas import ActionResponse
 from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/template-schedules", tags=["template-schedules"])
+
+
+# filter type 화이트리스트 — _parse_filters 로 정규화된 v2 결과에서 허용하는 type 들
+_ALLOWED_FILTER_TYPES = {"assignment", "column_match"}
+
+
+def _validate_schedule_inputs(
+    db: Session,
+    *,
+    effective_category: Optional[str],
+    effective_custom_type: Optional[str],
+    raw_filters,
+    validate_custom_type: bool,
+    validate_filters: bool,
+    schedule_id: Optional[int] = None,
+) -> None:
+    """스케줄 create/update 공통 입력 검증.
+
+    - `validate_custom_type=True` 이면 custom_schedule 인 경우 custom_type 필수 +
+      레지스트리 등록 여부 + 같은 tenant·custom_type 활성 중복 방지 검사.
+    - `validate_filters=True` 이면 filters 의 type 이 화이트리스트에 있는지 확인
+      (raw_filters 는 List[dict] 또는 JSON 문자열 허용 — _parse_filters 가 처리).
+    - update 경로에서는 해당 필드가 요청에 없으면 (`validate_*=False`) skip — 기존
+      잘못된 DB 값으로 수정 불가 락 방지.
+
+    실패 시 HTTPException(400).
+    """
+    # 1) custom_type 검증 (registry 등록 여부만 확인)
+    # 주: 같은 custom_type 으로 여러 시간대 스케줄을 동시에 두는 것은 허용됨.
+    #     스케줄러는 template_key 기준으로 칩을 찾으므로 하나가 sent 된 뒤엔 자동으로
+    #     다른 스케줄들이 중복 발송하지 않음 (exclude_sent + unique 제약이 방어).
+    if validate_custom_type and effective_category == 'custom_schedule':
+        from app.services.custom_schedule_registry import CUSTOM_SCHEDULE_TYPES
+        if not effective_custom_type:
+            raise HTTPException(
+                status_code=400,
+                detail="커스텀 스케줄은 custom_type 을 지정해야 합니다",
+            )
+        if effective_custom_type not in CUSTOM_SCHEDULE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"등록되지 않은 custom_type: {effective_custom_type}",
+            )
+
+    # 2) filter type 화이트리스트 (정규화 후 v2 결과로 검사)
+    if validate_filters and raw_filters:
+        from app.services.filters import _parse_filters
+        parsed = _parse_filters(raw_filters)
+        unknown = [
+            f.get("type") for f in parsed
+            if f.get("type") not in _ALLOWED_FILTER_TYPES
+        ]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"알 수 없는 필터 타입: {', '.join(str(t) for t in unknown)}",
+            )
 
 
 def _schedule_to_response(schedule: TemplateSchedule) -> dict:
@@ -207,7 +264,7 @@ def get_schedules(
     current_user: User = Depends(get_current_user),
 ):
     """Get all template schedules"""
-    query = db.query(TemplateSchedule)
+    query = db.query(TemplateSchedule).options(selectinload(TemplateSchedule.template))
 
     if active is not None:
         query = query.filter(TemplateSchedule.is_active == active)
@@ -248,9 +305,17 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     elif schedule.schedule_type == 'interval' and not schedule.interval_minutes:
         raise HTTPException(status_code=400, detail="인터벌 스케줄은 간격(분)을 지정해야 합니다")
 
-    # Event schedule validation
-    if schedule.schedule_category == 'event' and not schedule.hours_since_booking:
-        raise HTTPException(status_code=400, detail="이벤트 스케줄은 hours_since_booking을 지정해야 합니다")
+    # Event schedule: hours_since_booking 은 선택 (NULL = 확정 시점 무관, 모든 confirmed 대상)
+
+    # custom_schedule 검증 + filter type 화이트리스트 (create 는 두 검증 모두 활성)
+    _validate_schedule_inputs(
+        db,
+        effective_category=schedule.schedule_category,
+        effective_custom_type=schedule.custom_type,
+        raw_filters=schedule.filters,
+        validate_custom_type=True,
+        validate_filters=True,
+    )
 
     # stay option guard: room 배정 필터 없으면 stay_filter 자동 null화
     from app.services.filters import _parse_filters
@@ -333,14 +398,30 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     if not db_schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
 
-    # Event schedule validation
+    # Event schedule: hours_since_booking 은 선택 (NULL = 확정 시점 무관)
     effective_category = schedule.schedule_category if schedule.schedule_category is not None else db_schedule.schedule_category
-    effective_hours = schedule.hours_since_booking if schedule.hours_since_booking is not None else db_schedule.hours_since_booking
-    if effective_category == 'event' and not effective_hours:
-        raise HTTPException(status_code=400, detail="이벤트 스케줄은 hours_since_booking을 지정해야 합니다")
 
     # Update fields
     update_data = schedule.dict(exclude_unset=True)
+
+    # custom_schedule / filter 검증: 요청에 해당 필드가 포함된 경우만 검증
+    # (exclude_unset 가드 — 기존 DB 에 잘못된 값이 있어도 관련 필드 수정 안 하는 경우는 락 안 걸림)
+    validate_custom = ('schedule_category' in update_data) or ('custom_type' in update_data)
+    validate_filters = 'filters' in update_data
+    if validate_custom or validate_filters:
+        effective_custom_type = (
+            update_data['custom_type'] if 'custom_type' in update_data
+            else db_schedule.custom_type
+        )
+        _validate_schedule_inputs(
+            db,
+            effective_category=effective_category,
+            effective_custom_type=effective_custom_type,
+            raw_filters=update_data.get('filters'),
+            validate_custom_type=validate_custom,
+            validate_filters=validate_filters,
+            schedule_id=schedule_id,
+        )
     # Serialize filters list to JSON string for DB storage
     if "filters" in update_data and update_data["filters"] is not None:
         update_data["filters"] = json.dumps(update_data["filters"], ensure_ascii=False)
