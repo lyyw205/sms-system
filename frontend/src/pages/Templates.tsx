@@ -786,7 +786,9 @@ const Templates: React.FC = () => {
       timezone: 'Asia/Seoul',
       filters: allFilters.length > 0 ? allFilters : undefined,
       date_target: sCategory === 'event' ? null : (sDateTarget || null),
-      stay_filter: null, // v2: stay options live inside room assignment filter
+      // event 카테고리는 schedule.stay_filter 컬럼을 단독 사용 (객실 배정 무관).
+      // 그 외 standard/custom 은 v2 — stay options live inside room assignment filter.
+      stay_filter: sCategory === 'event' ? (sStayFilter === 'exclude' ? 'exclude' : null) : null,
       target_mode: sCategory === 'event' ? null : (sTargetMode || null),
       exclude_sent: sExcludeSent,
       active: sActive,

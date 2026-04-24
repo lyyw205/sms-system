@@ -318,11 +318,14 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
     )
 
     # stay option guard: room 배정 필터 없으면 stay_filter 자동 null화
-    from app.services.filters import _parse_filters
-    parsed = _parse_filters(schedule.filters) if schedule.filters else []
-    has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
-    if not has_room:
-        schedule.stay_filter = None
+    # 단, event 카테고리는 객실 배정 무관 (신규 예약자 대상) 이라 schedule.stay_filter
+    # 컬럼을 단독 필드로 사용. UI 에서 직접 켜고 끔.
+    if schedule.schedule_category != 'event':
+        from app.services.filters import _parse_filters
+        parsed = _parse_filters(schedule.filters) if schedule.filters else []
+        has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
+        if not has_room:
+            schedule.stay_filter = None
 
     # Calculate expires_at from expires_after_days
     expires_at = None
@@ -428,12 +431,20 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     # Remap Pydantic 'active' field to ORM 'is_active' column
     _remap_active_field(update_data)
     # stay option guard: filters 가 변경됐고 room 배정 없으면 stay_filter null화
+    # 단, event 카테고리는 객실 배정 무관 (신규 예약자 대상) 이라 schedule.stay_filter
+    # 컬럼을 단독 필드로 사용. UI 가 stay_filter 직접 PATCH.
     if 'filters' in update_data:
-        from app.services.filters import _parse_filters
-        parsed = _parse_filters(update_data['filters']) if update_data['filters'] else []
-        has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
-        if not has_room:
-            update_data['stay_filter'] = None
+        effective_category_for_stay = (
+            update_data.get('schedule_category')
+            if 'schedule_category' in update_data
+            else db_schedule.schedule_category
+        )
+        if effective_category_for_stay != 'event':
+            from app.services.filters import _parse_filters
+            parsed = _parse_filters(update_data['filters']) if update_data['filters'] else []
+            has_room = any(f.get('type') == 'assignment' and f.get('value') == 'room' for f in parsed)
+            if not has_room and 'stay_filter' not in update_data:
+                update_data['stay_filter'] = None
     # Recalculate expires_at when expires_after_days changes
     if "expires_after_days" in update_data:
         if update_data["expires_after_days"]:
