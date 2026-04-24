@@ -572,7 +572,9 @@ class TemplateScheduleExecutor:
         results = query.all()
 
         if schedule.hours_since_booking:
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=schedule.hours_since_booking)
+            # confirmed_at 은 TIMESTAMP WITHOUT TIME ZONE (naive) 이므로
+            # cutoff 도 naive 로 만들어야 비교 가능. UTC 기준은 유지.
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=schedule.hours_since_booking)).replace(tzinfo=None)
             filtered = []
             for res in results:
                 if not res.confirmed_at:
@@ -581,8 +583,10 @@ class TemplateScheduleExecutor:
                     filtered.append(res)
             results = filtered
 
-        # 5) 연박 필터 (stay_filter)
-        if schedule.stay_filter == 'exclude':
+        # 5) 연박 필터 — filters JSON 안의 room assignment 우선 (v2),
+        # 없으면 legacy schedule.stay_filter 컬럼 fallback. extract_stay_filter() 가 둘 다 처리.
+        from app.services.filters import extract_stay_filter
+        if extract_stay_filter(schedule) == 'exclude':
             results = [r for r in results if not r.is_long_stay]
 
         # 6) exclude_sent — 이벤트 전용 (날짜 무관, sent 또는 failed 모두 제외)
