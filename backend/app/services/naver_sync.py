@@ -317,6 +317,16 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
         except Exception as e:
             logger.warning(f"Surcharge batch reconcile after sync failed: {e}")
 
+    # ── Phase 6: event SMS 즉시 발송 훅 (fire-and-forget, 격리) ──
+    # 활성 event 스케줄(gender_filter / hours_since_booking 등) 매칭되는 신규 예약에
+    # 즉시 안내 SMS 발송. 실패는 sync 메인 흐름에 영향 없음.
+    if new_reservation_ids:
+        try:
+            from app.services.event_sms_hook import schedule_event_sms_hook
+            schedule_event_sms_hook(new_reservation_ids)
+        except Exception as e:
+            logger.exception(f"event_sms_hook scheduling failed (suppressed): {e}")
+
     logger.info(f"Naver sync completed: {added_count} added, {updated_count} updated")
 
     diag(
@@ -345,10 +355,23 @@ def _align_bed_orders_for_groups(db: Session):
     from app.db.models import RoomAssignment, Room
     from sqlalchemy import and_
 
-    # stay_group이 있는 예약 중 도미토리 배정이 있는 것만
+    # stay_group 이 있고, 체크아웃 오늘 이후이면서 체크인 5일 이내인 예약만 대상.
+    # — 과거 그룹: bed_order 재정렬 의미 없음 (이미 배정 고정).
+    # — 먼 미래 그룹: 입실일 가까워지면 다음 주기에 자동 정렬됨.
+    from datetime import timedelta
+    from app.config import today_kst, today_kst_date
+    today_str = today_kst()
+    max_checkin = (today_kst_date() + timedelta(days=5)).strftime("%Y-%m-%d")
     grouped = (
         db.query(Reservation)
-        .filter(Reservation.stay_group_id.isnot(None))
+        .filter(
+            Reservation.stay_group_id.isnot(None),
+            Reservation.check_in_date <= max_checkin,
+            or_(
+                Reservation.check_out_date >= today_str,
+                Reservation.check_out_date.is_(None),
+            ),
+        )
         .all()
     )
     if not grouped:
@@ -468,6 +491,8 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     old_female = existing.female_count
     old_party_size = existing.party_size
     old_gender = existing.gender
+    # F1: SMS 칩 영향 필드 변경 감지용 (reservations.py::PATCH _SMS_TAG_FIELDS 와 동일 규약)
+    old_naver_room_type = existing.naver_room_type
 
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
@@ -626,5 +651,21 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
                     created_by="naver_sync",
                 )
                 diag("naver_sync.constraint_violation", level="critical", reservation_id=existing.id, invalid_dates=future_invalid)
+
+    # F1: SMS 필터 영향 필드 변경 시 칩 재동기화
+    #   reservations.py::PATCH 는 _SMS_TAG_FIELDS 변경 시 sync_sms_tags 를 호출하는데,
+    #   naver_sync 경로에서는 `gender` / `naver_room_type` 만 실제로 변경 가능
+    #   (section/party_type/notes 는 _update_reservation 이 만지지 않음).
+    #   column_match 필터가 이 두 필드를 참조할 수 있어 stale 칩 방지용으로 동기화.
+    _sms_fields_changed = (
+        existing.gender != old_gender or
+        existing.naver_room_type != old_naver_room_type
+    )
+    if _sms_fields_changed and existing.status == ReservationStatus.CONFIRMED:
+        try:
+            db.flush()
+            room_assignment.sync_sms_tags(db, existing.id)
+        except Exception as e:
+            logger.warning(f"naver_sync sms field-change sync_sms_tags failed: {e}")
 
     existing.updated_at = datetime.now(timezone.utc)
