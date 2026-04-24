@@ -104,7 +104,13 @@ async def diag_correlation_middleware(request, call_next):
         return await call_next(request)
 
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
-    action = request.headers.get("X-Diag-Action", "-")
+    # Frontend 가 encodeURIComponent 로 ASCII-safe 화 (한글 포함 가능)
+    from urllib.parse import unquote
+    raw_action = request.headers.get("X-Diag-Action", "-")
+    try:
+        action = unquote(raw_action)
+    except Exception:
+        action = raw_action
     tokens = set_request_context(req_id, action)
 
     import time

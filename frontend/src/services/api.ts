@@ -34,9 +34,11 @@ api.interceptors.request.use((config) => {
     config.headers['X-Request-ID'] = Math.random().toString(36).substring(2, 10);
   }
   // 최근 사용자 액션 첨부 (있으면)
+  // HTTP 헤더는 ISO-8859-1 제약 — 한글 포함 (예: 객실명 '20평') 시 TypeError.
+  // encodeURIComponent 로 ASCII-safe 화. 백엔드에서 unquote() 로 복원.
   const action = window.__diagAction;
   if (action) {
-    config.headers['X-Diag-Action'] = action;
+    config.headers['X-Diag-Action'] = encodeURIComponent(action);
     // 1회성으로 클리어 (다음 요청에 남지 않도록)
     window.__diagAction = undefined;
   }
