@@ -2,7 +2,7 @@
 Template-based schedule execution engine
 """
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
@@ -379,19 +379,21 @@ class TemplateScheduleExecutor:
 
     def _check_send_condition(self, schedule: TemplateSchedule) -> bool:
         """Check if send condition (gender ratio) is met."""
+        from app.services.filters import stay_coverage_filter
+
         # 기준 날짜 결정
         if schedule.send_condition_date == 'tomorrow':
             target = (today_kst_date() + timedelta(days=1)).strftime('%Y-%m-%d')
         else:
             target = today_kst()
 
-        # 해당 날짜 체크인 예약자의 male_count, female_count 합계
+        # target 날에 투숙/방문 중인 예약 인원 합계 (연박 중간일 + NULL/당일 포함)
         row = self.db.query(
             func.coalesce(func.sum(Reservation.male_count), 0).label("male"),
             func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
         ).filter(
             Reservation.status == ReservationStatus.CONFIRMED,
-            Reservation.check_in_date == target,
+            stay_coverage_filter(target),
         ).first()
 
         total_male = int(row.male)
@@ -459,8 +461,11 @@ class TemplateScheduleExecutor:
             if not for_preview:
                 self._refresh_custom_chips(schedule, target_date_for_chips)
 
+            # 같은 template_key 를 쓰는 칩이면 어느 스케줄이 만들었든 대상으로 인정.
+            # → 같은 custom_type 으로 여러 시간대 스케줄을 두어도 retry 가능 (10시 실패 시
+            #   15시가 동일 칩을 픽업). 중복 발송은 아래 exclude_sent + unique 제약이 방어.
             eligible_ids = self.db.query(ReservationSmsAssignment.reservation_id).filter(
-                ReservationSmsAssignment.schedule_id == schedule.id,
+                ReservationSmsAssignment.template_key == schedule.template.template_key,
                 ReservationSmsAssignment.sent_at.is_(None),
                 ReservationSmsAssignment.date == target_date_for_chips,
                 or_(
@@ -482,19 +487,9 @@ class TemplateScheduleExecutor:
         target_date = None
         if date_target_val:
             target_date = self._resolve_date_target(date_target_val)
-            # 기본: stay-coverage (그 날 투숙중)
-            query = query.filter(
-                or_(
-                    and_(
-                        Reservation.check_in_date <= target_date,
-                        Reservation.check_out_date > target_date,
-                    ),
-                    and_(
-                        Reservation.check_in_date == target_date,
-                        Reservation.check_out_date.is_(None),
-                    ),
-                )
-            )
+            # 기본: stay-coverage (그 날 투숙/방문중 — 연박 중간일 + NULL/당일 포함)
+            from app.services.filters import stay_coverage_filter
+            query = query.filter(stay_coverage_filter(target_date))
             # first_night narrow
             if effective_target_mode == 'first_night':
                 query = query.filter(Reservation.check_in_date == target_date)
@@ -516,9 +511,12 @@ class TemplateScheduleExecutor:
                     ReservationSmsAssignment.send_status == 'failed',
                 ))
             )
-            # custom_schedule: 날짜 무관 중복 차단 (once_per_stay 대체)
-            # standard: 당일 date에 한정해서만 체크
-            if target_date and not is_custom:
+            # custom_schedule: 기본은 날짜 무관 중복 차단 (once_per_stay 대체)
+            # 단, PER_DATE_DEDUP_CUSTOM_TYPES (party3 등) 은 날짜별 개별 발송 허용
+            # standard: 항상 당일 date 로 한정
+            from app.services.custom_schedule_registry import is_per_date_dedup
+            use_date_filter = (not is_custom) or is_per_date_dedup(schedule.custom_type)
+            if target_date and use_date_filter:
                 done_conditions = done_conditions & (ReservationSmsAssignment.date == target_date)
             query = query.filter(~exists().where(done_conditions))
 
@@ -534,11 +532,22 @@ class TemplateScheduleExecutor:
 
         return results
 
-    def _get_targets_event(self, schedule: TemplateSchedule, exclude_sent: bool = True) -> List[Reservation]:
-        """Event schedule targeting — confirmed_at 기반 필터링."""
+    def _get_targets_event(
+        self,
+        schedule: TemplateSchedule,
+        exclude_sent: bool = True,
+        restrict_to_ids: Optional[List[int]] = None,
+    ) -> List[Reservation]:
+        """Event schedule targeting — confirmed_at 기반 필터링.
+
+        restrict_to_ids: 주어지면 해당 reservation_id 들로만 좁힘 (naver_sync 훅 등에서 사용).
+        """
         query = self.db.query(Reservation).filter(
             Reservation.status == ReservationStatus.CONFIRMED
         )
+
+        if restrict_to_ids:
+            query = query.filter(Reservation.id.in_(restrict_to_ids))
 
         # No safety guard — max_checkin_days provides its own range limit
         today_str = today_kst()
