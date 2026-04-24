@@ -25,6 +25,20 @@ CUSTOM_SCHEDULE_TYPES = {
 }
 
 
+# 날짜별로 개별 발송되어야 하는 custom_type 집합.
+# 기본 custom_schedule exclude_sent 는 "날짜 무관 once_per_stay" 이지만,
+# 여기에 포함된 타입은 standard 처럼 (reservation_id, date) 단위 중복 차단으로 동작한다.
+# (예: party3_today_mms 는 연박자가 매일 파티 참여 시 매일 발송되어야 함)
+PER_DATE_DEDUP_CUSTOM_TYPES: set[str] = {
+    "party3_today_mms",
+}
+
+
+def is_per_date_dedup(custom_type: str | None) -> bool:
+    """custom_type 이 날짜별 dedup 대상인지 여부."""
+    return bool(custom_type) and custom_type in PER_DATE_DEDUP_CUSTOM_TYPES
+
+
 def get_custom_types() -> list[dict]:
     """프론트엔드 드롭다운용 커스텀 타입 목록 반환."""
     return [
@@ -36,18 +50,49 @@ def get_custom_types() -> list[dict]:
 def _refresh_surcharge(db: Session, target_date: str) -> None:
     """surcharge_* 타입 발송 직전 칩 상태 최신화.
 
-    target_date 에 배정된 모든 예약에 대해 reconcile_surcharge 를 다시 호출해
-    트리거 누락/상황 변경으로 stale 해진 칩을 정리한다.
+    대상:
+      (1) target_date 에 방 배정된 모든 예약 — 신규/유지되는 칩 정리
+      (2) target_date 에 surcharge_* 미발송 칩이 이미 있는 예약
+          — 배정 해제되어 RoomAssignment 에 없는 stale 칩도 정리 대상에 포함
+
+    reconcile_surcharge 는 배정이 없으면 미발송 칩을 삭제하는 로직을 이미
+    가지고 있어서 (2) 만 추가하면 잘못된 과금 SMS 를 차단할 수 있다.
     """
-    from app.db.models import RoomAssignment
+    from app.db.models import RoomAssignment, ReservationSmsAssignment, TemplateSchedule
     from app.services.surcharge import reconcile_surcharge_batch
 
-    rows = (
+    # (1) 현재 target_date 에 방 배정된 예약
+    assigned_ids = {
+        row[0] for row in
         db.query(RoomAssignment.reservation_id)
         .filter(RoomAssignment.date == target_date)
         .all()
-    )
-    reservation_ids = [row[0] for row in rows]
+    }
+
+    # (2) surcharge_* 미발송 칩 보유 예약 (stale 가능)
+    surcharge_custom_types = [
+        ct for ct in CUSTOM_SCHEDULE_TYPES if ct.startswith("surcharge_")
+    ]
+    surcharge_schedule_ids = {
+        row[0] for row in
+        db.query(TemplateSchedule.id)
+        .filter(TemplateSchedule.custom_type.in_(surcharge_custom_types))
+        .all()
+    }
+    stale_chip_ids: set[int] = set()
+    if surcharge_schedule_ids:
+        stale_chip_ids = {
+            row[0] for row in
+            db.query(ReservationSmsAssignment.reservation_id)
+            .filter(
+                ReservationSmsAssignment.schedule_id.in_(surcharge_schedule_ids),
+                ReservationSmsAssignment.date == target_date,
+                ReservationSmsAssignment.sent_at.is_(None),
+            )
+            .all()
+        }
+
+    reservation_ids = list(assigned_ids | stale_chip_ids)
     if not reservation_ids:
         return
     reconcile_surcharge_batch(db, reservation_ids, target_date)

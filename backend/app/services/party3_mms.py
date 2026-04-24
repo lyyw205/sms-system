@@ -1,12 +1,19 @@
-"""party3_mms.py — 오늘 체크인 중 party_type='2'/'2차만' 예약용 MMS 칩 자동 생성.
+"""party3_mms.py — target_date 에 투숙/방문 중이고 party_type='2'/'2차만' 인 예약용 MMS 칩 자동 생성.
+
+파티는 매일 열리고, 연박자가 해당 날짜에 party_type='2'/'2차만' 로 참여하면
+매번 "파티 당일 안내" MMS 를 받아야 한다. 따라서 대상 기준은
+"당일 체크인" 이 아니라 **"그 날 투숙/방문 중 + 유효 party_type"**.
 
 스케줄(custom_schedule, custom_type='party3_today_mms')이 지정 시각에 실행되기
 직전에 pre_send_refresh 로 이 모듈의 reconcile 가 호출된다. 그 시점에
-target_date 에 체크인하는 CONFIRMED 예약을 스캔해서:
+target_date 에 투숙 중인 CONFIRMED 예약을 스캔해서:
 
   - 유효 party_type (ReservationDailyInfo.party_type 우선, 없으면 Reservation.party_type)
     가 PARTY3_TYPES 안에 들면 → MMS 칩 생성 (없으면 유지)
   - 아니면 → 미발송 MMS 칩 삭제 (이미 발송된 칩은 건드리지 않음)
+
+연박자의 각 밤은 (reservation_id, date) 단위로 칩이 따로 생성되므로,
+특정 날짜에 파티 미참여(party_type override=None)면 그날만 자동 제외된다.
 
 실제 MMS 발송은 services/sms_sender.send_single_sms 의 MMS_TEMPLATES 분기에서
 레거시 프록시(http://15.164.246.59:3000/sendMass/image)로 라우팅된다.
@@ -42,21 +49,24 @@ def _find_schedule(db: Session) -> Optional[TemplateSchedule]:
 def reconcile_party3_mms(db: Session, date: str) -> None:
     """target_date 기준 party3 MMS 칩 재조정.
 
-    - 대상: check_in_date == date, status==CONFIRMED, 유효 party_type ∈ PARTY3_TYPES
+    - 대상: date 에 투숙/방문 중인 CONFIRMED 예약, 유효 party_type ∈ PARTY3_TYPES
+      (연박 중간일, NULL 체크아웃, 당일 파티/언스테이블 모두 포함)
     - 유효 party_type = ReservationDailyInfo(date).party_type or Reservation.party_type
     - stale 칩은 미발송인 경우만 삭제 (이미 발송된 칩 보존)
     """
+    from app.services.filters import stay_coverage_filter
+
     diag("party3_mms.reconcile.enter", level="verbose", date=date)
     schedule = _find_schedule(db)
-    if not schedule or not schedule.template:
+    if not schedule or not schedule.template or not schedule.template.is_active:
         diag("party3_mms.no_schedule", level="verbose", date=date)
         return
 
     template_key = schedule.template.template_key
 
-    # 1. 당일 체크인 CONFIRMED 예약 전체
+    # 1. date 에 투숙/방문 중인 CONFIRMED 예약 전체
     reservations = db.query(Reservation).filter(
-        Reservation.check_in_date == date,
+        stay_coverage_filter(date),
         Reservation.status == ReservationStatus.CONFIRMED,
     ).all()
 

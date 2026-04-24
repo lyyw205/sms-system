@@ -1,10 +1,14 @@
 """party3_mms.reconcile_party3_mms 동작 검증.
 
 대상 선정:
-  - check_in_date == date
+  - date 에 투숙/방문 중 (stay_coverage_filter: 첫날/연박 중간일/NULL/당일 포함)
   - status == CONFIRMED
   - 유효 party_type ∈ {'2', '2차만'}
     (ReservationDailyInfo(date).party_type 우선, 없으면 Reservation.party_type)
+
+연박자는 각 밤마다 (reservation_id, date) 쌍으로 칩이 분리 생성되므로,
+매일 참여 시 매일 MMS 가 발송된다. 특정 날짜만 미참여로 바꾸려면
+해당 날짜의 ReservationDailyInfo.party_type 을 '1'/None 등으로 설정.
 
 stale 칩은 미발송인 경우만 삭제 (이미 발송된 칩은 보존).
 """
@@ -51,12 +55,13 @@ def _make_schedule(db, template, active=True):
     return s
 
 
-def _make_reservation(db, *, check_in, party_type=None, status=ReservationStatus.CONFIRMED):
+def _make_reservation(db, *, check_in, check_out=None, party_type=None, status=ReservationStatus.CONFIRMED):
     r = Reservation(
         tenant_id=1,
         customer_name="손님",
         phone="01012345678",
         check_in_date=check_in,
+        check_out_date=check_out,
         check_in_time="15:00",
         status=status,
         party_type=party_type,
@@ -167,13 +172,56 @@ class TestParty3MmsReconcile:
         reconcile_party3_mms(db, date)
         assert _chip_count(db, sch, date) == 0
 
-    def test_skips_different_checkin_date(self, db):
+    def test_skips_reservation_not_staying_on_date(self, db):
+        """대상 날짜에 투숙 중이 아니면 제외 (check_in 지났고 check_out 도 이미 지남)."""
         tpl = _make_template(db)
         sch = _make_schedule(db, tpl)
+        # 4/21 하룻밤 예약 (체크아웃 NULL) — 4/22에는 해당 없음
         _make_reservation(db, check_in="2026-04-21", party_type="2")
 
         reconcile_party3_mms(db, "2026-04-22")
         assert _chip_count(db, sch, "2026-04-22") == 0
+
+    def test_creates_chip_for_mid_stay_night(self, db):
+        """연박 중간일에도 대상이 된다 (4/22~4/25 예약의 4/23, 4/24 밤)."""
+        tpl = _make_template(db)
+        sch = _make_schedule(db, tpl)
+        _make_reservation(db, check_in="2026-04-22", check_out="2026-04-25", party_type="2")
+
+        for d in ("2026-04-22", "2026-04-23", "2026-04-24"):
+            reconcile_party3_mms(db, d)
+            assert _chip_count(db, sch, d) == 1, f"{d} 에 칩이 생성되어야 함"
+
+        # 4/25 는 체크아웃일 — 제외
+        reconcile_party3_mms(db, "2026-04-25")
+        assert _chip_count(db, sch, "2026-04-25") == 0
+
+    def test_skips_mid_stay_night_when_daily_override_non_party3(self, db):
+        """연박 중간일에 ReservationDailyInfo.party_type 을 '1' 로 덮으면 그 날만 제외."""
+        tpl = _make_template(db)
+        sch = _make_schedule(db, tpl)
+        r = _make_reservation(db, check_in="2026-04-22", check_out="2026-04-25", party_type="2")
+
+        # 4/23 만 '1' 로 override (1차만 참여)
+        _set_daily_party(db, r, "2026-04-23", "1")
+
+        reconcile_party3_mms(db, "2026-04-22")
+        reconcile_party3_mms(db, "2026-04-23")
+        reconcile_party3_mms(db, "2026-04-24")
+
+        assert _chip_count(db, sch, "2026-04-22") == 1
+        assert _chip_count(db, sch, "2026-04-23") == 0  # override 로 제외
+        assert _chip_count(db, sch, "2026-04-24") == 1
+
+    def test_creates_chip_for_same_day_checkin_checkout(self, db):
+        """당일 체크인/체크아웃 (party/unstable 류) 도 대상."""
+        tpl = _make_template(db)
+        sch = _make_schedule(db, tpl)
+        date = "2026-04-22"
+        _make_reservation(db, check_in=date, check_out=date, party_type="2차만")
+
+        reconcile_party3_mms(db, date)
+        assert _chip_count(db, sch, date) == 1
 
     def test_no_active_schedule_creates_nothing(self, db):
         tpl = _make_template(db)
