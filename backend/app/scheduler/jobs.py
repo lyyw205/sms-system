@@ -374,12 +374,19 @@ def setup_scheduler():
         replace_existing=True
     )
 
-    # Unstable reservations sync - every 6 hours
+    # Unstable reservations sync — 피크(15~20시)는 10분 간격, 그 외엔 00:05 / 12:05 하루 2회
     scheduler.add_job(
         sync_unstable_reservations_job,
-        trigger=CronTrigger(hour='0,6,12,18', minute=5, timezone='Asia/Seoul'),
-        id='sync_unstable_reservations',
-        name='언스테이블 예약 동기화 (6시간)',
+        trigger=CronTrigger(hour='15-20', minute='*/10', timezone='Asia/Seoul'),
+        id='sync_unstable_reservations_peak',
+        name='언스테이블 예약 동기화 (피크 15~20시, 10분 간격)',
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        sync_unstable_reservations_job,
+        trigger=CronTrigger(hour='0,12', minute=5, timezone='Asia/Seoul'),
+        id='sync_unstable_reservations_offpeak',
+        name='언스테이블 예약 동기화 (오프피크 00:05·12:05)',
         replace_existing=True,
     )
 
