@@ -339,15 +339,24 @@ def _assign_all_rooms(
                     last_failure_reason = "capacity_full"
                     continue
 
-                # Gender lock: check ALL existing occupants' gender
-                existing = (
+                # Gender lock: check ALL existing occupants' gender across FULL stay range
+                # (과거엔 target_date 1일만 봐서 연박 중간일 혼숙이 통과할 수 있었음 — 용량 검사와 범위 맞춤)
+                gender_range_end = res.check_out_date or target_date
+                existing_query = (
                     db.query(RoomAssignment)
-                    .filter(
-                        RoomAssignment.room_id == room.id,
-                        RoomAssignment.date == target_date,
-                    )
-                    .all()
+                    .filter(RoomAssignment.room_id == room.id)
                 )
+                if res.check_out_date:
+                    existing_query = existing_query.filter(
+                        RoomAssignment.date >= target_date,
+                        RoomAssignment.date < gender_range_end,
+                    )
+                else:
+                    # NULL checkout 은 1박 예약 → target_date 하루만 검사
+                    existing_query = existing_query.filter(
+                        RoomAssignment.date == target_date
+                    )
+                existing = existing_query.all()
                 if existing:
                     existing_reservations = db.query(Reservation).filter(
                         Reservation.id.in_([e.reservation_id for e in existing])
@@ -376,16 +385,28 @@ def _assign_all_rooms(
                 assigned_this_res = True
                 break
             else:
-                # Regular room: booking_count만큼 배정 (2개 예약 = 2개 방)
-                rooms_needed = res.booking_count or 1
-                rooms_assigned = 0
-                assigned_room_ids = set()
+                # Regular room: 현재 저장 구조(UniqueConstraint reservation_id+date)는
+                # 한 예약이 같은 날짜에 방 1개만 가질 수 있음. booking_count>1 은 같은 res_id 로
+                # 여러 번 assign_room 을 호출해도 마지막 방만 남으므로, 자동 배정에서는
+                # booking_count>1 케이스를 스킵하고 수동 배정 유도.
+                if (res.booking_count or 1) > 1:
+                    last_failure_reason = "booking_count_gt_1_skipped"
+                    logger.warning(
+                        "[auto-assign] booking_count=%s 인 일반실 예약은 자동 배정에서 스킵 "
+                        "(단일 RoomAssignment row 제약). 수동 배정으로 처리 필요. "
+                        "res_id=%s date=%s",
+                        res.booking_count, res.id, target_date,
+                    )
+                    diag(
+                        "auto_assign.booking_count_skipped",
+                        level="critical",
+                        reservation_id=res.id,
+                        booking_count=res.booking_count,
+                        date=target_date,
+                    )
+                    continue
                 for reg_room in candidate_rooms:
-                    if rooms_assigned >= rooms_needed:
-                        break
                     if reg_room.is_dormitory:
-                        continue
-                    if reg_room.id in assigned_room_ids:
                         continue
                     if room_assignment.check_capacity_all_dates(
                         db, reg_room.id, target_date, res.check_out_date,
@@ -397,12 +418,10 @@ def _assign_all_rooms(
                         )
                         db.flush()
                         assigned_results.append({"reservation_id": res.id, "customer_name": res.customer_name, "room_number": reg_room.room_number})
-                        assigned_room_ids.add(reg_room.id)
                         if res.stay_group_id:
                             stay_group_room_map[res.stay_group_id] = reg_room.id
-                        rooms_assigned += 1
-                if rooms_assigned > 0:
-                    assigned_this_res = True
+                        assigned_this_res = True
+                        break
                 else:
                     last_failure_reason = "all_rooms_occupied"
                 break  # 일반실 분기 완료 — 다음 예약으로

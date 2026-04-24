@@ -12,21 +12,31 @@ def batch_room_lookup(
 ) -> dict[int, dict]:
     """Batch lookup room info for reservations.
 
-    Returns: {reservation_id: {"room_id": int, "room_number": str, "room_password": str, "assigned_by": str}}
-    If target_date is None, uses the earliest assignment per reservation.
+    Args:
+        reservation_ids: 조회할 예약 ID 목록.
+        target_date: YYYY-MM-DD. 지정하면 해당 날짜 배정만 조회. None 이면
+            예약당 **가장 이른 체크인 날짜** 의 배정을 반환 (order_by date 로 결정적 보장).
+
+    Returns:
+        {reservation_id: {"room_id", "room_number", "room_password", "assigned_by", "bed_order"}}
+
+    Note:
+        target_date=None 정책은 "첫 밤 방 정보" 가 기본값 (예: 예약 상세 페이지에서 첫날
+        방 표시). 호출자가 특정 날짜 정보가 필요하면 target_date 를 명시해야 함.
     """
     if not reservation_ids:
         return {}
 
+    # order_by(date) 로 가장 이른 배정이 먼저 오게 고정 — "첫 밤 기준" 결정적 선택 보장
     query = db.query(RoomAssignment).filter(
         RoomAssignment.reservation_id.in_(reservation_ids),
-    )
+    ).order_by(RoomAssignment.date.asc())
     if target_date:
         query = query.filter(RoomAssignment.date == target_date)
 
     assignments = query.all()
 
-    # Build reservation_id -> assignment mapping (first assignment per reservation)
+    # Build reservation_id -> assignment mapping (first = earliest date per reservation)
     ra_map: dict[int, RoomAssignment] = {}
     for ra in assignments:
         if ra.reservation_id not in ra_map:
