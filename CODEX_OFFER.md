@@ -2552,3 +2552,922 @@ return {res_id: info["room_number"] or "" ...}
 - room lookup 관련 책임이 한 파일로 모임
 
 이라는 정리가 가능합니다.
+
+---
+
+# sms_sender.py 수정 제안
+
+이 문서는 `backend/app/services/sms_sender.py`를 기준으로, 현재 코드에서 버그 우려 지점, 충돌 가능성, 논리적으로 어색한 부분, 드문 케이스 리스크, 중복 및 삭제 후보를 정리한 내용입니다.
+
+## 핵심 요약
+
+이 파일은 실제 문자 발송의 마지막 관문입니다.
+
+역할은 크게 두 가지입니다.
+
+- 예약 1건에 대해 템플릿을 렌더링하고 실제 문자 API를 호출
+- 특정 날짜/템플릿의 미발송 칩을 모아 일괄 발송
+
+방향 자체는 맞습니다.
+
+- 전화번호 없는 예약 차단
+- 방 정보가 필요한 템플릿의 미배정 발송 차단
+- 미치환 변수 차단
+- SMS/MMS 경로 분기
+- activity log 기록
+
+하지만 지금 구현에는 아래 문제가 섞여 있습니다.
+
+- 템플릿이 없어도 실제 문자 발송 단계까지 갈 수 있는 구조
+- 실패 기록 정책과 실제 재시도 정책이 서로 안 맞는 부분
+- 외부 발송 성공과 DB 기록 성공이 분리되어 있어 중복 발송 위험이 있는 부분
+- 실패 처리 책임이 호출 경로마다 흩어져 있는 부분
+- 템플릿 변수 검사 기준과 실제 차단 조건이 어긋나는 부분
+
+특히 가장 먼저 손봐야 할 곳은 **템플릿 미존재 처리**, **배치 발송 실패 상태 처리**, **발송 성공 후 DB 기록 실패 시 중복 발송 위험**입니다.
+
+## 1. 템플릿이 없어도 실제 문자 발송까지 갈 수 있음
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/templates/renderer.py`
+
+상식적으로는 템플릿이 없으면 즉시 발송을 중단해야 합니다.
+
+하지만 현재 흐름은 아래처럼 되어 있습니다.
+
+```text
+1. get_template()로 템플릿 존재 여부를 한 번 봄
+2. 실제 렌더링은 renderer.render()에서 다시 수행
+3. renderer.render()는 템플릿이 없을 때 예외를 내지 않고
+   "[Template 'foo' not found]" 문자열을 반환
+4. send_single_sms()는 그 문자열을 메시지 본문으로 보고 계속 진행 가능
+```
+
+즉 아래 같은 운영 사고가 가능합니다.
+
+```text
+템플릿 키 오타
+→ 템플릿 없음
+→ "[Template '...'] not found" 같은 문구가 실제 문자로 발송
+```
+
+이건 "조용히 실패"보다 더 위험합니다.
+
+- 운영자는 템플릿 오류라고 생각하지만
+- 실제 수신자는 이상한 시스템 문자열을 받게 됩니다
+
+수정 제안:
+
+- `send_single_sms()` 시작부에서 템플릿 존재 여부를 명시적으로 검증
+- 템플릿이 없으면 provider 호출 전에 즉시 실패 반환
+- 가능하면 `TemplateRenderer.render()`도 "없는 템플릿 문자열 반환" 대신 예외 또는 명시 실패 객체를 쓰는 편이 안전
+
+우선순위: 매우 높음
+
+## 2. 배치 발송 실패 건이 다음 실행 때 다시 잡힐 수 있음
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/services/sms_tracking.py`
+
+현재 `send_by_assignment()`는 대상을 조회할 때 대략 아래 조건만 봅니다.
+
+```text
+sent_at is null
+해당 날짜의 예약이 아직 유효
+status == confirmed
+```
+
+문제는 실패한 칩을 조회 단계에서 명시적으로 제외하지 않는다는 점입니다.
+
+반면 실패 기록 헬퍼의 주석은 아래 의미를 가집니다.
+
+```text
+failed 상태면 다음 스케줄 실행 시 재시도하지 않음
+```
+
+즉 지금은 정책과 코드가 서로 다릅니다.
+
+실제 문제 예시:
+
+```text
+1차 배치 발송:
+  provider 실패
+  → failed_count는 증가
+  → assignment는 sent가 아님
+
+2차 배치 발송:
+  sent_at is null 조건만 보면 다시 대상에 포함될 수 있음
+```
+
+이건 아래 둘 중 어느 정책인지 불명확하게 만듭니다.
+
+- 실패하면 재시도 금지
+- 실패하면 다음 배치 때 자동 재시도
+
+수정 제안:
+
+- 정책 A: 실패하면 재시도 금지
+  - `send_by_assignment()` 조회 시 `send_status != 'failed'` 조건 추가
+  - 실패 시 assignment에 `send_status='failed'`, `send_error` 기록
+
+- 정책 B: 실패하면 재시도 허용
+  - `sms_tracking.py` 주석과 다른 경로의 설명을 전부 수정
+  - 재시도 횟수/백오프 정책까지 같이 정의
+
+지금 코드와 주석을 보면 정책 A가 더 의도에 가깝습니다.
+
+우선순위: 매우 높음
+
+## 3. 실제 문자는 나갔는데 DB 기록 단계에서 실패하면 중복 발송 위험이 있음
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/scheduler/template_scheduler.py`
+- `backend/app/api/reservations.py`
+
+현재 구조는 아래 순서입니다.
+
+```text
+1. provider.send_sms() 또는 send_party_mms()
+2. activity log 기록
+3. commit
+4. 상위 호출부에서 sent/failed 상태 업데이트
+```
+
+문제는 외부 발송과 내부 기록이 한 트랜잭션이 아니라는 점입니다.
+
+즉 아래 상황이 가능합니다.
+
+```text
+문자 API 호출 성공
+→ 수신자는 이미 문자 수신
+→ 그 다음 DB flush/commit 실패
+→ 상위 호출부는 실패로 판단
+→ 이후 다시 재시도
+→ 같은 문자 중복 발송
+```
+
+이건 문자 시스템에서 꽤 위험한 유형입니다.
+
+특히 아래 호출부는 `send_single_sms()` 예외를 "발송 실패"로 해석합니다.
+
+- 스케줄러 경로
+- 수동 발송 API 경로
+
+수정 제안:
+
+- 최소한 "provider 호출 성공 이후"와 "DB 기록 실패"를 구분해서 로그에 남기기
+- 상위 호출부가 예외를 단순 `failed`로만 처리하지 말고, "발송 성공 후 기록 실패 가능성"을 구분할 수 있게 만들기
+- 가능하면 provider 응답의 `message_id`를 기준으로 idempotency 또는 사후 확인 정책 검토
+
+우선순위: 매우 높음
+
+## 4. 실패 기록 책임이 호출 경로마다 흩어져 있음
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/services/sms_tracking.py`
+- `backend/app/scheduler/template_scheduler.py`
+- `backend/app/api/reservations.py`
+
+현재 실패는 한 군데에서 통일해 기록되지 않습니다.
+
+예를 들어:
+
+- 방 정보 누락 차단은 `send_single_sms()` 내부에서 직접 `record_sms_failed()` 호출
+- provider 실패는 스케줄러 경로에서 상위 호출부가 `record_sms_failed()` 호출
+- 수동 발송 API 경로는 실패 시 HTTP 에러만 반환하고 종료
+- 미치환 변수 실패는 실패 반환만 하고 칩 기록은 상위 호출부에 맡김
+
+즉 같은 "실패"라도 아래가 케이스마다 다릅니다.
+
+- 칩에 `failed`가 남는지
+- activity log만 남는지
+- commit 되는지
+- 호출자에게 에러만 주고 끝나는지
+
+이 구조는 운영 추적을 어렵게 만듭니다.
+
+수정 제안:
+
+- `send_single_sms()`는 "실제 발송 수행 + 결과 반환"까지만 담당할지
+- 아니면 "실패 기록까지 여기서 단일 책임으로 관리"할지
+
+둘 중 하나로 명확히 정해야 합니다.
+
+지금 구조에서는 아래가 가장 안전합니다.
+
+```text
+send_single_sms():
+  - provider 호출
+  - 템플릿/방정보/미치환 검증
+  - 성공/실패 결과를 표준 dict로 반환
+
+상태 기록(record_sms_sent / failed):
+  - 상위 호출부 한 곳에서만 수행
+```
+
+또는 반대로 정말 내부에서 통일할 거면, 모든 실패 유형을 여기서 동일하게 기록해야 합니다.
+
+우선순위: 높음
+
+## 5. 방 정보 필수 템플릿 검사 기준이 어긋나 있음
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/templates/variables.py`
+
+현재 이 파일은 템플릿 본문에 아래 변수가 있으면 "방 정보가 필요한 템플릿"으로 봅니다.
+
+```text
+{{room_num}}
+{{building}}
+{{room_password}}
+```
+
+그런데 실제 차단 조건은 대략 아래입니다.
+
+```text
+room_num 이 없거나 building 이 없으면 차단
+```
+
+즉 `room_password`는 필수 목록에 넣어놨지만 실제로는 제대로 검사하지 않습니다.
+
+문제 예시:
+
+```text
+템플릿: "비밀번호는 {{room_password}} 입니다"
+room_num 있음
+building 있음
+room_password 비어 있음
+→ 현재 로직상 통과 가능
+```
+
+게다가 `prefix_room_password`는 검사 대상 목록에 아예 없습니다.
+
+수정 제안:
+
+- 필수 변수 탐지를 더 직접적으로 바꾸기
+  - 템플릿에 `{{room_password}}`가 있으면 `room_password` 존재를 검사
+  - 템플릿에 `{{prefix_room_password}}`가 있으면 `prefix_room_password` 존재를 검사
+  - 템플릿에 `{{room_num}}`가 있으면 `room_num` 검사
+  - 템플릿에 `{{building}}`가 있으면 `building` 검사
+
+즉 "필수 변수 목록"과 "실제 검증 항목"이 1:1로 대응해야 합니다.
+
+우선순위: 높음
+
+## 6. 조기 실패 분기마다 로그/반환/commit 정책이 다름
+
+위치: `backend/app/services/sms_sender.py`
+
+현재 조기 실패 분기는 여러 군데에 흩어져 있습니다.
+
+- 전화번호 없음
+- 방 정보 누락
+- 미치환 변수 발견
+- MMS 미지원 provider
+
+문제는 각 분기마다 아래가 서로 다르다는 점입니다.
+
+- `diag` 종료 로그를 남기는지
+- `record_sms_failed()`를 호출하는지
+- `message` 필드를 반환하는지
+- commit이 되는지
+
+예를 들어 방 정보 누락은 내부에서 실패 기록을 남기지만, 미치환 변수는 그냥 실패 dict만 반환합니다.
+
+이건 코드 읽는 사람도 혼란스럽고, 운영 로그도 균일하지 않게 만듭니다.
+
+수정 제안:
+
+- 조기 실패 반환 dict 구조를 통일
+- `send_single_sms.exit` diag 로그도 모든 종료 경로에서 일관되게 남기기
+- 실패 기록과 commit 정책을 한쪽으로 모으기
+
+우선순위: 중간
+
+## 7. 배치 발송 함수는 직접 상태를 만지는데, 다른 경로와 정책이 다름
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/services/sms_tracking.py`
+
+현재 `send_by_assignment()`는 성공 시 아래 값을 직접 수정합니다.
+
+```text
+assignment.sent_at
+assignment.send_status = 'sent'
+assignment.send_error = None
+```
+
+반면 스케줄러 경로는 `record_sms_sent()` / `record_sms_failed()` 헬퍼를 사용합니다.
+
+즉 성공/실패 상태 반영이 한 경로에서는 helper 기반이고, 다른 경로에서는 직접 필드 수정입니다.
+
+문제:
+
+- 상태 반영 정책이 바뀌면 수정 위치가 여러 군데 생김
+- 필드 추가 시 누락 가능
+- 날짜/중복키/upsert 정책이 경로마다 달라질 수 있음
+
+수정 제안:
+
+- `send_by_assignment()`도 직접 필드 수정 대신 `sms_tracking.py` 헬퍼를 사용하도록 통일
+
+우선순위: 중간에서 높음
+
+## 삭제 가능 / 중복 후보
+
+## 삭제 후보 1. `find_unreplaced_vars()`
+
+위치:
+
+- `backend/app/services/sms_sender.py`
+- `backend/app/templates/renderer.py`
+
+현재 미치환 변수 탐지가 두 군데 있습니다.
+
+- `TemplateRenderer.render()` 내부
+- `sms_sender.find_unreplaced_vars()`
+
+완전한 중복은 아니지만 책임이 갈라져 있습니다.
+
+수정 제안:
+
+- 렌더러가 미치환 변수 목록까지 함께 반환하게 만들거나
+- 한쪽만 source of truth 로 정리
+
+삭제 가능:
+
+- 구조를 정리하면 `find_unreplaced_vars()`는 삭제 가능
+
+## 삭제 후보 2. 템플릿 이중 조회
+
+위치: `backend/app/services/sms_sender.py`
+
+현재는:
+
+```text
+1. renderer.get_template()로 한 번 조회
+2. renderer.render()에서 다시 한 번 조회
+```
+
+즉 템플릿을 두 번 읽습니다.
+
+삭제라기보다는 정리 후보입니다.
+
+수정 제안:
+
+- 템플릿 객체를 먼저 한 번 조회
+- 그 객체를 기반으로 렌더링/필수 변수 검사까지 처리
+
+## 삭제 후보 3. `send_by_assignment()` docstring 내 sms_provider 설명
+
+위치: `backend/app/services/sms_sender.py`
+
+현재 docstring 에는 `sms_provider:` 설명이 남아 있는데, 실제 함수 인자에는 없습니다.
+
+삭제 가능:
+
+- 지금 기준으로는 문서 찌꺼기라 삭제해도 됩니다
+
+## 테스트 누락
+
+현재 `send_single_sms()` 기본 플로우 테스트는 있지만, 중요한 회귀 테스트가 빠져 있습니다.
+
+추가하면 좋은 테스트:
+
+- 템플릿 미존재 시 provider가 호출되지 않는지
+- `send_by_assignment()`에서 provider 실패 시 `failed` 상태가 어떻게 남는지
+- `send_by_assignment()`에서 한 번 실패한 칩이 다음 실행 때 다시 잡히는지 여부
+- `{{room_password}}`만 쓰는 템플릿에서 비밀번호 누락 시 차단되는지
+- `{{prefix_room_password}}` 템플릿 차단 정책이 기대대로 동작하는지
+- provider 성공 후 commit 실패를 시뮬레이션했을 때 중복 발송 위험이 어떻게 드러나는지
+
+현재 테스트의 문제:
+
+- "템플릿 없음" 테스트가 실제로는 assertion 실패도 삼킬 수 있는 구조라 회귀 방지력이 약합니다
+
+## 추천 수정 순서
+
+1. 템플릿 미존재 시 provider 호출 전에 즉시 실패 처리
+2. `send_by_assignment()`의 실패/재시도 정책을 명확히 결정하고 조회 조건과 기록 방식 정리
+3. 외부 발송 성공 후 DB 기록 실패를 구분하는 로그/예외 처리 추가
+4. `record_sms_sent` / `record_sms_failed` 사용 방식을 경로별로 통일
+5. 방 정보 필수 변수 검사 로직을 실제 사용 변수 기준으로 재작성
+6. 템플릿 조회/미치환 변수 검사 중복 정리
+
+## 결론
+
+이 파일은 "문자 보내기" 자체는 하고 있지만, 진짜 위험한 부분은 발송 성공보다 **실패 처리와 상태 기록의 일관성**입니다.
+
+특히 아래 세 가지가 핵심입니다.
+
+- 템플릿이 없어도 실제 발송 단계까지 갈 수 있는 점
+- 배치 발송 실패 건 재시도 정책이 코드와 설명에서 어긋나는 점
+- 외부 발송 성공과 내부 기록 실패가 분리되어 있어 중복 발송 위험이 있는 점
+
+즉 지금 이 파일은 "보내는 기능"은 있지만, **보낸 뒤 어떤 상태로 남기고 다음에 어떻게 다룰지**에 대한 규칙이 파일 전체에서 한 방향으로 정리되어 있지 않습니다.
+
+따라서 가장 먼저 해야 할 일은 새 기능 추가가 아니라, **실패 처리와 상태 기록의 source of truth를 한 군데로 정리하는 것**입니다.
+
+---
+
+# sms_tracking.py 수정 제안
+
+이 문서는 `backend/app/services/sms_tracking.py`를 기준으로, 현재 코드에서 특히 먼저 봐야 할 문제 2가지와 테스트 누락을 정리한 내용입니다.
+
+## 핵심 요약
+
+이 파일은 문자 발송 결과를 `ReservationSmsAssignment`에 기록하는 아주 작은 헬퍼입니다.
+
+역할은 단순합니다.
+
+- 성공이면 `sent_at`, `send_status='sent'` 반영
+- 실패면 `send_status='failed'`, `send_error` 반영
+
+하지만 작다고 해서 안전한 것은 아닙니다.
+
+이 파일이 잘못 기록하면 아래가 전부 흔들릴 수 있습니다.
+
+- 중복 발송 방지
+- 실패 재시도 여부
+- UI 상태 표시
+- 운영자가 보는 발송 이력 해석
+
+지금 당장 가장 우려되는 부분은 아래 두 가지입니다.
+
+- 성공한 칩을 실패로 덮어쓸 때 상태가 모순될 수 있음
+- 이 파일을 직접 검증하는 테스트가 없음
+
+## 2. 이미 성공한 건을 실패로 덮어쓸 때 상태가 모순될 수 있음
+
+위치: `backend/app/services/sms_tracking.py`
+
+현재 `record_sms_failed()`는 기존 칩이 있으면 아래 값만 바꿉니다.
+
+```text
+send_status = 'failed'
+send_error = ...
+```
+
+문제는 `sent_at`를 지우지 않는다는 점입니다.
+
+즉 아래 같은 상태가 가능합니다.
+
+```text
+sent_at 있음
+send_status = 'failed'
+```
+
+이건 상식적으로 애매합니다.
+
+이 값은 동시에 아래 두 뜻을 갖게 됩니다.
+
+- 이미 발송 성공한 문자
+- 실패한 문자
+
+문제 예시:
+
+```text
+1. 어떤 경로에서 문자 발송 성공
+2. sent_at 기록됨
+3. 이후 다른 재처리/예외 경로에서 record_sms_failed() 호출
+4. 결과:
+   sent_at은 남아 있고
+   send_status는 failed가 됨
+```
+
+이 상태는 운영 판단을 어렵게 만듭니다.
+
+- 중복 발송 방지 로직은 "보낸 문자"로 볼 수 있고
+- UI나 로그는 "실패한 문자"로 볼 수 있습니다
+
+즉 한 row가 성공/실패 두 의미를 동시에 가지게 됩니다.
+
+수정 제안:
+
+- 정책 A: `sent_at`이 있으면 실패로 덮어쓰지 않기
+- 정책 B: 마지막 시도 결과를 우선할 거면 `sent_at`도 같이 정리하는 방식으로 규칙을 명확히 하기
+
+지금 구조에서는 정책 A가 더 안전해 보입니다.
+
+```text
+이미 sent_at이 있는 row는
+record_sms_failed()가 상태를 덮어쓰지 않음
+또는 warning만 남기고 종료
+```
+
+우선순위: 높음
+
+## 7. 테스트가 사실상 없음
+
+위치:
+
+- `backend/app/services/sms_tracking.py`
+- `backend/tests/`
+
+현재 검색 기준으로 `record_sms_sent()` / `record_sms_failed()`를 직접 검증하는 테스트가 없습니다.
+
+즉 아래 중요한 시나리오가 회귀 테스트로 막혀 있지 않습니다.
+
+- 기존 성공 칩에 `record_sms_failed()`를 호출하면 어떤 상태가 되는지
+- 기존 실패 칩에 `record_sms_sent()`를 호출하면 어떻게 복구되는지
+- 기존 칩이 없을 때 새 칩이 기대한 값으로 생성되는지
+- `date=''` 기본값을 쓸 때 의도치 않은 중복/충돌이 없는지
+
+이 파일은 작아서 테스트가 없어도 버티는 것처럼 보일 수 있습니다.
+
+하지만 실제로는 이 파일이 발송 상태의 기준점이기 때문에, 여기 회귀가 생기면 다른 파일에서 원인을 추적하기가 더 어렵습니다.
+
+수정 제안:
+
+- 최소한 아래 4개는 바로 테스트 추가
+
+```text
+1. 기존 pending row → record_sms_sent() → sent_at / send_status='sent'
+2. 기존 pending row → record_sms_failed() → send_status='failed'
+3. 기존 sent row → record_sms_failed() → 정책대로 보호 또는 명시 실패
+4. 기존 row 없음 → 새 row 생성 시 필드 값 확인
+```
+
+가능하면 추가로 아래도 보면 좋습니다.
+
+```text
+5. send_error 500자 절단 확인
+6. date 기본값 '' 사용 시 유니크 키 동작 확인
+```
+
+우선순위: 높음
+
+## 결론
+
+이 파일은 짧지만 상태 기록의 기준점입니다.
+
+지금 가장 먼저 봐야 할 것은:
+
+1. 이미 성공한 row를 실패가 덮어써서 모순 상태가 생기는 문제
+2. 이 핵심 동작을 지켜주는 테스트가 없다는 점
+
+즉 지금은 기능 추가보다 먼저, **상태 전이 규칙을 명확히 하고 그 규칙을 테스트로 고정하는 것**이 필요합니다.
+
+---
+
+# surcharge.py 수정 제안
+
+이 문서는 `backend/app/services/surcharge.py`를 기준으로, 현재 코드에서 특히 먼저 봐야 할 문제들 중 요청하신 항목만 정리한 내용입니다.
+
+## 핵심 요약
+
+이 파일은 예약/날짜/객실 정보를 보고, 인원 초과 추가요금 안내용 커스텀 스케줄 칩을 생성하거나 삭제하는 역할을 합니다.
+
+방향 자체는 맞습니다.
+
+- 객실 배정이 있어야만 판단
+- 도미토리는 제외
+- 일반 객실 / 더블룸을 나눠 다른 surcharge 칩 생성
+- 초과 인원이 없으면 기존 칩 삭제
+
+하지만 지금 구현에는 아래 문제가 섞여 있습니다.
+
+- 같은 surcharge 타입 스케줄이 여러 개 있을 때 기준이 흔들림
+- tenant context가 없으면 칩 생성이 깨질 수 있음
+- surcharge 판단 로직이 다른 파일과 중복됨
+- 템플릿 비활성 상태를 충분히 고려하지 않음
+- 예외를 너무 조용히 삼킴
+- 발송 직전 refresh가 stale 칩 정리를 완전히 보장하지 못함
+- 테스트는 꽤 있지만 중요한 빈틈이 남아 있음
+
+## 2. 같은 surcharge 타입 스케줄이 여러 개 있으면 어떤 걸 쓸지 애매함
+
+위치: `backend/app/services/surcharge.py`
+
+현재 surcharge 스케줄을 찾는 `_find_schedule()`는 아래 의미로 동작합니다.
+
+```text
+조건 맞는 custom_schedule 중
+첫 번째 하나만 가져옴
+```
+
+문제는 surcharge 관련 다른 함수들의 기준이 서로 다르다는 점입니다.
+
+- `_ensure_chip()`는 `_find_schedule()`가 돌려준 첫 번째 스케줄만 보고 칩 생성
+- `_remove_chip()`도 첫 번째 스케줄만 보고 칩 삭제
+- `_delete_all_surcharge_chips()`는 같은 surcharge 타입 스케줄의 칩을 전부 삭제
+
+즉 생성/삭제 기준이 다릅니다.
+
+문제 예시:
+
+```text
+surcharge_standard 스케줄이 2개 있음
+→ 생성은 첫 번째 스케줄 기준
+→ 전체 삭제는 두 스케줄 전부 기준
+```
+
+이러면 아래 같은 이상한 상태가 가능합니다.
+
+- 어떤 스케줄 칩은 계속 남음
+- 어떤 스케줄 칩은 예상보다 과하게 삭제됨
+- 같은 타입인데 어떤 템플릿이 실제로 살아남는지 불명확
+
+수정 제안:
+
+- 정책 A: 같은 `custom_type`의 활성 스케줄은 1개만 허용
+  - DB 또는 API 레벨에서 중복 생성 금지
+
+- 정책 B: 여러 개 허용
+  - 그럼 `_find_schedule()` 기반 로직을 버리고
+  - 생성/삭제 모두 "해당 타입의 스케줄 전체"를 기준으로 통일
+
+지금 구조와 UI 의미를 보면 정책 A가 더 안전합니다.
+
+우선순위: 높음
+
+## 3. tenant context가 없으면 칩 생성이 깨질 수 있음
+
+위치: `backend/app/services/surcharge.py`
+
+현재 `_ensure_chip()`는 새 칩을 만들 때 `tenant_id`를 아래처럼 가져옵니다.
+
+```text
+current_tenant_id.get()
+```
+
+문제는 이 값이 항상 있다고 보장할 수 없다는 점입니다.
+
+평소 API 요청 흐름에서는 괜찮아 보이지만, 아래 같은 경우는 위험합니다.
+
+- 테스트 코드
+- 백그라운드 작업
+- 내부 수동 호출
+- tenant context를 안 잡고 재사용한 코드 경로
+
+이럴 때는:
+
+- surcharge 칩을 만들려고 함
+- `tenant_id`가 None
+- flush 시점에 DB 제약으로 실패 가능
+
+즉 이 파일은 독립 함수처럼 보이지만 실제로는  
+**"밖에서 tenant context를 잘 세팅해줬겠지"**를 꽤 강하게 전제하고 있습니다.
+
+수정 제안:
+
+- `current_tenant_id`가 있으면 사용
+- 없으면 `schedule.tenant_id` 또는 `reservation.tenant_id`로 fallback
+- 둘 다 없으면 명시적으로 에러 또는 warning 로그
+
+예상 방향:
+
+```text
+tenant context 있음 → 사용
+tenant context 없음 → schedule.tenant_id fallback
+그것도 없음 → RuntimeError 또는 warning + skip
+```
+
+우선순위: 높음
+
+## 5. surcharge 판단 로직이 templates/variables.py와 중복됨
+
+위치:
+
+- `backend/app/services/surcharge.py`
+- `backend/app/templates/variables.py`
+
+현재 surcharge 관련 핵심 판단 일부가 두 파일에 나뉘어 있습니다.
+
+공통으로 들어 있는 것들:
+
+- 더블룸 판정
+- 실제 인원 계산
+- 기준 정원 계산
+- 초과 인원 계산
+
+즉 현재 구조는 대략 이렇습니다.
+
+```text
+surcharge.py
+→ "칩을 붙일지 말지" 판단
+
+variables.py
+→ "문자 내용에 들어갈 금액/박수/초과 인원" 계산
+```
+
+문제는 두 파일이 같은 도메인 규칙을 따로 들고 있다는 점입니다.
+
+이렇게 되면 지금은 맞아도 나중에 한쪽만 수정되면 바로 drift가 납니다.
+
+문제 예시:
+
+```text
+surcharge.py는 초과라고 판단해서 칩 생성
+variables.py는 다른 기준으로 excess=0 계산
+→ 칩은 붙었는데 문자 내용은 이상함
+```
+
+수정 제안:
+
+- surcharge 판단용 공통 helper를 한 군데로 모으기
+- 예:
+  - `detect_surcharge_kind(...)`
+  - `calculate_surcharge_basis(...)`
+
+최소한 아래 둘은 같은 source of truth를 써야 합니다.
+
+- 어떤 객실이 double인지
+- guest_count / base_capacity / excess 계산 방식
+
+우선순위: 높음
+
+## 6. 템플릿 비활성 상태를 충분히 고려하지 않음
+
+위치: `backend/app/services/surcharge.py`
+
+현재 `_ensure_chip()`는 대략 아래만 확인합니다.
+
+```text
+스케줄이 있나
+template 객체가 붙어 있나
+```
+
+그런데 실제 템플릿이 활성 상태인지까지는 충분히 확인하지 않습니다.
+
+문제 예시:
+
+```text
+스케줄은 활성
+연결된 템플릿은 비활성
+→ surcharge 칩은 계속 생성
+→ 실제 발송 시점에야 막힘
+```
+
+이건 운영자가 볼 때 굉장히 어색합니다.
+
+- 시스템은 "보낼 대상"이라고 칩을 붙여 놓음
+- 그런데 발송 단계에서는 템플릿 비활성 때문에 진행 안 됨
+
+즉 상태가 두 단계에서 서로 다르게 보일 수 있습니다.
+
+수정 제안:
+
+- `_ensure_chip()`에서 `schedule.template.is_active`도 확인
+- 템플릿 비활성이라면 새 칩을 만들지 않기
+- 필요하면 기존 미발송 칩을 삭제할지 정책도 정하기
+
+우선순위: 중간에서 높음
+
+## 7. 예외를 너무 조용히 삼킴
+
+위치: `backend/app/services/surcharge.py`
+
+현재 `reconcile_surcharge()`는 내부에서 예외를 잡고 로그만 남깁니다.
+
+즉 호출자는 아래처럼 느낄 수 있습니다.
+
+```text
+함수가 끝났네
+→ 정상 처리됐나 보다
+```
+
+하지만 실제 내부에서는:
+
+- 중간에 일부 삭제됨
+- 일부 생성 시도됨
+- 그 후 예외가 남
+
+같은 일이 있었을 수 있습니다.
+
+이건 상태 정합성 관점에서 애매합니다.
+
+특히 이 함수는 단건 reconcile 함수인데, 여기서 모든 예외를 삼켜버리면  
+상위 호출부가 실패를 감지하기 어렵습니다.
+
+반면 "한 건 실패가 전체를 막지 않게" 하려는 목적은 이미 `reconcile_surcharge_batch()` 쪽에 더 어울립니다.
+
+수정 제안:
+
+- 단건 함수 `reconcile_surcharge()`는 예외를 호출자에게 다시 던지기
+- 배치 함수 `reconcile_surcharge_batch()`에서만 개별 실패를 잡고 계속 진행
+
+또는 최소한:
+
+- 단건 함수도 실패 여부를 return 값으로 명시
+- 호출자가 partial failure를 감지 가능하게 만들기
+
+우선순위: 중간
+
+## 8. 발송 직전 refresh가 stale 칩 정리를 완전히 보장하지 못함
+
+위치:
+
+- `backend/app/services/custom_schedule_registry.py`
+- `backend/app/services/surcharge.py`
+
+현재 surcharge 발송 직전 refresh는 대략 이렇게 동작합니다.
+
+```text
+target_date에 RoomAssignment가 있는 예약 ID 목록 조회
+→ 그 예약들에 대해 reconcile_surcharge_batch() 실행
+```
+
+이 방식은 "현재 배정이 있는 예약"은 잘 보정합니다.
+
+하지만 문제는 이미 stale 칩이 남아 있는데,
+현재는 RoomAssignment가 사라진 예약입니다.
+
+예시:
+
+```text
+어제는 방 배정이 있어서 surcharge 칩 생성
+오늘은 방 배정이 해제됨
+그런데 refresh 대상은 RoomAssignment 있는 예약만 모음
+→ 이 예약은 refresh 대상에서 빠질 수 있음
+→ stale surcharge 칩이 남을 수 있음
+```
+
+원래 `reconcile_surcharge()` 자체는
+"배정 없으면 surcharge 칩 삭제" 정책을 가지고 있습니다.
+
+그런데 refresh 대상 선정이 그 함수를 호출할 기회 자체를 빼앗는 셈입니다.
+
+수정 제안:
+
+- refresh 대상에 "이미 surcharge 칩을 가진 예약"도 포함
+- 즉 아래 둘의 합집합을 기준으로 reconcile
+
+```text
+1. target_date에 RoomAssignment가 있는 예약
+2. target_date에 surcharge 칩이 이미 있는 예약
+```
+
+이렇게 해야 stale 칩 정리까지 pre-send refresh가 더 완전해집니다.
+
+우선순위: 중간
+
+## 9. 테스트는 꽤 있지만 중요한 빈틈이 남아 있음
+
+위치:
+
+- `backend/tests/integration/test_surcharge.py`
+- `backend/tests/integration/test_custom_pre_send_refresh.py`
+- `backend/tests/integration/test_surcharge_variables.py`
+
+장점부터 보면, 이 파일은 테스트가 아예 없는 상태는 아닙니다.
+
+이미 검증되는 것들:
+
+- 일반 객실 초과 → standard 칩 생성
+- 더블룸 초과 → double 칩 생성
+- 도미토리 제외
+- 배정 없으면 기존 칩 삭제
+- 타입 전환 시 반대 칩 삭제
+- 배치 처리 중 한 건 실패해도 나머지는 계속 처리
+- surcharge 변수 계산 자체는 별도 테스트 존재
+
+여기까지는 좋습니다.
+
+하지만 운영 리스크 관점에서 중요한 빈칸이 남아 있습니다.
+
+빠진 테스트:
+
+```text
+1. tenant context 없는 상태에서 _ensure_chip()가 어떻게 동작하는지
+2. 같은 custom_type 활성 스케줄이 2개일 때 생성/삭제 결과가 어떻게 되는지
+3. 템플릿 비활성 상태에서 칩 생성이 막히는지
+4. stale surcharge 칩이 pre-send refresh에서 정리되는지
+5. 테스트 마커가 없는 예약이 현재 정책대로 전면 제외되는지
+```
+
+즉 현재 테스트는 happy path와 기본 회귀는 막고 있지만,
+구조적으로 꼬일 수 있는 운영 시나리오까지는 다 덮고 있지 않습니다.
+
+수정 제안:
+
+- 위 5개를 우선 추가
+- 특히 2번, 3번, 4번은 현재 구조의 취약점을 직접 고정하는 테스트가 됩니다
+
+우선순위: 높음
+
+## 결론
+
+이 파일은 "추가요금 칩을 붙였다 뗐다"는 기본 기능은 하고 있습니다.
+
+하지만 현재 핵심 위험은 아래입니다.
+
+1. 같은 surcharge 타입 스케줄이 여러 개일 때 기준이 흔들리는 점
+2. tenant context가 없으면 칩 생성이 깨질 수 있는 점
+3. surcharge 판단 규칙이 다른 파일과 중복되어 나중에 어긋날 수 있는 점
+4. pre-send refresh가 stale 칩 정리를 완전히 보장하지 못하는 점
+
+즉 지금은 단순 기능 추가보다 먼저,  
+**판단 기준을 한 군데로 모으고, 중복 스케줄/tenant context/stale 칩 같은 운영 예외 케이스를 명시적으로 고정하는 것**이 더 중요합니다.
