@@ -21,8 +21,8 @@ expected_trace:
 
   - event: rooms.manual_auto_assign_trigger
     category: MANDATORY
-    fields:
-      created_by: admin
+    # 코드(rooms.py:624)는 created_by 필드를 보내지 않음 — 운영 로그 5+ 케이스 일관 확인.
+    # 필요하면 코드에 current_user.username 추가하고 정답지에도 다시 기대.
 
   - event: auto_assign.enter
     category: MANDATORY

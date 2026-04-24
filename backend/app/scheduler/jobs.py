@@ -91,6 +91,13 @@ async def sync_naver_reservations_job():
             logger.info(f"[{tenant.slug}] Scheduler sync result: {result['message']}")
         except Exception as e:
             logger.error(f"[{tenant.slug}] Error in reservation sync job: {e}")
+            diag(
+                "job.sync_naver_reservations.tenant_failed",
+                level="critical",
+                tenant_id=tenant.id,
+                tenant_slug=tenant.slug,
+                error=str(e),
+            )
             db.rollback()
         finally:
             db.close()
@@ -159,15 +166,41 @@ async def detect_consecutive_stays_job():
     Primary detection happens inline after each Naver sync.
     """
     logger.info("Running consecutive stay detection job (all tenants)")
+    diag("job.detect_consecutive_stays.enter", level="verbose")
 
     from app.services.consecutive_stay import detect_and_link_consecutive_stays
 
+    totals = {"linked": 0, "unlinked": 0, "groups": 0, "tenants": 0}
+
     def _detect(db, tenant):
-        result = detect_and_link_consecutive_stays(db)
+        try:
+            result = detect_and_link_consecutive_stays(db)
+        except Exception as e:
+            diag(
+                "job.detect_consecutive_stays.tenant_failed",
+                level="critical",
+                tenant_id=tenant.id,
+                tenant_slug=tenant.slug,
+                error=str(e),
+            )
+            return
+        totals["tenants"] += 1
+        totals["linked"] += result.get("linked", 0)
+        totals["unlinked"] += result.get("unlinked", 0)
+        totals["groups"] += result.get("groups", 0)
         if result["linked"] > 0 or result["unlinked"] > 0:
             logger.info(f"[{tenant.slug}] Consecutive stay detection: {result}")
 
     _for_each_tenant(_detect)
+
+    diag(
+        "job.detect_consecutive_stays.exit",
+        level="verbose",
+        tenants=totals["tenants"],
+        linked=totals["linked"],
+        unlinked=totals["unlinked"],
+        groups=totals["groups"],
+    )
 
 
 async def reconcile_today_reservations_job():
@@ -279,6 +312,10 @@ async def sync_unstable_reservations_job():
     finally:
         bypass_tenant_filter.reset(token_bypass)
 
+    diag("job.sync_unstable_reservations.enter", level="verbose",
+         tenant_count=len(tenants))
+
+    sync_results = []
     for tenant in tenants:
         if not tenant.unstable_business_id or not tenant.unstable_cookie:
             continue
@@ -291,6 +328,12 @@ async def sync_unstable_reservations_job():
                 cookie=tenant.unstable_cookie,
             )
             result = await sync_naver_to_db(provider, db, source="unstable")
+            sync_results.append({
+                "tenant_id": tenant.id,
+                "added": result.get("added", 0),
+                "updated": result.get("updated", 0),
+                "synced": result.get("synced", 0),
+            })
             logger.info(f"[{tenant.slug}] Unstable sync result: {result['message']}")
             if result.get("added", 0) > 0:
                 from app.services.activity_logger import log_activity
@@ -306,10 +349,18 @@ async def sync_unstable_reservations_job():
                 db.commit()
         except Exception as e:
             logger.error(f"[{tenant.slug}] Error in unstable sync job: {e}")
+            diag("job.sync_unstable_reservations.tenant_failed", level="critical",
+                 tenant_id=tenant.id, error=str(e)[:200])
             db.rollback()
         finally:
             db.close()
             current_tenant_id.reset(token)
+
+    diag("job.sync_unstable_reservations.exit", level="critical",
+         active_tenants=len(sync_results),
+         total_added=sum(r["added"] for r in sync_results),
+         total_updated=sum(r["updated"] for r in sync_results),
+         total_synced=sum(r["synced"] for r in sync_results))
 
 
 async def daily_room_assign_job():

@@ -1,0 +1,78 @@
+action: create_reservation_manual (수동 예약 생성)
+description: |
+  Reservations 페이지에서 직원이 직접 새 예약을 입력해 저장하는 경로.
+  INSERT 후 활성 스케줄에 대해 자동 chip reconcile 이 돌면서 해당 예약에
+  매칭되는 SMS 칩이 생성된다.
+
+  네이버 sync 로 들어오는 경로 (naver_sync.*) 와는 분리된 정답지.
+
+reference_commit: bf8a0e3
+reference_case: 2026-04-21 16:41:57 req=watx025e
+created_at: 2026-04-24
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  user_action: 예약 등록 버튼 → 폼 제출
+  naver_sourced: false       # 네이버 경로 아님
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: POST
+      path: /api/reservations
+
+  - event: reservation.created
+    category: MANDATORY       # 2026-04-24 commit 에서 신규 추가된 diag
+    fields:
+      reservation_id: "*"
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+    fields:
+      res_id: "*"
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT  # 활성 스케줄 개수만큼 반복
+    min: 1
+    fields:
+      schedule_id: "*"
+      target_date: "*"
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+    fields:
+      filter_type: "*"        # building / assignment / column_match 등
+      conditions_count: "*"
+
+  - event: filter.apply.exit
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+    fields:
+      res_id: "*"
+      created: "*"             # 0 이상 정수
+      existing: "*"
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: "200"
+
+forbidden_events:
+  - event: reservation.invalid_status
+    reason: 유효하지 않은 status enum — 성공 경로에서 나오면 안 됨
+
+  - event: request.error
+    reason: 성공 경로라 에러 없어야 함
+
+notes: |
+  - filter.apply.enter/exit/applied 는 활성 스케줄 개수에 따라 여러 번 반복
+    (VARIABLE_COUNT — min=1 만 보장, 상한은 스케줄 증가에 따라 자연스럽게 증가)
+  - reservation.created diag 는 2026-04-24 회귀 감사에서 신규 추가됨.
+    배포 전 trace 엔 이 이벤트 없음 — 배포 후 첫 관측 시 confirmed 승격 검토.
+  - extend_stay / link_api / unlink_api 등 연박 관련 경로는 별도 정답지 후보.

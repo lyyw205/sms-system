@@ -1,0 +1,95 @@
+action: sms_toggle_send (SMS 칩 클릭 → 수동 발송)
+description: |
+  RoomAssignment 페이지의 SMS 칩 (또는 예약 상세) 에서 아직 발송 안 한 칩을
+  클릭하면 호출되는 수동 발송 경로. Aligo API 로 실제 SMS 나감.
+
+  skip_send=true 로 호출되면 실제 발송 없이 sent_at 만 채움 (이 플로우는 별도
+  정답지 후보로 남김).
+
+reference_commit: 462d0ac
+reference_case: 2026-04-21 15:14:15 req=z5prjng4 (tid=1, party_info 템플릿)
+created_at: 2026-04-24
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  user_action: SMS 칩 클릭 (미발송 상태)
+  skip_send: false  # 실제 발송 경로
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PATCH
+      path_pattern: "/api/reservations/{id}/sms-toggle/{template_key}"
+
+  - event: send_single_sms.enter
+    category: MANDATORY
+    fields:
+      template_key: "*"  # 어떤 템플릿이든 OK
+
+  - event: template.variables.calculated
+    category: MANDATORY
+    fields:
+      has_room: "True"          # 방 변수 쓰는 템플릿일 때. 이벤트/안내문은 False 가능
+      has_building: "*"
+      has_room_password: "*"
+
+  - event: template.render.enter
+    category: MANDATORY
+    fields:
+      template_key: "*"
+
+  - event: template.render.exit
+    category: MANDATORY
+    fields:
+      unreplaced_count: "0"     # 0 이 아니면 FORBIDDEN 경로로 감
+
+  - event: sms_sender.provider_call
+    category: MANDATORY
+    fields:
+      provider: "*"             # Mock / RealSMSProvider
+
+  - event: aligo.send_sms.enter
+    category: CONDITIONAL       # provider=RealSMSProvider 일 때만
+    fields:
+      msg_type: "*"             # SMS 또는 LMS
+      testmode: "*"
+
+  - event: aligo.send_sms.exit
+    category: CONDITIONAL
+    fields:
+      result_code: "1"          # 성공. 다른 값이면 실패 경로
+
+  - event: activity_log.created
+    category: MANDATORY
+    fields:
+      type: sms_send
+      status: success
+      success_count: "1"
+      failed_count: "0"
+
+  - event: send_single_sms.exit
+    category: MANDATORY
+    fields:
+      success: "True"
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: "200"
+
+forbidden_events:
+  - event: template.render.unreplaced
+    reason: 미치환 변수는 발송 차단 — 이 플로우에서 나오면 안 됨
+
+  - event: sms_sender.blocked_template_missing
+    reason: 템플릿 누락 차단은 에러 경로 (별도 정답지)
+
+  - event: sms_sender.blocked_empty_room
+    reason: 방 변수 누락 차단은 에러 경로 (별도 정답지)
+
+notes: |
+  - provider=MockSMSProvider 일 때 aligo.* 이벤트는 안 나옴 (CONDITIONAL)
+  - 실패 경로 (result_code != 1) 는 별도 정답지로 분리 예정
+  - skip_send=true 경로는 별도 정답지로 분리 예정

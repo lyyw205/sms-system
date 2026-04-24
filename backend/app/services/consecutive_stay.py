@@ -281,11 +281,16 @@ def _validate_link_inputs(reservations: List[Reservation]) -> None:
               (수동 입력 1박 예약 호환 — checkout 이 비어 있어도 이어진다고 판단)
     """
     if len(reservations) < 2:
+        diag("stay_group.validate_failed", level="verbose",
+             reason="too_few", count=len(reservations))
         raise ValueError("예약 2개 이상이 필요합니다")
 
     for r in reservations:
         if r.status != ReservationStatus.CONFIRMED:
             name = r.customer_name or f"예약#{r.id}"
+            diag("stay_group.validate_failed", level="verbose",
+                 reason="not_confirmed", reservation_id=r.id,
+                 status=getattr(r.status, 'value', str(r.status)))
             raise ValueError(f"{name} 님은 확정 상태가 아닙니다")
 
     sorted_res = sorted(reservations, key=lambda r: r.check_in_date or "")
@@ -305,6 +310,10 @@ def _validate_link_inputs(reservations: List[Reservation]) -> None:
                     continue
             except (ValueError, TypeError):
                 pass
+        diag("stay_group.validate_failed", level="verbose",
+             reason="dates_not_consecutive",
+             prev_id=prev.id, curr_id=curr.id,
+             prev_checkout=prev.check_out_date, curr_checkin=curr.check_in_date)
         raise ValueError("예약 날짜가 이어지지 않습니다")
 
 

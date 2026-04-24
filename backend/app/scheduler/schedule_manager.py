@@ -106,11 +106,8 @@ class ScheduleManager:
                         registered_jobs=len(self.scheduler.get_jobs()),
                     )
                     logger.error(f"Schedule #{schedule_id_captured} not found")
-                    # 자기 잡 self-remove (DB에 정말 없으면 다음 트리거에서 또 찍히지 않게)
-                    try:
-                        self.scheduler.remove_job(f"template_schedule_{schedule_id_captured}")
-                    except JobLookupError:
-                        pass
+                    # 자가삭제 안 함 — 일시적 DB 오류 vs 진짜 삭제를 코드가 구분 못해
+                    # 잡을 영구 잃을 위험. Sentry 알림이 반복되면 사람이 판단해서 처리.
                     return
 
                 schedule_tenant_id = fresh_schedule.tenant_id

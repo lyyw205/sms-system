@@ -378,6 +378,8 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
     try:
         status_enum = ReservationStatus(reservation.status)
     except ValueError:
+        diag("reservation.invalid_status", level="critical",
+             endpoint="create", raw_status=str(reservation.status)[:40])
         raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다")
 
     db_reservation = Reservation(
@@ -420,6 +422,16 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
     db.commit()
     db.refresh(db_reservation)
 
+    diag(
+        "reservation.created",
+        level="critical",
+        reservation_id=db_reservation.id,
+        actor=current_user.username if current_user else None,
+        section=db_reservation.section,
+        check_in_date=db_reservation.check_in_date,
+        check_out_date=db_reservation.check_out_date,
+    )
+
     return _to_response(db_reservation, db=db)
 
 
@@ -439,6 +451,9 @@ async def update_reservation(
         try:
             update_data["status"] = ReservationStatus(update_data["status"])
         except ValueError:
+            diag("reservation.invalid_status", level="critical",
+                 endpoint="update", reservation_id=reservation_id,
+                 raw_status=str(update_data["status"])[:40])
             raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다")
 
     section_changed = "section" in update_data and update_data["section"] != db_reservation.section
@@ -624,6 +639,15 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_tena
 
     db.delete(db_reservation)
     db.commit()
+
+    diag(
+        "reservation.deleted",
+        level="critical",
+        reservation_id=reservation_id,
+        actor=current_user.username if current_user else None,
+        customer_name=db_reservation.customer_name,
+    )
+
     return {"success": True, "message": "예약이 삭제되었습니다"}
 
 
@@ -882,6 +906,11 @@ async def assign_sms_template(
         ReservationSmsAssignment.date == (request.date or ''),
     ).first()
     if existing:
+        diag("sms_assignment.duplicate", level="critical",
+             reservation_id=reservation_id,
+             template_key=request.template_key,
+             date=request.date or '',
+             existing_sent=(existing.sent_at is not None))
         raise HTTPException(status_code=409, detail="이미 배정된 템플릿입니다")
 
     assignment = ReservationSmsAssignment(
@@ -1101,6 +1130,13 @@ async def link_stay_group(
     try:
         group_id, linked_ids = link_reservations(db, all_ids)
     except ValueError as e:
+        diag(
+            "stay_group.link_api.validation_failed",
+            level="critical",
+            reservation_id=reservation_id,
+            requested_ids=all_ids,
+            error=str(e),
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
     from app.services.room_assignment import sync_sms_tags
@@ -1111,6 +1147,15 @@ async def link_stay_group(
         sync_sms_tags(db, res_id, schedules=schedules)
 
     db.commit()
+
+    diag(
+        "stay_group.link_api.done",
+        level="critical",
+        group_id=group_id,
+        member_count=len(linked_ids),
+        actor=current_user.username if current_user else None,
+    )
+
     return {"success": True, "message": f"연박 그룹 생성: {group_id}"}
 
 
@@ -1134,6 +1179,8 @@ async def unlink_stay_group(
 
     unlinked = unlink_from_group(db, reservation_id)
     if not unlinked:
+        diag("stay_group.unlink_api.not_in_group", level="critical",
+             reservation_id=reservation_id)
         raise HTTPException(status_code=404, detail="연박 그룹에 속하지 않은 예약입니다")
 
     schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
@@ -1141,6 +1188,15 @@ async def unlink_stay_group(
         sync_sms_tags(db, res_id, schedules=schedules)
 
     db.commit()
+
+    diag(
+        "stay_group.unlink_api.done",
+        level="critical",
+        reservation_id=reservation_id,
+        affected_count=len(affected_ids),
+        actor=current_user.username if current_user else None,
+    )
+
     return {"success": True, "message": "연박 그룹에서 해제되었습니다"}
 
 
@@ -1235,6 +1291,17 @@ async def extend_stay(
             )
 
     db.commit()
+
+    diag(
+        "reservation.extend_stay",
+        level="critical",
+        source_reservation_id=reservation_id,
+        new_reservation_id=new_res.id,
+        stay_group_id=group_id,
+        conflict_count=len(conflict_guests),
+        room_id=request.room_id,
+        actor=current_user.username if current_user else None,
+    )
 
     return ExtendStayResponse(
         success=True,
@@ -1350,5 +1417,14 @@ async def cancel_extend_stay(
     sync_sms_tags(db, original.id, schedules=schedules)
 
     db.commit()
+
+    diag(
+        "reservation.extend_stay_cancelled",
+        level="critical",
+        original_reservation_id=reservation_id,
+        removed_reservation_id=extended.id,
+        stay_group_id=original.stay_group_id,
+        actor=current_user.username if current_user else None,
+    )
 
     return {"success": True, "message": f"수동연박 취소 완료 ({extended.customer_name})"}

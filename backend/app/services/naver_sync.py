@@ -414,6 +414,14 @@ def _align_bed_orders_for_groups(db: Session):
 
     if updated > 0:
         logger.info(f"Aligned {updated} bed_orders for stay groups")
+    diag(
+        "naver_sync.bed_order_align",
+        level="verbose",
+        groups_scanned=len(groups),
+        members_scanned=len(grouped),
+        bed_orders_updated=updated,
+        window_max_checkin=max_checkin,
+    )
 
 
 def _init_gender_counts(res_data: Dict[str, Any]) -> tuple:
@@ -594,10 +602,25 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             ReservationSmsAssignment.reservation_id == existing.id,
             ReservationSmsAssignment.sent_at.is_(None),
         ).delete(synchronize_session='fetch')
-        # Remove from consecutive stay group on cancellation
+        # Remove from consecutive stay group on cancellation + peer 칩 재동기화
+        # (reservations.py PATCH 의 CANCELLED 분기와 동일 정책 — peer 의 is_long_stay/
+        # stay_group_order 가 unlink 로 갱신되므로 stay_filter 칩 재계산 필수)
         if existing.stay_group_id:
             from app.services.consecutive_stay import unlink_from_group
+            peer_ids = [
+                r.id for r in db.query(Reservation).filter(
+                    Reservation.stay_group_id == existing.stay_group_id,
+                    Reservation.id != existing.id,
+                ).all()
+            ]
             unlink_from_group(db, existing.id)
+            if peer_ids:
+                db.flush()
+                for peer_id in peer_ids:
+                    try:
+                        room_assignment.sync_sms_tags(db, peer_id)
+                    except Exception as e:
+                        logger.warning(f"naver_sync peer sync_sms_tags after unlink failed: res={peer_id} err={e}")
 
     # Reconcile room assignments if dates changed
     if existing.check_in_date != old_date or existing.check_out_date != old_end_date:
@@ -662,6 +685,13 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         existing.naver_room_type != old_naver_room_type
     )
     if _sms_fields_changed and existing.status == ReservationStatus.CONFIRMED:
+        diag(
+            "naver_sync.sms_field_changed",
+            level="critical",
+            reservation_id=existing.id,
+            gender_changed=(existing.gender != old_gender),
+            naver_room_type_changed=(existing.naver_room_type != old_naver_room_type),
+        )
         try:
             db.flush()
             room_assignment.sync_sms_tags(db, existing.id)

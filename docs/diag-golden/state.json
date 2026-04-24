@@ -1,14 +1,135 @@
 {
   "_comment": "ooo-log-validation 스킬이 자동 갱신하는 체크포인트. 수동 수정 지양.",
-  "last_log_timestamp": "2026-04-21 13:33:07",
-  "last_commit_sha": "0ec7084",
-  "last_coverage_scan_sha": null,
+  "last_log_timestamp": "2026-04-24 20:45:02",
+  "last_commit_sha": "acd22aa",
+  "last_coverage_scan_sha": "acd22aa",
   "validated_cases_count": 0,
-  "pending_golden_updates": [],
-  "known_gaps": [],
-  "last_validation_run": "2026-04-21T13:33:00+09:00",
+  "pending_golden_updates": [
+    {
+      "event": "event_sms_hook.*",
+      "reason": "2026-04-24 세션에서 신규 추가 — 배포 후 첫 로그 확인 시 정답지 작성",
+      "added_commit": "3849bae"
+    },
+    {
+      "event": "schedule.execute.fetch_miss",
+      "reason": "Schedule #1 race 진단용 — 배포 후 race 재현 시 정답지 작성",
+      "added_commit": "462d0ac"
+    },
+    {
+      "event": "surcharge.reconcile_failed",
+      "reason": "배포 후 실제 실패 관찰 시 정답지 작성",
+      "added_commit": "cb2671b"
+    },
+    {
+      "event": "sms_sender.blocked_template_missing",
+      "reason": "배포 후 차단 사례 관찰 시 정답지 작성",
+      "added_commit": "cb2671b"
+    },
+    {
+      "event": "sms_sender.blocked_empty_room",
+      "reason": "missing_vars 필드 추가됨 — 기존 정답지에 필드 스키마 갱신 필요",
+      "added_commit": "cb2671b"
+    },
+    {
+      "event": "auto_assign.booking_count_skipped",
+      "reason": "booking_count>1 예약 자동배정 스킵 시 critical diag — 정답지 작성",
+      "added_commit": "d15eeb8"
+    },
+    {
+      "event": "job.sync_unstable_reservations.enter|exit|tenant_failed",
+      "reason": "언스테이블 cron rate 모니터링용 — 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "naver_sync.sms_field_changed",
+      "reason": "F1 필드 변경 추적 — 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "naver_sync.bed_order_align",
+      "reason": "bed_order 5일 윈도우 효과 모니터링 — 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "party_checkin.toggle.not_found|party_checkin.toggled",
+      "reason": "회귀 감사로 신규 추가 — staff 액션 핵심 mutation",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "reservation.created|reservation.deleted",
+      "reason": "수동 예약 CRUD mutation — create-reservation-manual draft 정답지에 포함",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "stay_group.link_api.*|stay_group.unlink_api.*",
+      "reason": "수동 연박 링크/해제 API — staff 수작업 흔적 추적",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "reservation.extend_stay|reservation.extend_stay_cancelled",
+      "reason": "연박 추가/취소 API — 배포 후 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "job.sync_naver_reservations.tenant_failed",
+      "reason": "테넌트별 sync 실패 추적 — 배포 후 실패 사례 관찰 시 정답지",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "job.detect_consecutive_stays.enter|exit|tenant_failed",
+      "reason": "연박 detect job 관측 0건이었음 — 배포 후 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "reservation.invalid_status",
+      "reason": "MED — status enum 400 경로 추적. 배포 후 관찰 시 정답지 작성",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "sms_assignment.duplicate",
+      "reason": "MED — SMS 409 중복 경로. 배포 후 관찰 시 정답지",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "stay_group.validate_failed",
+      "reason": "MED — consecutive_stay 검증 실패 하위 경로. 호출측 link_api 와 중복 정보 가능",
+      "added_session": "2026-04-24"
+    },
+    {
+      "event": "password_display.prefix_skipped",
+      "reason": "MED — door_password 에 비정상 문자 섞여 prefix 생략된 경우. 보안 시그널",
+      "added_session": "2026-04-24"
+    }
+  ],
+  "known_gaps": [
+    {
+      "note": "2026-04-24 baseline — coverage.json 전체 58건을 일괄 suppress. 새 gap 만 다음 스캔에서 잡힘",
+      "established": "2026-04-24",
+      "count": 58
+    }
+  ],
+  "golden_policy": {
+    "_doc": "정답지 draft → confirmed 승격 기준",
+    "draft_folder": "docs/diag-golden/actions/_draft/",
+    "promotion_threshold": 3,
+    "comment": "draft 가 같은 패턴으로 3회 이상 매칭되면 confirmed 승격 (본 폴더로 이동). confirmed 정답지가 다른 패턴으로 자주 나오면 사용자에게 교체 알림."
+  },
+  "golden_registry": {
+    "auto-assign-button": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 5 },
+    "drag-dormitory": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "drag-single-date-mode": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "drag-single-night-past": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "drag-single-night-today": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "schedule-execute-no-targets": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "undo-assign": { "confidence": "confirmed", "first_seen": "2026-04-21", "instance_count": 1 },
+    "_draft/sms-toggle-send": { "confidence": "draft", "first_seen": "2026-04-24", "instance_count": 1 },
+    "_draft/create-reservation-manual": { "confidence": "draft", "first_seen": "2026-04-24", "instance_count": 1 }
+  },
+  "last_validation_run": "2026-04-24T20:50:00+09:00",
   "notes": [
-    "초기 생성: 2026-04-21. 오늘 로그에서 5개 주요 플로우 정답지 등록.",
-    "last_coverage_scan_sha=null 이므로 다음 실행 시 전체 baseline 스캔 1회 수행 예정."
+    "2026-04-24 두 번째 검증 실행. 새 에러 0건 (기존 3건만 — 2건은 이미 수정, 1건 race 는 작업 예정).",
+    "baseline coverage scan 58건 일괄 suppress. 다음 스캔부터 증분으로만 잡음.",
+    "이번 세션 추가된 diag 9종 pending — 배포 후 실제 관찰로 정답지 작성.",
+    "draft/confirmed 2단계 신뢰도 시스템 도입 (promotion_threshold=3)."
   ]
 }

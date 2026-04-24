@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.api.deps import get_tenant_scoped_db
 from app.db.models import Reservation, ReservationStatus, PartyCheckin, ReservationDailyInfo
 from app.auth.dependencies import require_any_role
+from app.diag_logger import diag
 
 router = APIRouter(prefix="/api/party-checkin", tags=["party-checkin"])
 
@@ -156,6 +157,8 @@ async def toggle_party_checkin(
     # 예약 존재 확인
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not reservation:
+        diag("party_checkin.toggle.not_found", level="critical",
+             reservation_id=reservation_id, date=date)
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
 
     # 기존 체크인 레코드 조회
@@ -175,12 +178,16 @@ async def toggle_party_checkin(
         checkin.checked_in_at = None
         db.commit()
         db.refresh(checkin)
+        diag("party_checkin.toggled", level="critical",
+             reservation_id=reservation_id, date=date, action="checkout")
         return ToggleResponse(success=True, checked_in=False, checked_in_at=None)
     elif checkin:
         # 레코드는 있지만 미체크인 → 체크인
         checkin.checked_in_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(checkin)
+        diag("party_checkin.toggled", level="critical",
+             reservation_id=reservation_id, date=date, action="checkin")
         return ToggleResponse(
             success=True,
             checked_in=True,
@@ -196,6 +203,8 @@ async def toggle_party_checkin(
         db.add(new_checkin)
         db.commit()
         db.refresh(new_checkin)
+        diag("party_checkin.toggled", level="critical",
+             reservation_id=reservation_id, date=date, action="checkin_new")
         return ToggleResponse(
             success=True,
             checked_in=True,
