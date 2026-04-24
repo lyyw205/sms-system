@@ -19,7 +19,6 @@ from datetime import timedelta
 from typing import List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
 
 from app.db.models import (
     Reservation,
@@ -240,19 +239,9 @@ def _get_candidate_reservations(
 
     # Date range: include reservations active on target_date
     target_mode = schedule.target_mode
-    # 기본: stay-coverage
-    query = query.filter(
-        or_(
-            and_(
-                Reservation.check_in_date <= target_date,
-                Reservation.check_out_date > target_date,
-            ),
-            and_(
-                Reservation.check_in_date == target_date,
-                Reservation.check_out_date.is_(None),
-            ),
-        )
-    )
+    # 기본: stay-coverage (연박 중간일 + NULL/당일 포함)
+    from app.services.filters import stay_coverage_filter
+    query = query.filter(stay_coverage_filter(target_date))
     # first_night narrow
     if target_mode == 'first_night':
         query = query.filter(Reservation.check_in_date == target_date)

@@ -4,7 +4,7 @@ Party check-in API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -58,19 +58,13 @@ async def get_party_checkin_list(
       - "stable": 스테이블 파티 (party_type이 '1', '2', '2차만')
       - "unstable": 언스테이블 파티 (section="unstable" OR unstable_party=true)
     """
-    # 해당 날짜에 숙박 중인 예약 조회 (연박 포함)
+    # 해당 날짜에 투숙/방문 중인 예약 조회 (연박 중간일 + NULL/당일 모두 포함)
+    from app.services.filters import stay_coverage_filter
     reservations = (
         db.query(Reservation)
         .filter(
-            and_(
-                Reservation.status == ReservationStatus.CONFIRMED,
-                or_(
-                    # 연박: 체크인 <= 오늘 < 체크아웃
-                    and_(Reservation.check_in_date <= date, Reservation.check_out_date > date),
-                    # 1박(check_out 없음): 체크인 당일만
-                    and_(Reservation.check_in_date == date, Reservation.check_out_date.is_(None)),
-                ),
-            )
+            Reservation.status == ReservationStatus.CONFIRMED,
+            stay_coverage_filter(date),
         )
         .all()
     )

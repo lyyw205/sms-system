@@ -154,6 +154,7 @@ def _apply_buffers(male: int, female: int, custom_vars: dict) -> tuple:
 
 def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot:
     """SMS 발송 시 호출 — 있으면 그대로 반환, 없으면 1회 생성."""
+    from app.services.filters import stay_coverage_filter
 
     existing = db.query(ParticipantSnapshot).filter(
         ParticipantSnapshot.date == target_date
@@ -161,12 +162,12 @@ def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot
     if existing:
         return existing
 
-    # Calculate from current confirmed reservations
+    # target_date 에 투숙/방문 중인 예약 합계 (연박 중간일 + NULL/당일 포함)
     result = db.query(
         func.coalesce(func.sum(Reservation.male_count), 0).label("total_male"),
         func.coalesce(func.sum(Reservation.female_count), 0).label("total_female"),
     ).filter(
-        Reservation.check_in_date == target_date,
+        stay_coverage_filter(target_date),
         Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
     ).first()
 
@@ -195,14 +196,15 @@ def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot
 def refresh_snapshot(db: Session, target_date: str) -> Optional[ParticipantSnapshot]:
     """스케줄러(08:50/11:50) 호출 — 있으면 갱신, 없으면 생성."""
     import logging
+    from app.services.filters import stay_coverage_filter
     _logger = logging.getLogger(__name__)
 
-    # Recalculate from current confirmed reservations
+    # target_date 에 투숙/방문 중인 예약 합계 (연박 중간일 + NULL/당일 포함)
     result = db.query(
         func.coalesce(func.sum(Reservation.male_count), 0).label("total_male"),
         func.coalesce(func.sum(Reservation.female_count), 0).label("total_female"),
     ).filter(
-        Reservation.check_in_date == target_date,
+        stay_coverage_filter(target_date),
         Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
     ).first()
 
@@ -266,7 +268,7 @@ def _format_man_won(amount_won: int) -> str:
 
 def _inject_surcharge_vars(context: Dict[str, Any], reservation, room_assignment, db: Session) -> None:
     """surcharge 템플릿용 변수 주입 — excess/nights/per_night/total."""
-    from app.services.surcharge import _is_double_room
+    from app.services.surcharge import _is_double_room, compute_guest_count, compute_excess
     from app.db.models import Room, Tenant
     from app.db.tenant_context import current_tenant_id
 
@@ -285,14 +287,10 @@ def _inject_surcharge_vars(context: Dict[str, Any], reservation, room_assignment
     unit_double = getattr(tenant, 'surcharge_unit_double', 25000) if tenant else 25000
     unit_price = unit_double if is_double else unit_standard
 
-    # guest_count / excess / nights 계산
-    guest_count = (
-        getattr(reservation, 'party_size', None)
-        or (reservation.male_count or 0) + (reservation.female_count or 0)
-        or 1
-    )
+    # guest_count / excess / nights 계산 (surcharge.py 와 공유 helper 사용)
+    guest_count = compute_guest_count(reservation)
     base_capacity = room.base_capacity if room else 0
-    excess = max(0, guest_count - base_capacity)
+    excess = compute_excess(reservation, room)
     nights = _calculate_stay_nights(reservation)
 
     per_night = unit_price * excess

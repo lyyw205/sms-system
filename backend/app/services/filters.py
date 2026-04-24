@@ -50,6 +50,35 @@ _COLUMN_MATCH_COLUMNS = {"party_type", "gender", "naver_room_type", "notes"}
 
 
 # ---------------------------------------------------------------------------
+# Stay-coverage filter (canonical "date d 에 투숙/방문 중" 조건)
+# ---------------------------------------------------------------------------
+
+def stay_coverage_filter(date_str: str):
+    """date_str 날에 "있는" 예약을 모두 잡는 SQLAlchemy 조건.
+
+    포함:
+      - 숙박 첫날                (check_in == d, check_out > d)
+      - 연박 중간일              (check_in <  d, check_out > d)
+      - NULL 체크아웃 (당일예약)  (check_in == d, check_out IS NULL)
+      - 당일만 (파티/언스테이블)  (check_in == d == check_out)
+
+    제외:
+      - 퇴실일 (check_in < d, check_out == d)
+      - 해당 날짜와 무관한 예약
+
+    두 번째 OR 분기 `check_in == d` 가 NULL·당일 케이스를 한꺼번에 흡수한다.
+    상태/섹션 필터는 호출자가 별도로 붙인다.
+    """
+    return or_(
+        and_(
+            Reservation.check_in_date <= date_str,
+            Reservation.check_out_date > date_str,
+        ),
+        Reservation.check_in_date == date_str,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dual-parse: v1 → v2 normalization (normalize-on-read)
 # ---------------------------------------------------------------------------
 
