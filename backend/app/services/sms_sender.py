@@ -4,7 +4,7 @@ Ported from stable-clasp-main/01_sns.js
 (Renamed from campaigns/tag_manager.py; TagCampaignManager → SmsSender)
 """
 from typing import Dict, Any, Optional
-from sqlalchemy import or_, and_
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import logging
@@ -94,30 +94,54 @@ async def send_single_sms(
         template_key=template_key,
     )
 
-    # ★ 3-1b: 방 정보 변수를 쓰는 템플릿인데 room_num/building이 비어있으면 차단
-    _ROOM_VARS_REQUIRED = ("{{room_num}}", "{{building}}", "{{room_password}}")
+    # ★ 3-1a: 템플릿 존재 여부 확인 — renderer.render() 가 없는 템플릿을 에러 문자열로 반환해
+    #         그대로 SMS 발송되는 사고 방지.
     renderer = TemplateRenderer(db)
     _template_obj = renderer.get_template(template_key)
-    _template_content = _template_obj.content if _template_obj else ""
-    if any(v in _template_content for v in _ROOM_VARS_REQUIRED):
-        if not context.get("room_num") or not context.get("building"):
-            logger.error(
-                f"Blocking SMS: room info empty. res={reservation.id} template={template_key} date={date}"
-            )
-            diag(
-                "sms_sender.blocked_empty_room",
-                level="critical",
-                res_id=reservation.id,
-                template_key=template_key,
-                date=effective_date,
-            )
-            from app.services.sms_tracking import record_sms_failed
-            record_sms_failed(
-                db, reservation.id, template_key,
-                error="방 정보 누락 (미배정 상태)",
-                date=effective_date or "",
-            )
-            return {"success": False, "message_id": None, "error": "방 정보 누락 (미배정 상태)"}
+    if _template_obj is None:
+        logger.error(
+            f"Blocking SMS: template not found. res={reservation.id} template={template_key} date={date}"
+        )
+        diag(
+            "sms_sender.blocked_template_missing",
+            level="critical",
+            res_id=reservation.id,
+            template_key=template_key,
+            date=effective_date,
+        )
+        from app.services.sms_tracking import record_sms_failed
+        record_sms_failed(
+            db, reservation.id, template_key,
+            error=f"템플릿 없음: {template_key}",
+            date=effective_date or "",
+        )
+        return {"success": False, "message_id": None, "error": f"템플릿 없음: {template_key}"}
+
+    # ★ 3-1b: 방 정보 변수를 쓰는 템플릿인데 해당 context 값이 비어있으면 차단
+    #         템플릿에서 실제 사용하는 변수들을 검사해 빈 값 SMS 방지
+    _ROOM_VARS_REQUIRED = ("room_num", "building", "room_password", "prefix_room_password")
+    _template_content = _template_obj.content
+    used_room_vars = [v for v in _ROOM_VARS_REQUIRED if f"{{{{{v}}}}}" in _template_content]
+    missing_room_vars = [v for v in used_room_vars if not context.get(v)]
+    if missing_room_vars:
+        logger.error(
+            f"Blocking SMS: room vars empty {missing_room_vars}. res={reservation.id} template={template_key} date={date}"
+        )
+        diag(
+            "sms_sender.blocked_empty_room",
+            level="critical",
+            res_id=reservation.id,
+            template_key=template_key,
+            date=effective_date,
+            missing_vars=missing_room_vars,
+        )
+        from app.services.sms_tracking import record_sms_failed
+        record_sms_failed(
+            db, reservation.id, template_key,
+            error=f"방 정보 누락: {', '.join(missing_room_vars)}",
+            date=effective_date or "",
+        )
+        return {"success": False, "message_id": None, "error": f"방 정보 누락: {', '.join(missing_room_vars)}"}
 
     message_content = renderer.render(template_key, context)
 
@@ -230,6 +254,7 @@ class SmsSender:
         if not template:
             raise ValueError(f"Template not found: {template_key}")
 
+        from app.services.filters import stay_coverage_filter
         assignments = self.db.query(ReservationSmsAssignment).join(
             Reservation, and_(
                 ReservationSmsAssignment.reservation_id == Reservation.id,
@@ -239,8 +264,7 @@ class SmsSender:
             ReservationSmsAssignment.template_key == template_key,
             ReservationSmsAssignment.date == date,
             ReservationSmsAssignment.sent_at.is_(None),
-            Reservation.check_in_date <= date,
-            or_(Reservation.check_out_date > date, Reservation.check_out_date.is_(None)),
+            stay_coverage_filter(date),
             Reservation.status == ReservationStatus.CONFIRMED,
         ).all()
 

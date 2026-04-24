@@ -71,6 +71,23 @@ def _find_schedule(db: Session, custom_type: str) -> Optional[TemplateSchedule]:
     ).first()
 
 
+def compute_guest_count(reservation) -> int:
+    """예약의 게스트 인원 계산 (party_size 우선, 없으면 male+female, 없으면 1)."""
+    return (
+        getattr(reservation, 'party_size', None)
+        or (reservation.male_count or 0) + (reservation.female_count or 0)
+        or 1
+    )
+
+
+def compute_excess(reservation, room) -> int:
+    """기준 인원 초과분 계산 (base_capacity 대비)."""
+    if room is None:
+        return 0
+    base_capacity = room.base_capacity or 0
+    return max(0, compute_guest_count(reservation) - base_capacity)
+
+
 def reconcile_surcharge(
     db: Session,
     reservation_id: int,
@@ -115,18 +132,13 @@ def reconcile_surcharge(
         target_type = SURCHARGE_DOUBLE if is_double else SURCHARGE_STANDARD
         other_type = SURCHARGE_STANDARD if is_double else SURCHARGE_DOUBLE
 
-        # 4. 초과 계산
+        # 4. 초과 계산 (variables.py 와 공유 helper)
         reservation = db.query(Reservation).filter(
             Reservation.id == reservation_id
         ).first()
         if not reservation:
             return
-        guest_count = (
-            getattr(reservation, 'party_size', None)
-            or (reservation.male_count or 0) + (reservation.female_count or 0)
-            or 1
-        )
-        excess = guest_count - room.base_capacity
+        excess = compute_excess(reservation, room)
 
         # 5. 칩 생성/삭제
         if excess > 0:
@@ -141,16 +153,27 @@ def reconcile_surcharge(
 
         db.flush()
     except Exception:
+        # 돈 관련 로직이라 조용히 삼키지 않고 critical diag 로 기록.
+        # 호출자 경로들은 개별 try/except 로 격리돼 있어 전체 차단은 방지.
         logger.exception(
             "surcharge: reconcile 실패 (reservation_id=%s, date=%s)",
             reservation_id, date,
         )
+        diag(
+            "surcharge.reconcile_failed",
+            level="critical",
+            reservation_id=reservation_id,
+            date=date,
+        )
 
 
 def _ensure_chip(db: Session, reservation_id: int, date: str, custom_type: str) -> None:
-    """해당 custom_type 의 스케줄에 대한 칩이 없으면 생성."""
+    """해당 custom_type 의 스케줄에 대한 칩이 없으면 생성.
+
+    template 비활성화 상태면 칩 생성하지 않음 (chip_reconciler/template_scheduler 와 동일 규약).
+    """
     schedule = _find_schedule(db, custom_type)
-    if not schedule or not schedule.template:
+    if not schedule or not schedule.template or not schedule.template.is_active:
         return
     existing = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.reservation_id == reservation_id,
