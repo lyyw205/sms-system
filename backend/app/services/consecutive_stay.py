@@ -14,7 +14,7 @@ Idempotent: safe to run multiple times. Auto-unlinks stale groups.
 import logging
 import uuid
 from collections import defaultdict
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -61,13 +61,22 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
     if tid is None:
         raise RuntimeError("detect_and_link_consecutive_stays requires tenant context")
 
-    # Fetch all CONFIRMED reservations with check_out_date
+    # 임박한 예약만 스캔 — 체크아웃이 오늘 이후이고 체크인이 5일 이내.
+    # — 과거 예약은 감지해도 배정/SMS 에 반영될 일 없음 (이미 이벤트 끝남).
+    # — 먼 미래 예약은 입실일 가까워지면 다음 주기 감지에서 자동 커버됨 (5분 + 피크 10분).
+    # — 과거 예약의 기존 stay_group_id 는 스캔에서 빠지므로 그대로 보존.
+    from datetime import timedelta
+    from app.config import today_kst, today_kst_date
+    today_str = today_kst()
+    max_checkin = (today_kst_date() + timedelta(days=5)).strftime("%Y-%m-%d")
     reservations = (
         db.query(Reservation)
         .filter(
             Reservation.tenant_id == tid,
             Reservation.status == ReservationStatus.CONFIRMED,
             Reservation.check_out_date.isnot(None),
+            Reservation.check_out_date >= today_str,
+            Reservation.check_in_date <= max_checkin,
             Reservation.phone.isnot(None),
             Reservation.phone != "",
         )
@@ -260,30 +269,93 @@ def unlink_from_group(db: Session, reservation_id: int) -> bool:
     return True
 
 
-def link_reservations(db: Session, reservation_ids: List[int]) -> Optional[str]:
+def _validate_link_inputs(reservations: List[Reservation]) -> None:
+    """수동 연박 묶기 입력 검증. 실패 시 ValueError.
+
+    조건:
+      - 2건 이상
+      - 모두 CONFIRMED
+      - check_in_date 오름차순 정렬 시 아래 중 하나를 만족해야 "연속"으로 인정:
+          (a) prev.check_out_date == curr.check_in_date  (표준 체크아웃/체크인 연결)
+          (b) prev.check_out_date IS NULL 이고 prev.check_in_date + 1일 == curr.check_in_date
+              (수동 입력 1박 예약 호환 — checkout 이 비어 있어도 이어진다고 판단)
+    """
+    if len(reservations) < 2:
+        raise ValueError("예약 2개 이상이 필요합니다")
+
+    for r in reservations:
+        if r.status != ReservationStatus.CONFIRMED:
+            name = r.customer_name or f"예약#{r.id}"
+            raise ValueError(f"{name} 님은 확정 상태가 아닙니다")
+
+    sorted_res = sorted(reservations, key=lambda r: r.check_in_date or "")
+    for i in range(len(sorted_res) - 1):
+        prev = sorted_res[i]
+        curr = sorted_res[i + 1]
+        # 표준 케이스: prev.check_out == curr.check_in (완전 연결)
+        if prev.check_out_date and prev.check_out_date == curr.check_in_date:
+            continue
+        # NULL check_out: "1박 예약"으로 해석 → check_in + 1일 = 다음 check_in 이면 연속으로 인정
+        # (수동 입력 예약 등에서 check_out 이 NULL 인 케이스 호환)
+        if prev.check_out_date is None and prev.check_in_date:
+            from datetime import datetime as _dt, timedelta as _td
+            try:
+                next_day = (_dt.strptime(prev.check_in_date, "%Y-%m-%d") + _td(days=1)).strftime("%Y-%m-%d")
+                if next_day == curr.check_in_date:
+                    continue
+            except (ValueError, TypeError):
+                pass
+        raise ValueError("예약 날짜가 이어지지 않습니다")
+
+
+def link_reservations(db: Session, reservation_ids: List[int]) -> tuple[str, List[int]]:
     """
     Manually link multiple reservations into a stay group.
-    Sorts by check_in_date and assigns stay_group_order.
 
-    Returns the stay_group_id, or None if fewer than 2 valid reservations.
+    동작:
+      1. 입력 ID 로 예약 로드
+      2. 기존 그룹 멤버(CONFIRMED 만) 자동 확장 — 부분 선택 실수로 외톨이 발생 방지
+      3. 정렬 후 검증 (_validate_link_inputs)
+      4. 항상 새 manual-UUID 생성 (사용자 개입 = manual 격리)
+      5. 전체 멤버에 group_id/order/is_last/is_long_stay 할당
+
+    Returns:
+        (group_id, linked_reservation_ids) — group_id 는 manual- 접두사.
+        linked_reservation_ids 는 자동 확장 후 실제 그룹에 포함된 전체 ID 목록.
+        호출자는 이 ID 리스트를 기준으로 sync_sms_tags 등 후속 처리를 해야 함.
+
+    Raises:
+        ValueError: 2건 미만 / 비CONFIRMED 포함 / 날짜 불연속.
     """
     reservations = (
         db.query(Reservation)
         .filter(Reservation.id.in_(reservation_ids))
-        .order_by(Reservation.check_in_date)
         .all()
     )
 
-    if len(reservations) < 2:
-        return None
+    # 기존 그룹 멤버 자동 확장 (CONFIRMED 만 — stale CANCELLED 는 제외)
+    existing_group_ids = {r.stay_group_id for r in reservations if r.stay_group_id}
+    if existing_group_ids:
+        extra = (
+            db.query(Reservation)
+            .filter(
+                Reservation.stay_group_id.in_(existing_group_ids),
+                Reservation.status == ReservationStatus.CONFIRMED,
+            )
+            .all()
+        )
+        merged = {r.id: r for r in reservations}
+        for r in extra:
+            merged[r.id] = r
+        reservations = list(merged.values())
 
-    # Reuse existing group ID or create new
-    group_id = None
-    for res in reservations:
-        if res.stay_group_id:
-            group_id = res.stay_group_id
-            break
-    group_id = group_id or f"manual-{uuid.uuid4()}"
+    reservations.sort(key=lambda r: r.check_in_date or "")
+
+    # 검증 (실패 시 ValueError)
+    _validate_link_inputs(reservations)
+
+    # 수동 개입 표시 — 항상 새 manual- UUID 로 격리
+    group_id = f"manual-{uuid.uuid4()}"
 
     for order, res in enumerate(reservations):
         res.stay_group_id = group_id
@@ -299,4 +371,4 @@ def link_reservations(db: Session, reservation_ids: List[int]) -> Optional[str]:
     )
 
     db.flush()
-    return group_id
+    return group_id, [r.id for r in reservations]

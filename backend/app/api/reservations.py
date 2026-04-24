@@ -499,6 +499,31 @@ async def update_reservation(
     for field, value in update_data.items():
         setattr(db_reservation, field, value)
 
+    # status 가 CANCELLED 로 바뀌면 stay_group 자동 해제 (naver_sync 와 동일 정책)
+    # — 취소된 예약이 그룹에 stay_group_id 로 남아있으면 이후 extend_stay 등이 stale 데이터로 실패함
+    if (
+        "status" in update_data
+        and update_data["status"] == ReservationStatus.CANCELLED
+        and db_reservation.stay_group_id
+    ):
+        from app.services.consecutive_stay import unlink_from_group
+        # unlink 가 남은 그룹 멤버의 is_long_stay/stay_group_order 도 갱신하므로
+        # 그 멤버들의 SMS 칩도 재동기화해야 함 (stay_filter='exclude' 등 영향)
+        peer_ids = [
+            r.id for r in db.query(Reservation).filter(
+                Reservation.stay_group_id == db_reservation.stay_group_id,
+                Reservation.id != reservation_id,
+            ).all()
+        ]
+        unlink_from_group(db, reservation_id)
+        if peer_ids:
+            db.flush()
+            for peer_id in peer_ids:
+                try:
+                    room_assignment.sync_sms_tags(db, peer_id)
+                except Exception as e:
+                    logger.warning(f"peer sync_sms_tags after unlink failed: res={peer_id} err={e}")
+
     # 날짜 변경 시 orphan RoomAssignment 정리 (네이버 동기화와 동일)
     new_dates = (db_reservation.check_in_date, db_reservation.check_out_date)
     if old_dates != new_dates:
@@ -1073,14 +1098,16 @@ async def link_stay_group(
     from app.services.consecutive_stay import link_reservations
 
     all_ids = list(set([reservation_id] + request.reservation_ids))
-    group_id = link_reservations(db, all_ids)
-    if not group_id:
-        raise HTTPException(status_code=400, detail="최소 2개 이상의 유효한 예약이 필요합니다")
+    try:
+        group_id, linked_ids = link_reservations(db, all_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     from app.services.room_assignment import sync_sms_tags
     from app.db.models import TemplateSchedule
     schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
-    for res_id in all_ids:
+    # 자동 확장된 멤버까지 포함해서 sync (linked_ids 는 확장 후 전체)
+    for res_id in linked_ids:
         sync_sms_tags(db, res_id, schedules=schedules)
 
     db.commit()
@@ -1168,13 +1195,14 @@ async def extend_stay(
         ).all()
         all_ids = list(set([m[0] for m in group_members] + [new_res.id]))
 
-    group_id = link_reservations(db, all_ids)
-    if not group_id:
-        raise HTTPException(status_code=400, detail="연박 그룹 생성 실패")
+    try:
+        group_id, linked_ids = link_reservations(db, all_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # 5. SMS 태그 동기화
+    # 5. SMS 태그 동기화 (자동 확장된 멤버까지 포함)
     schedules = db.query(TemplateSchedule).filter(TemplateSchedule.is_active == True).all()
-    for res_id in all_ids:
+    for res_id in linked_ids:
         sync_sms_tags(db, res_id, schedules=schedules)
 
     from app.db.tenant_context import current_tenant_id
