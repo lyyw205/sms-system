@@ -24,6 +24,7 @@ def _make_res(**overrides):
         "total_price": 200_000,
         "people_count": 2,
         "gender": "여",
+        "_has_room_link": True,  # split 가드 통과 (RoomBizItemLink 매핑 있는 정상 일반실)
     }
     base.update(overrides)
     return base
@@ -42,6 +43,13 @@ class TestSplitMultiRoom:
         result = _split_multi_room_reservations([res], existing_map={})
         assert len(result) == 1
         assert result[0]["booking_count"] == 4  # 도미토리는 booking_count 가 인원수
+
+    def test_no_split_for_unmapped_biz(self):
+        """RoomBizItemLink 매핑 없는 biz_item (차량투어, 미등록 상품 등) 은 split 안 함."""
+        res = _make_res(booking_count=3, _has_room_link=False)
+        result = _split_multi_room_reservations([res], existing_map={})
+        assert len(result) == 1
+        assert result[0]["booking_count"] == 3  # 손대지 않음
 
     def test_no_split_when_existing(self):
         """재동기화: existing_map 에 이미 있으면 split 안 함."""

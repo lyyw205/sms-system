@@ -62,6 +62,16 @@ def _build_dorm_biz_set(db) -> set[str]:
     return {r[0] for r in rows}
 
 
+def _build_mapped_biz_set(db) -> set[str]:
+    """RoomBizItemLink 에 매핑된 모든 biz_item_id (도미토리/일반실 무관).
+
+    매핑 없는 biz_item (예: 차량투어 '미니지프투어', 미등록 상품) 은 정체 불명이라
+    split 대상에서 제외 — 운영 사고 방지.
+    """
+    rows = db.query(RoomBizItemLink.biz_item_id).distinct().all()
+    return {r[0] for r in rows}
+
+
 def _split_counts(total: int, n: int) -> tuple[int, int]:
     """floor + 나머지 primary 몰빵. 반환: (primary_share, sibling_share)."""
     if not total or n <= 1:
@@ -230,15 +240,22 @@ def main() -> int:
     try:
         # 도미토리 biz_item_id 제외 (booking_count 가 인원수 의미)
         dorm_biz = _build_dorm_biz_set(db)
+        # RoomBizItemLink 매핑 있는 biz_item 만 대상 (매핑 없는 정체불명 상품 안전 제외)
+        mapped_biz = _build_mapped_biz_set(db)
+        regular_mapped_biz = mapped_biz - dorm_biz
 
-        # 대상 조회: booking_count>1, 일반실, 모든 status (취소도 split 해야 재동기화 매칭 일관)
+        # 대상 조회: booking_count>1, 매핑된 일반실, 모든 status
         query = db.query(Reservation).filter(Reservation.booking_count > 1)
-        if dorm_biz:
-            query = query.filter(~Reservation.naver_biz_item_id.in_(dorm_biz))
+        if regular_mapped_biz:
+            query = query.filter(Reservation.naver_biz_item_id.in_(regular_mapped_biz))
+        else:
+            query = query.filter(False)  # 매핑 0건이면 split 대상 없음
         primaries = query.order_by(Reservation.check_in_date).all()
 
         print(f"\n=== 마이그레이션 대상: {len(primaries)} 건 ===\n")
-        print(f"  도미토리 biz_item 제외: {len(dorm_biz)} 개\n")
+        print(f"  매핑된 일반실 biz_item: {len(regular_mapped_biz)} 개")
+        print(f"  도미토리 제외: {len(dorm_biz)} 개")
+        print(f"  매핑 없는 biz_item 제외: {len(set(p.naver_biz_item_id for p in db.query(Reservation).filter(Reservation.booking_count > 1).all()) - mapped_biz)} 개\n")
 
         results = []
         for primary in primaries:

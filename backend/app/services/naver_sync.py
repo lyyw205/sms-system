@@ -94,11 +94,15 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     biz_capacity_map = {b.biz_item_id: b.default_capacity for b in biz_items if b.default_capacity}
 
     # Build dormitory map and capacity fallback from RoomBizItemLink → Room
+    # biz_link_set: RoomBizItemLink 에 매핑된 모든 biz_item_id (도미토리/일반실 무관).
+    # 매핑 없는 biz_item (예: 차량투어, 미등록 상품) 은 split 대상 아님 — 가드용.
     biz_dormitory_map: Dict[str, bool] = {}
+    biz_link_set: set[str] = set()
     links = db.query(RoomBizItemLink).join(
         Room, and_(Room.id == RoomBizItemLink.room_id, Room.tenant_id == RoomBizItemLink.tenant_id)
     ).all()
     for link in links:
+        biz_link_set.add(link.biz_item_id)
         if link.biz_item_id not in biz_capacity_map:
             biz_capacity_map[link.biz_item_id] = link.room.base_capacity
         if link.room.is_dormitory:
@@ -162,6 +166,9 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                 pc = res_data.get("people_count")
                 if not pc:
                     res_data["people_count"] = biz_capacity_map.get(bid, 1)
+            # split 가드: RoomBizItemLink 매핑 없는 biz_item (차량투어, 미등록 상품 등) 은
+            # 도미토리/일반실 판단 불가 → split 대상에서 제외.
+            res_data["_has_room_link"] = bid in biz_link_set
             # section_hint enrichment (res_data에 저장해서 _create_reservation에서 사용)
             res_data["_section_hint"] = biz_section_map.get(bid)
             # 패키지 상품 기본 파티타입 (새 예약 생성 시에만 적용)
@@ -469,6 +476,7 @@ def _split_multi_room_reservations(
     skip_bc1 = 0
     skip_dorm = 0
     skip_existing = 0
+    skip_unmapped = 0
     for res_data in reservations:
         bc = res_data.get("booking_count") or 1
         if bc <= 1:
@@ -476,6 +484,12 @@ def _split_multi_room_reservations(
             continue
         if res_data.get("_is_dormitory"):
             skip_dorm += 1
+            continue
+        # split 가드: RoomBizItemLink 매핑 없는 biz_item 은 정체 불명 (차량투어 등 비숙박 상품
+        # 가능성). 운영 사고 방지를 위해 split 제외 — 운영자가 NaverBizItem + RoomBizItemLink
+        # 등록 후에만 자동 split 대상.
+        if not res_data.get("_has_room_link"):
+            skip_unmapped += 1
             continue
         ext_id = res_data.get("external_id") or res_data.get("naver_booking_id")
         if ext_id and existing_map.get(ext_id):
@@ -530,7 +544,7 @@ def _split_multi_room_reservations(
             siblings_created=bc - 1,
         )
 
-    if extras or skip_bc1 or skip_dorm or skip_existing:
+    if extras or skip_bc1 or skip_dorm or skip_existing or skip_unmapped:
         diag(
             "naver_sync.split_summary",
             level="verbose",
@@ -539,6 +553,7 @@ def _split_multi_room_reservations(
             skip_bc1=skip_bc1,
             skip_dorm=skip_dorm,
             skip_existing=skip_existing,
+            skip_unmapped=skip_unmapped,
         )
 
     return reservations + extras
