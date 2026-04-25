@@ -19,9 +19,11 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
 
     # Today's new reservations (created today)
     # tenant_id 필터는 before_compile hook이 select_from(Reservation)에서 자동 적용
+    # naver_split sibling 은 자동 분할로 만든 복제 row 라 카운트에서 제외 (예약 건수 N배 부풀림 방지).
     today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
     today_reservations = db.query(func.count()).select_from(Reservation).filter(
         Reservation.created_at >= today_start,
+        Reservation.booking_source != "naver_split",
     ).scalar() or 0
 
     # Recent reservations (last 5)

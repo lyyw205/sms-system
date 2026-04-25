@@ -127,9 +127,11 @@ function StatusBadge({ status }: { status: string }) {
 function SourceBadge({ source }: { source?: string | null }) {
   const key = source ?? 'manual';
   const map: Record<string, { label: string; className: string }> = {
-    naver:  { label: '네이버', className: 'text-[#00C9A7]' },
-    manual: { label: '수동',   className: 'text-[#8B95A1] dark:text-gray-500' },
-    phone:  { label: '전화',   className: 'text-[#8B95A1] dark:text-gray-500' },
+    naver:       { label: '네이버',     className: 'text-[#00C9A7]' },
+    naver_split: { label: '네이버 분할', className: 'text-[#00C9A7]' },
+    manual:      { label: '수동',       className: 'text-[#8B95A1] dark:text-gray-500' },
+    phone:       { label: '전화',       className: 'text-[#8B95A1] dark:text-gray-500' },
+    extend:      { label: '연박',       className: 'text-[#3182F6]' },
   };
   const m = map[key] ?? { label: key, className: 'text-[#8B95A1]' };
   return <span className={`text-body font-medium ${m.className}`}>{m.label}</span>;
@@ -508,7 +510,7 @@ export default function Reservations() {
                     <TableRow key={r.id}>
                       <TableCell>
                         <div className="space-y-1">
-                          <SourceBadge source={isNaver ? 'naver' : 'manual'} />
+                          <SourceBadge source={r.booking_source ?? (isNaver ? 'naver' : 'manual')} />
                           <p className="text-caption tabular-nums text-gray-400">
                             {isNaver ? r.external_id?.slice(0, 10) : `#${r.id}`}
                           </p>

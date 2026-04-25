@@ -385,26 +385,8 @@ def _assign_all_rooms(
                 assigned_this_res = True
                 break
             else:
-                # Regular room: 현재 저장 구조(UniqueConstraint reservation_id+date)는
-                # 한 예약이 같은 날짜에 방 1개만 가질 수 있음. booking_count>1 은 같은 res_id 로
-                # 여러 번 assign_room 을 호출해도 마지막 방만 남으므로, 자동 배정에서는
-                # booking_count>1 케이스를 스킵하고 수동 배정 유도.
-                if (res.booking_count or 1) > 1:
-                    last_failure_reason = "booking_count_gt_1_skipped"
-                    logger.warning(
-                        "[auto-assign] booking_count=%s 인 일반실 예약은 자동 배정에서 스킵 "
-                        "(단일 RoomAssignment row 제약). 수동 배정으로 처리 필요. "
-                        "res_id=%s date=%s",
-                        res.booking_count, res.id, target_date,
-                    )
-                    diag(
-                        "auto_assign.booking_count_skipped",
-                        level="critical",
-                        reservation_id=res.id,
-                        booking_count=res.booking_count,
-                        date=target_date,
-                    )
-                    continue
+                # Regular room: booking_count>1 은 naver_sync 단계에서 primary+sibling 으로
+                # split 되어 모든 row 가 booking_count=1 로 정규화됨. 따라서 여기선 1방씩만 배정.
                 for reg_room in candidate_rooms:
                     if reg_room.is_dormitory:
                         continue

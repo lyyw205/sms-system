@@ -188,8 +188,14 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
         for row in existing_rows:
             if row.external_id:
                 existing_map[row.external_id] = row
-            if row.naver_booking_id:
+            # naver_split sibling 은 naver_booking_id 가 NULL 이라 매칭 후보 아님 (안전).
+            # 일반 row 만 naver_booking_id 로 매핑하여 primary 매칭이 sibling 에 의해 오염되지 않도록 한다.
+            if row.naver_booking_id and row.booking_source != "naver_split":
                 existing_map[row.naver_booking_id] = row
+
+    # ── Phase 2.5: 일반실 booking_count>1 split (신규 예약만) ──
+    # primary 1개 + sibling N-1개. sibling 은 수동 예약처럼 독립 row.
+    reservations = _split_multi_room_reservations(reservations, existing_map)
 
     # ── Phase 2 계속: DB 저장 (신규 → _create_reservation, 기존 → _update_reservation) ──
     added_count = 0
@@ -426,6 +432,10 @@ def _align_bed_orders_for_groups(db: Session):
 
 def _init_gender_counts(res_data: Dict[str, Any]) -> tuple:
     """성별 인원 계산: gender="남" → (people_count, 0), "여" → (0, people_count), 그 외 → (None, None)."""
+    # 일반실 booking_count>1 split: 사전 분할된 정확한 값 우선
+    if "_split_male" in res_data:
+        return (res_data["_split_male"], res_data["_split_female"])
+
     # 언스테이블: customFormInputJson 파싱 결과 우선
     if "_unstable_male" in res_data:
         return (res_data["_unstable_male"], res_data["_unstable_female"])
@@ -438,6 +448,100 @@ def _init_gender_counts(res_data: Dict[str, Any]) -> tuple:
         return (0, people)
     else:
         return (None, None)
+
+
+def _split_multi_room_reservations(
+    reservations: list,
+    existing_map: Dict[str, Reservation],
+) -> list:
+    """일반실 + booking_count > 1 인 신규 예약을 primary 1개 + sibling N-1개로 분할.
+
+    네이버는 한 예약에 객실 N개 (bookingCount) 를 1건으로 보내지만, 우리 스키마
+    `RoomAssignment.UniqueConstraint(reservation_id, date)` 가 한 예약-한 방-한 날짜 모델이라
+    충돌. 첫 동기화 시 sibling N-1개를 "수동 예약"처럼 별도 row 로 만들어 자연스럽게 자동배정
+    가능하게 함. sibling 은 external_id/naver_booking_id 모두 NULL 이라 재동기화 매칭 후보가
+    아니며, 네이버 측 변경/취소는 primary 에만 자동 반영됨 (운영자 수동 처리).
+
+    도미토리는 booking_count 가 인원수 의미라 split 대상 아님.
+    재동기화 (existing_map 매칭됨) 도 split 안 함 (이미 처리 완료).
+    """
+    extras = []
+    skip_bc1 = 0
+    skip_dorm = 0
+    skip_existing = 0
+    for res_data in reservations:
+        bc = res_data.get("booking_count") or 1
+        if bc <= 1:
+            skip_bc1 += 1
+            continue
+        if res_data.get("_is_dormitory"):
+            skip_dorm += 1
+            continue
+        ext_id = res_data.get("external_id") or res_data.get("naver_booking_id")
+        if ext_id and existing_map.get(ext_id):
+            skip_existing += 1
+            continue
+
+        # 인원수: gender 단일값으로 male/female 계산해두고, floor 분할
+        male, female = _init_gender_counts(res_data)
+        male = male or 0
+        female = female or 0
+
+        # 균등분할: floor + 나머지는 primary 에 몰빵 (인원/금액/people_count 합계 보존)
+        sibling_male = male // bc
+        sibling_female = female // bc
+        primary_male = male - sibling_male * (bc - 1)
+        primary_female = female - sibling_female * (bc - 1)
+
+        price = res_data.get("total_price") or 0
+        sibling_price = price // bc
+        primary_price = price - sibling_price * (bc - 1)
+
+        # people_count → party_size: sibling 도 분할해야 도미토리 전환/용량 체크 정합성 유지
+        people = res_data.get("people_count") or 1
+        sibling_people = max(1, people // bc)
+        primary_people = max(1, people - sibling_people * (bc - 1))
+
+        # primary in-place 수정
+        res_data["booking_count"] = 1
+        res_data["total_price"] = primary_price
+        res_data["people_count"] = primary_people
+        res_data["_split_male"] = primary_male
+        res_data["_split_female"] = primary_female
+
+        # sibling N-1 개 생성 (수동 예약처럼)
+        for _ in range(bc - 1):
+            sibling = dict(res_data)
+            sibling["external_id"] = None
+            sibling["naver_booking_id"] = None
+            sibling["booking_count"] = 1
+            sibling["total_price"] = sibling_price
+            sibling["people_count"] = sibling_people
+            sibling["_split_male"] = sibling_male
+            sibling["_split_female"] = sibling_female
+            sibling["_booking_source_override"] = "naver_split"
+            extras.append(sibling)
+
+        diag(
+            "naver_sync.split_multi_room",
+            level="info",
+            naver_booking_id=res_data.get("naver_booking_id") or ext_id,
+            booking_count=bc,
+            siblings_created=bc - 1,
+        )
+
+    if extras or skip_bc1 or skip_dorm or skip_existing:
+        diag(
+            "naver_sync.split_summary",
+            level="verbose",
+            total_input=len(reservations),
+            siblings_added=len(extras),
+            skip_bc1=skip_bc1,
+            skip_dorm=skip_dorm,
+            skip_existing=skip_existing,
+        )
+
+    return reservations + extras
 
 
 def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
@@ -469,7 +573,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         check_in_date=res_data.get("date", ""),
         check_in_time=res_data.get("time", ""),
         status=status_enum,
-        booking_source="naver",
+        booking_source=res_data.get("_booking_source_override", "naver"),
         naver_room_type=naver_room_type,
         party_size=res_data.get("people_count") or 1,
         male_count=male_count,

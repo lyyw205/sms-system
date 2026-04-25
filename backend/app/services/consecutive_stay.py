@@ -86,7 +86,14 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
 
     # Build identity groups: multiple keys per reservation for fuzzy matching
     identity_map: dict[str, list[Reservation]] = defaultdict(list)
+    siblings_skipped = 0
     for res in reservations:
+        # naver_split sibling 은 chain 후보에서 제외.
+        # 같은 customer_name+phone 으로 묶이면 sibling 이 다음날 진짜 예약과 가짜 chain 을
+        # 형성해 primary 가 stay_group 에서 누락되는 정합성 위반 발생 (CRITICAL).
+        if res.booking_source == "naver_split":
+            siblings_skipped += 1
+            continue
         name = (res.customer_name or "").strip()
         phone = (res.phone or "").strip()
         if name and phone:
@@ -209,6 +216,7 @@ def detect_and_link_consecutive_stays(db: Session, tenant_id: int = None) -> dic
         linked=result["linked"],
         unlinked=result["unlinked"],
         groups=result["groups"],
+        siblings_skipped=siblings_skipped,
     )
     return result
 
