@@ -621,6 +621,11 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     # F1: SMS 칩 영향 필드 변경 감지용 (reservations.py::PATCH _SMS_TAG_FIELDS 와 동일 규약)
     old_naver_room_type = existing.naver_room_type
 
+    # split 정책: 일반실(매핑된 biz_item)의 primary 는 booking_count/total_price/party_size 가
+    # split 시 분할된 값이라 네이버 원본값으로 덮어쓰면 sibling 들과 합계 어긋남.
+    # 도미토리(booking_count=인원수 의미)와 매핑 없는 정체불명 상품은 네이버 원본 그대로.
+    is_split_managed = (not res_data.get("_is_dormitory")) and res_data.get("_has_room_link")
+
     # Only update fields that come from Naver (don't overwrite local edits like room_number)
     existing.customer_name = res_data.get("customer_name", existing.customer_name)
     existing.phone = res_data.get("phone", existing.phone)
@@ -628,17 +633,20 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     existing.visitor_phone = res_data.get("visitor_phone", existing.visitor_phone)
     existing.naver_biz_item_id = res_data.get("naver_biz_item_id", existing.naver_biz_item_id)
     existing.naver_room_type = res_data.get("room_type", existing.naver_room_type)
-    existing.party_size = res_data.get("people_count", existing.party_size)
+    if not is_split_managed:
+        existing.party_size = res_data.get("people_count", existing.party_size)
     old_date = existing.check_in_date
     old_end_date = existing.check_out_date
     existing.check_in_date = res_data.get("date", existing.check_in_date)
     existing.check_in_time = res_data.get("time", existing.check_in_time)
     existing.check_out_date = res_data.get("end_date", existing.check_out_date)
     existing.biz_item_name = res_data.get("biz_item_name", existing.biz_item_name)
-    existing.booking_count = res_data.get("booking_count", existing.booking_count)
+    if not is_split_managed:
+        existing.booking_count = res_data.get("booking_count", existing.booking_count)
     existing.booking_options = res_data.get("booking_options", existing.booking_options)
     existing.special_requests = res_data.get("custom_form_input", existing.special_requests)
-    existing.total_price = res_data.get("total_price", existing.total_price)
+    if not is_split_managed:
+        existing.total_price = res_data.get("total_price", existing.total_price)
     existing.confirmed_at = _parse_datetime(res_data.get("confirmed_at")) if res_data.get("confirmed_at") is not None else existing.confirmed_at
     existing.cancelled_at = _parse_datetime(res_data.get("cancelled_at")) if res_data.get("cancelled_at") is not None else existing.cancelled_at
     if res_data.get("gender"):
