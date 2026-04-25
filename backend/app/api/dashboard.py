@@ -26,9 +26,13 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
         Reservation.booking_source != "naver_split",
     ).scalar() or 0
 
-    # Recent reservations (last 5)
+    # Recent reservations (last 5) — naver_split sibling 제외 (운영자 화면에 동일 손님 중복 노출 방지)
     recent_reservations = (
-        db.query(Reservation).order_by(Reservation.created_at.desc()).limit(5).all()
+        db.query(Reservation)
+        .filter(Reservation.booking_source != "naver_split")
+        .order_by(Reservation.created_at.desc())
+        .limit(5)
+        .all()
     )
 
     # Campaign stats — today's sends (from ActivityLog)
