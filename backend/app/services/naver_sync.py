@@ -669,35 +669,39 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
             affected_dates = [ra.date for ra in affected_rows]
             affected_cells = {(ra.room_id, ra.date) for ra in affected_rows if ra.room_id}
 
-            db.query(RA).filter(
-                RA.reservation_id == existing.id,
-                RA.tenant_id == tid,
-                RA.date >= today_str,
-            ).delete(synchronize_session="fetch")
-            existing.room_number = None
-            existing.room_password = None
+            # Idempotent guard: 이미 정리된 cancelled 예약이면 매 sync 마다 무용한 delete +
+            # critical diag noise 방지. affected_dates 가 비었다는 건 이전 sync 가 이미 정리했거나
+            # 애초에 미배정 상태였다는 뜻 — 더 이상 할 일 없음.
+            if affected_dates:
+                db.query(RA).filter(
+                    RA.reservation_id == existing.id,
+                    RA.tenant_id == tid,
+                    RA.date >= today_str,
+                ).delete(synchronize_session="fetch")
+                existing.room_number = None
+                existing.room_password = None
 
-            if affected_cells:
-                db.flush()
-                compacted = room_assignment._compact_bed_orders_in_cells(db, affected_cells)
-                if compacted:
-                    diag(
-                        "naver_sync.same_day_cancel.compact",
-                        level="verbose",
-                        res_id=existing.id,
-                        cells_count=len(affected_cells),
-                        changed=compacted,
-                    )
+                if affected_cells:
+                    db.flush()
+                    compacted = room_assignment._compact_bed_orders_in_cells(db, affected_cells)
+                    if compacted:
+                        diag(
+                            "naver_sync.same_day_cancel.compact",
+                            level="verbose",
+                            res_id=existing.id,
+                            cells_count=len(affected_cells),
+                            changed=compacted,
+                        )
 
-            # S5 반영: surcharge 칩 정리
-            try:
-                from app.services.surcharge import _delete_all_surcharge_chips
-                for d in affected_dates:
-                    _delete_all_surcharge_chips(db, existing.id, d)
-            except Exception as e:
-                logger.warning(f"Naver same-day cancel surcharge cleanup failed: {e}")
+                # S5 반영: surcharge 칩 정리
+                try:
+                    from app.services.surcharge import _delete_all_surcharge_chips
+                    for d in affected_dates:
+                        _delete_all_surcharge_chips(db, existing.id, d)
+                except Exception as e:
+                    logger.warning(f"Naver same-day cancel surcharge cleanup failed: {e}")
 
-            diag("naver_sync.same_day_cancel", level="critical", reservation_id=existing.id, dates=affected_dates)
+                diag("naver_sync.same_day_cancel", level="critical", reservation_id=existing.id, dates=affected_dates)
         else:
             # 사전 취소: 전체 배정 해제 (미배정에 표시하지 않음)
             room_assignment.clear_all_for_reservation(db, existing.id)
