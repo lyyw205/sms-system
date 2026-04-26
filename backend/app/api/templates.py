@@ -323,23 +323,32 @@ def reorder_templates(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(require_admin_or_above),
 ):
-    """ordered_ids 순서대로 sort_order 일괄 갱신 (DnD용)"""
-    if not payload.ordered_ids:
+    """ordered_ids 순서대로 sort_order 일괄 갱신 (DnD용).
+
+    현재 테넌트의 전체 템플릿 ID 와 정확히 일치해야 함 (중복/누락 모두 거부).
+    부분 reorder 를 허용하면 보내지 않은 템플릿과 sort_order 가 충돌할 수 있음.
+    """
+    sent_ids = payload.ordered_ids
+    if not sent_ids:
         raise HTTPException(status_code=400, detail="ordered_ids가 비어 있습니다")
 
-    templates = db.query(MessageTemplate).filter(MessageTemplate.id.in_(payload.ordered_ids)).all()
+    if len(sent_ids) != len(set(sent_ids)):
+        raise HTTPException(status_code=400, detail="중복된 템플릿 ID가 포함되어 있습니다")
+
+    # 현재 테넌트의 모든 템플릿 (TenantMixin auto-filter 적용)
+    all_ids = {row[0] for row in db.query(MessageTemplate.id).all()}
+    if set(sent_ids) != all_ids:
+        raise HTTPException(status_code=400, detail="전체 템플릿 목록과 일치하지 않습니다")
+
+    templates = db.query(MessageTemplate).filter(MessageTemplate.id.in_(sent_ids)).all()
     by_id = {t.id: t for t in templates}
 
-    missing = [tid for tid in payload.ordered_ids if tid not in by_id]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"존재하지 않거나 접근 불가한 템플릿: {missing}")
-
-    for index, tid in enumerate(payload.ordered_ids):
+    for index, tid in enumerate(sent_ids):
         by_id[tid].sort_order = index
 
     db.commit()
 
-    diag("template.reordered", level="critical", count=len(payload.ordered_ids))
+    diag("template.reordered", level="critical", count=len(sent_ids))
     return {"success": True, "message": "순서가 변경되었습니다"}
 
 
