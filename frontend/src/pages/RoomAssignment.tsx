@@ -91,6 +91,7 @@ interface Reservation {
   highlight_color?: string | null;
   has_unstable_booking?: boolean;
   cancelled_at?: string | null;
+  created_at?: string;
 }
 
 
@@ -1059,7 +1060,7 @@ const RoomAssignment = () => {
 
     // 파티만 행: 예약 생성 시각 오래된 순 (최신이 맨 아래)
     partyOnlyList.sort((a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()
     );
 
     // 최근 이동한 게스트를 맨 위로
