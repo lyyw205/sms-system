@@ -98,7 +98,7 @@ def get_templates(
     if active is not None:
         query = query.filter(MessageTemplate.is_active == active)
 
-    templates = query.order_by(MessageTemplate.created_at.desc()).all()
+    templates = query.order_by(MessageTemplate.sort_order.asc(), MessageTemplate.id.asc()).all()
 
     # Add schedule count
     result = []
@@ -203,6 +203,11 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
     if existing:
         raise HTTPException(status_code=400, detail=f"키 '{template.template_key}'의 템플릿이 이미 존재합니다")
 
+    # 신규 템플릿은 정렬 맨 아래에 추가 (max + 1)
+    from sqlalchemy import func
+    max_order = db.query(func.max(MessageTemplate.sort_order)).scalar()
+    next_order = (max_order or 0) + 1
+
     # Create template
     db_template = MessageTemplate(
         template_key=template.template_key,
@@ -218,6 +223,7 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
         gender_ratio_buffers=template.gender_ratio_buffers,
         round_unit=template.round_unit or 0,
         round_mode=template.round_mode or 'ceil',
+        sort_order=next_order,
     )
 
     db.add(db_template)
@@ -305,6 +311,36 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         "round_unit": db_template.round_unit or 0,
         "round_mode": db_template.round_mode or 'ceil',
     }
+
+
+class TemplateReorderRequest(BaseModel):
+    ordered_ids: List[int]  # 새 정렬 순서대로 정렬된 템플릿 id 배열
+
+
+@router.post("/reorder", response_model=ActionResponse)
+def reorder_templates(
+    payload: TemplateReorderRequest,
+    db: Session = Depends(get_tenant_scoped_db),
+    current_user: User = Depends(require_admin_or_above),
+):
+    """ordered_ids 순서대로 sort_order 일괄 갱신 (DnD용)"""
+    if not payload.ordered_ids:
+        raise HTTPException(status_code=400, detail="ordered_ids가 비어 있습니다")
+
+    templates = db.query(MessageTemplate).filter(MessageTemplate.id.in_(payload.ordered_ids)).all()
+    by_id = {t.id: t for t in templates}
+
+    missing = [tid for tid in payload.ordered_ids if tid not in by_id]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"존재하지 않거나 접근 불가한 템플릿: {missing}")
+
+    for index, tid in enumerate(payload.ordered_ids):
+        by_id[tid].sort_order = index
+
+    db.commit()
+
+    diag("template.reordered", level="critical", count=len(payload.ordered_ids))
+    return {"success": True, "message": "순서가 변경되었습니다"}
 
 
 @router.delete("/{template_id}", response_model=ActionResponse)

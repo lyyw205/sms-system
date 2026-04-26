@@ -13,7 +13,25 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
 import { Tabs, TabItem } from '@/components/ui/tabs';
@@ -206,15 +224,16 @@ const DAY_MAP: Record<string, string> = {
 };
 
 function formatScheduleTime(s: TemplateSchedule): string {
+  const mm = String(s.minute ?? 0).padStart(2, '0');
   if (s.schedule_type === 'daily') {
-    return `매일 ${s.hour}시 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+    return `${s.hour}시 ${mm}분`;
   }
   if (s.schedule_type === 'weekly') {
     const days = s.day_of_week?.split(',').map(d => DAY_MAP[d.trim()] ?? d).join(', ');
-    return `${days}요일 ${s.hour}시 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+    return `${days} ${s.hour}시 ${mm}분`;
   }
   if (s.schedule_type === 'hourly') {
-    const base = `매시간 ${String(s.minute ?? 0).padStart(2, '0')}분`;
+    const base = `매시 ${mm}분`;
     if (s.active_start_hour != null && s.active_end_hour != null) {
       return `${base} (${s.active_start_hour}시~${s.active_end_hour}시)`;
     }
@@ -248,6 +267,20 @@ function getScheduleTypeLabel(type: string): string {
     daily: '매일', weekly: '매주', hourly: '매시간', interval: '간격',
   };
   return map[type] ?? type;
+}
+
+function getFirstSendMinutes(s: TemplateSchedule): number {
+  const minute = s.minute ?? 0;
+  if (s.schedule_type === 'daily' || s.schedule_type === 'weekly') {
+    return (s.hour ?? 0) * 60 + minute;
+  }
+  if (s.schedule_type === 'hourly') {
+    return (s.active_start_hour ?? 0) * 60 + minute;
+  }
+  if (s.schedule_type === 'interval') {
+    return (s.active_start_hour ?? 0) * 60;
+  }
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function getFilterLabel(f: ScheduleFilter, buildingList?: Building[]): string {
@@ -379,6 +412,31 @@ const CATEGORY_ICON: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
+
+interface SortableTemplateRowProps {
+  id: number;
+  children: (handleProps: {
+    listeners: ReturnType<typeof useSortable>['listeners'];
+    attributes: ReturnType<typeof useSortable>['attributes'];
+    isDragging: boolean;
+  }) => React.ReactNode;
+}
+
+function SortableTemplateRow({ id, children }: SortableTemplateRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? 'relative' : undefined,
+  };
+  return (
+    <TableRow ref={setNodeRef} style={style}>
+      {children({ listeners, attributes, isDragging })}
+    </TableRow>
+  );
+}
 
 interface ConfirmDeleteProps {
   open: boolean;
@@ -690,6 +748,30 @@ const Templates: React.FC = () => {
     }
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = templates.findIndex(t => t.id === active.id);
+    const newIndex = templates.findIndex(t => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(templates, oldIndex, newIndex);
+    setTemplates(reordered); // 즉시 반영 (옵티미스틱)
+
+    templatesAPI
+      .reorder(reordered.map(t => t.id))
+      .catch((err: any) => {
+        toast.error(err.response?.data?.detail ?? '순서 저장 실패');
+        fetchTemplates(); // 롤백
+      });
+  };
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
   // ---------------------------------------------------------------------------
   // Schedule CRUD
   // ---------------------------------------------------------------------------
@@ -962,10 +1044,11 @@ const Templates: React.FC = () => {
             <p className="text-label">새 템플릿을 만들어 보세요</p>
           </div>
         ) : (
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <Table hoverable striped>
               <TableHead>
                 <TableRow>
-                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
+                  <TableHeadCell className="w-8 whitespace-nowrap" />
                   <TableHeadCell className="w-1 whitespace-nowrap">템플릿 이름</TableHeadCell>
                   <TableHeadCell className="w-1 whitespace-nowrap">축약명</TableHeadCell>
                   <TableHeadCell className="w-1 whitespace-nowrap">템플릿 키</TableHeadCell>
@@ -976,10 +1059,21 @@ const Templates: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
-                {templates.map(t => (
-                  <TableRow key={t.id}>
+                <SortableContext items={templates.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                {templates.map((t) => (
+                  <SortableTemplateRow key={t.id} id={t.id}>
+                    {({ listeners, attributes }) => (<>
                     <TableCell>
-                      <span className="tabular-nums text-gray-400 dark:text-gray-500">{t.id}</span>
+                      <button
+                        type="button"
+                        {...attributes}
+                        {...listeners}
+                        className="cursor-grab touch-none rounded p-1 text-[#B0B8C1] hover:bg-[#F2F4F6] hover:text-[#4E5968] dark:hover:bg-[#2C2C34] dark:hover:text-gray-300"
+                        title="드래그해서 순서 변경"
+                        aria-label="드래그 핸들"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </button>
                     </TableCell>
                     <TableCell>
                       <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
@@ -1044,10 +1138,13 @@ const Templates: React.FC = () => {
                         </Button>
                       </div>
                     </TableCell>
-                  </TableRow>
+                    </>)}
+                  </SortableTemplateRow>
                 ))}
+                </SortableContext>
               </TableBody>
             </Table>
+            </DndContext>
         )}
       </div>
     </div>
@@ -1089,7 +1186,6 @@ const Templates: React.FC = () => {
             <Table hoverable striped>
               <TableHead>
                 <TableRow>
-                  <TableHeadCell className="w-12 whitespace-nowrap">ID</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">스케줄 이름</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">사용 템플릿</TableHeadCell>
                   <TableHeadCell className="w-20 whitespace-nowrap">주기</TableHeadCell>
@@ -1101,7 +1197,7 @@ const Templates: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody className="divide-y">
-                {schedules.map(s => {
+                {[...schedules].sort((a, b) => getFirstSendMinutes(a) - getFirstSendMinutes(b)).map(s => {
                   const nextRun = formatRelativeTime(s.next_run);
                   const isNextRunSoon = s.next_run && (() => {
                     const diff = new Date(normalizeUtcString(s.next_run!)).getTime() - Date.now();
@@ -1109,9 +1205,6 @@ const Templates: React.FC = () => {
                   })();
                   return (
                     <TableRow key={s.id}>
-                      <TableCell>
-                        <span className="tabular-nums text-gray-400 dark:text-gray-500">{s.id}</span>
-                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 dark:text-white">{s.schedule_name}</span>

@@ -167,6 +167,8 @@ export const templatesAPI = {
     active?: boolean;
   }) => api.post('/api/templates', data),
   update: (id: number, data: any) => api.put(`/api/templates/${id}`, data),
+  reorder: (orderedIds: number[]) =>
+    api.post('/api/templates/reorder', { ordered_ids: orderedIds }),
   delete: (id: number) => api.delete(`/api/templates/${id}`),
   preview: (id: number, variables: any) =>
     api.post(`/api/templates/${id}/preview`, { variables }),

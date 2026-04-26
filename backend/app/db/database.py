@@ -123,6 +123,18 @@ def init_db():
             if "active" in cols and "is_active" not in cols:
                 conn.execute(text("ALTER TABLE message_templates RENAME COLUMN active TO is_active"))
                 print("AUTO-MIGRATE: Renamed message_templates.active to is_active")
+            if "sort_order" not in cols:
+                conn.execute(text("ALTER TABLE message_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"))
+                # 기존 행은 현재 화면 순서(created_at desc) 유지: 최신이 가장 작은 sort_order
+                conn.execute(text(
+                    "UPDATE message_templates SET sort_order = ("
+                    "SELECT COUNT(*) FROM message_templates m2 "
+                    "WHERE m2.tenant_id = message_templates.tenant_id "
+                    "AND m2.created_at > message_templates.created_at"
+                    ")"
+                ))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_message_templates_sort_order ON message_templates (sort_order)"))
+                print("AUTO-MIGRATE: Added sort_order column to message_templates table (backfilled by created_at desc)")
 
         # template_schedules.active → is_active
         if "template_schedules" in inspector.get_table_names():
