@@ -142,7 +142,8 @@ class TestSurchargeVariables:
         assert ctx["total_surcharge"] == '18'      # 60000*3 / 10000
 
     def test_double_room_excess_1_nights_1(self, db):
-        """더블룸 (base=2, unit=25000), guest=3, nights=1 → excess=1, per_night='2.5', total='2.5'. ★소수점"""
+        """더블룸 (base=2), guest=3, nights=1 → excess=1
+        per_night = 20000*1 + 5000 = 25000 → '2.5', total = 25000 → '2.5'."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
         _link_double(db, room.id)
@@ -154,11 +155,12 @@ class TestSurchargeVariables:
 
         assert ctx["excess"] == 1
         assert ctx["nights"] == 1
-        assert ctx["surcharge_per_night"] == '2.5'   # 25000 / 10000
+        assert ctx["surcharge_per_night"] == '2.5'   # (20000+5000) / 10000
         assert ctx["total_surcharge"] == '2.5'       # 25000*1 / 10000
 
     def test_double_room_excess_1_nights_2(self, db):
-        """더블룸 (base=2, unit=25000), guest=3, nights=2 → excess=1, per_night='2.5', total='5'. ★소수점"""
+        """더블룸 (base=2), guest=3, nights=2 → excess=1
+        per_night = 20000*1 + 5000 = 25000 → '2.5', total = 50000 → '5'."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
         _link_double(db, room.id)
@@ -170,11 +172,12 @@ class TestSurchargeVariables:
 
         assert ctx["excess"] == 1
         assert ctx["nights"] == 2
-        assert ctx["surcharge_per_night"] == '2.5'   # 25000 / 10000
+        assert ctx["surcharge_per_night"] == '2.5'   # (20000+5000) / 10000
         assert ctx["total_surcharge"] == '5'         # 25000*2 / 10000
 
     def test_double_room_excess_2_nights_3(self, db):
-        """더블룸 (base=2, unit=25000), guest=4, nights=3 → excess=2, per_night='5', total='15'."""
+        """더블룸 (base=2), guest=4, nights=3 → excess=2
+        per_night = 20000*2 + 5000 = 45000 → '4.5', total = 135000 → '13.5'."""
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
         _link_double(db, room.id)
@@ -186,28 +189,29 @@ class TestSurchargeVariables:
 
         assert ctx["excess"] == 2
         assert ctx["nights"] == 3
-        assert ctx["surcharge_per_night"] == '5'    # 25000*2 / 10000
-        assert ctx["total_surcharge"] == '15'       # 25000*2*3 / 10000
+        assert ctx["surcharge_per_night"] == '4.5'   # (20000*2 + 5000) / 10000
+        assert ctx["total_surcharge"] == '13.5'      # 45000*3 / 10000
 
     def test_custom_tenant_unit_prices_reflected(self, db):
-        """Tenant 단가 커스텀 (standard=30000, double=35000) → 값 반영."""
-        # Update the tenant created in the conftest fixture
+        """Tenant 단가 커스텀 (unit_standard=30000, double_room_fee=8000) → 더블룸에서 양쪽 반영."""
         tenant = db.query(Tenant).filter(Tenant.id == 1).first()
         tenant.surcharge_unit_standard = 30000
-        tenant.surcharge_unit_double = 35000
+        tenant.surcharge_double_room_fee = 8000
         db.flush()
 
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
+        _link_double(db, room.id)
         res = _make_reservation(db, party_size=4,
                                 check_in="2026-04-15", check_out="2026-04-16")
         ra = _make_assignment(db, res.id, room.id)
 
-        ctx = _vars(db, res, ra, template_key="add_standard")
+        ctx = _vars(db, res, ra, template_key="add_double")
 
-        # excess=2, unit=30000 → per_night = 60000 / 10000 = 6
-        assert ctx["surcharge_per_night"] == '6'
-        assert ctx["total_surcharge"] == '6'
+        # excess=2, unit_standard=30000, double_room_fee=8000, nights=1
+        # per_night = 30000*2 + 8000 = 68000 → '6.8'
+        assert ctx["surcharge_per_night"] == '6.8'
+        assert ctx["total_surcharge"] == '6.8'
 
     def test_null_checkout_date_treated_as_one_night(self, db):
         """check_out_date = NULL → nights=1 기본값 적용."""
@@ -262,23 +266,21 @@ class TestSurchargeVariables:
         assert ctx["guest_count"] == 4
         assert ctx["excess"] == 2
 
-    def test_double_room_add_standard_template_uses_standard_unit(self, db):
-        """더블룸이어도 template_key=add_standard 면 standard 단가 적용.
+    def test_double_room_add_standard_template_uses_double_room_fee(self, db):
+        """방이 더블룸이면 template_key 와 무관하게 double_room_fee 가 추가된다.
 
-        템플릿 키가 발송 타입을 결정하므로, 방 타입과 키가 불일치해도
-        variables 는 템플릿 키 기준으로 주입된다.
+        is_double 여부는 방 타입(_link_double) 기준이고, 단가 산출은
+        unit_standard*excess + (is_double ? double_room_fee : 0) 로 통일.
         """
         b = _make_building(db)
         room = _make_room(db, b.id, base_capacity=2)
-        _link_double(db, room.id)  # 더블룸이지만
+        _link_double(db, room.id)  # 더블룸
         res = _make_reservation(db, party_size=3,
                                 check_in="2026-04-15", check_out="2026-04-16")
         ra = _make_assignment(db, res.id, room.id)
 
-        # add_standard 키로 호출 → is_double=True 이므로 double 단가 적용됨을 확인
-        # _inject_surcharge_vars 는 room 타입 기준으로 단가를 선택
         ctx = _vars(db, res, ra, template_key="add_standard")
 
-        # is_double=True → unit_double=25000 사용
+        # excess=1, is_double=True → 20000*1 + 5000 = 25000 → '2.5'
         assert ctx["excess"] == 1
-        assert ctx["surcharge_per_night"] == '2.5'  # 25000 / 10000
+        assert ctx["surcharge_per_night"] == '2.5'
