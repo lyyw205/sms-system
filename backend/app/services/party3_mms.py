@@ -133,3 +133,67 @@ def reconcile_party3_mms(db: Session, date: str) -> None:
         created=created,
         deleted=deleted,
     )
+
+
+def reconcile_party3_mms_for_reservation(
+    db: Session, reservation_id: int, date: str
+) -> None:
+    """단건 처리: (reservation, date) 기준 party3 MMS 칩 재조정.
+
+    reconcile_party3_mms 의 single-row 변형. mutation 후처리(예약/일자별 정보 변경,
+    객실 배정 등) 에서 단일 예약의 칩만 즉시 정리하기 위함.
+    """
+    schedule = _find_schedule(db)
+    if not schedule or not schedule.template or not schedule.template.is_active:
+        return
+
+    res = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+    if not res:
+        return
+
+    # stay coverage 검사 (퇴실일 제외, 첫날/연박중간/NULL체크아웃/당일 모두 포함)
+    check_in = res.check_in_date
+    check_out = res.check_out_date
+    in_stay = bool(check_in) and (
+        check_in == date
+        or (check_out and check_in <= date < check_out)
+    )
+
+    # 유효 party_type = DailyInfo override or Reservation.party_type
+    daily = db.query(ReservationDailyInfo).filter(
+        ReservationDailyInfo.reservation_id == reservation_id,
+        ReservationDailyInfo.date == date,
+    ).first()
+    effective = (daily.party_type if daily else None) or res.party_type
+
+    is_target = (
+        in_stay
+        and res.status == ReservationStatus.CONFIRMED
+        and effective in PARTY3_TYPES
+    )
+
+    existing = db.query(ReservationSmsAssignment).filter(
+        ReservationSmsAssignment.reservation_id == reservation_id,
+        ReservationSmsAssignment.date == date,
+        ReservationSmsAssignment.schedule_id == schedule.id,
+    ).first()
+
+    if is_target and not existing:
+        tenant_id = current_tenant_id.get()
+        db.add(ReservationSmsAssignment(
+            reservation_id=reservation_id,
+            template_key=schedule.template.template_key,
+            date=date,
+            assigned_by='auto',
+            schedule_id=schedule.id,
+            sent_at=None,
+            tenant_id=tenant_id,
+        ))
+        db.flush()
+        diag("party3_mms.single.created", level="verbose",
+             res_id=reservation_id, date=date)
+    elif (not is_target) and existing and existing.sent_at is None:
+        db.delete(existing)
+        db.flush()
+        diag("party3_mms.single.deleted", level="verbose",
+             res_id=reservation_id, date=date)

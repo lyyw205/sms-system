@@ -415,9 +415,9 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
     db_reservation.is_long_stay = compute_is_long_stay(db_reservation)
 
     db.flush()
-    # Auto-generate chips for new reservation
-    from app.services.room_assignment import sync_sms_tags
-    sync_sms_tags(db, db_reservation.id)
+    # Auto-generate chips for new reservation (3종 칩 통합)
+    from app.services.reconcile import reconcile_all_chips
+    reconcile_all_chips(db, db_reservation.id)
 
     db.commit()
     db.refresh(db_reservation)
@@ -547,11 +547,6 @@ async def update_reservation(
         db.flush()
         room_assignment.reconcile_dates(db, db_reservation)
 
-    # SMS 태그 재계산 (섹션 또는 필터 대상 필드 변경 시)
-    if sms_fields_changed:
-        db.flush()
-        room_assignment.sync_sms_tags(db, reservation_id)
-
     # Phase 2-5a: 성별/인원 변경 시 invariant 재검증
     if constraint_changed:
         try:
@@ -573,13 +568,7 @@ async def update_reservation(
                     from_date=future_invalid[0],
                     end_date=end_d,
                 )
-                # ★ 검증 추가: invariant-violation unassign 후 SMS 칩 재동기화
-                # 없으면 stale room_guide 칩으로 잘못된 방 안내 SMS 발송 위험
-                try:
-                    db.flush()
-                    room_assignment.sync_sms_tags(db, reservation_id)
-                except Exception as e:
-                    logger.warning(f"sync_sms_tags after invariant unassign failed: {e}")
+                # ※ unassign 후 칩 재동기화는 함수 끝 reconcile_all_chips 에서 일괄 처리
                 log_activity(
                     db, type="room_move",
                     title=f"[{db_reservation.customer_name}] 제약 위반 배정 해제 ({len(future_invalid)}일)",
@@ -593,21 +582,23 @@ async def update_reservation(
                 )
                 diag("invariant.violation_detected", level="critical", reservation_id=reservation_id, invalid_dates=future_invalid)
 
-    # Surcharge reconcile on count change
+    # 통합 칩 재계산: 칩에 영향 주는 변경이 있었으면 한 번에 처리.
+    # 날짜 변경 시 reconcile_dates 가 내부에서 wrapper 를 호출하지만, orphaned/missing
+    # 이 없을 때는 호출하지 않으므로 (e.g. check_out 단축 + 그날 배정 없음 + party_size 변경)
+    # 항상 한 번 더 호출. wrapper 가 멱등이라 중복 호출은 안전.
     _SURCHARGE_FIELDS = {"male_count", "female_count", "party_size"}
-    if _SURCHARGE_FIELDS & set(update_data.keys()):
+    chip_affecting = (
+        sms_fields_changed
+        or constraint_changed
+        or bool(_SURCHARGE_FIELDS & set(update_data.keys()))
+    )
+    if chip_affecting:
+        db.flush()
         try:
-            from app.services.surcharge import reconcile_surcharge
-            effective_date = db_reservation.check_in_date
-            if db_reservation.check_out_date and db_reservation.check_out_date > db_reservation.check_in_date:
-                from app.services.schedule_utils import date_range
-                for d in date_range(db_reservation.check_in_date, db_reservation.check_out_date):
-                    reconcile_surcharge(db, reservation_id, d)
-            else:
-                reconcile_surcharge(db, reservation_id, effective_date)
+            from app.services.reconcile import reconcile_all_chips
+            reconcile_all_chips(db, reservation_id)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Surcharge reconcile failed: {e}")
+            logger.warning(f"reconcile_all_chips failed for res={reservation_id}: {e}")
 
     db.commit()
     db.refresh(db_reservation)
@@ -818,10 +809,11 @@ async def update_daily_info(
 
     db.flush()
 
-    # party_type 또는 notes 변경 시 칩 재계산 (column_match 필터 매칭이 달라질 수 있음)
+    # party_type 또는 notes 변경 시 통합 칩 재계산
+    # (notes 는 surcharge test marker, party_type 은 party3 MMS 에 직결)
     if "party_type" in sent_fields or "notes" in sent_fields:
-        from app.services.room_assignment import sync_sms_tags
-        sync_sms_tags(db, reservation_id)
+        from app.services.reconcile import reconcile_all_chips
+        reconcile_all_chips(db, reservation_id, dates=[request.date])
     db.commit()
 
     db.refresh(db_reservation)

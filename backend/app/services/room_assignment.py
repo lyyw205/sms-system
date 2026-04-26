@@ -582,15 +582,8 @@ def assign_room(
     # skip_sms_sync=True이면 건너뜀 (일괄 처리 시 사용)
     if not skip_sms_sync:
         db.flush()
-        sync_sms_tags(db, reservation_id)
-
-        # Surcharge reconcile (추가 인원 요금)
-        try:
-            from app.services.surcharge import reconcile_surcharge
-            for d in dates:
-                reconcile_surcharge(db, reservation_id, d, room_id=room_id)
-        except Exception as e:
-            logger.warning(f"Surcharge reconcile failed for res={reservation_id}: {e}")
+        from app.services.reconcile import reconcile_all_chips
+        reconcile_all_chips(db, reservation_id, dates=dates, room_id=room_id)
 
     # ★ H-F 제거 (2026-04-21): push-out 후 즉시 재배정 트리거는 불필요.
     # 미래 날짜에만 push-out 발생 → 밀려난 예약자는 미배정 상태로 대기 →
@@ -949,20 +942,13 @@ def reconcile_dates(db: Session, reservation: Reservation):
             db.flush()
             inserted_count += 1
 
-        # H-1: 새 날짜에 surcharge reconcile
-        try:
-            from app.services.surcharge import reconcile_surcharge
-            for d in sorted(missing):
-                reconcile_surcharge(db, reservation.id, d, room_id=reference.room_id)
-        except Exception as e:
-            logger.warning(f"Surcharge reconcile failed in reconcile_dates: {e}")
-
     if orphaned or missing:
-        # 칩 재계산
+        # 칩 통합 재계산 (일반 + surcharge + party3 MMS)
         try:
-            sync_sms_tags(db, reservation.id)
+            from app.services.reconcile import reconcile_all_chips
+            reconcile_all_chips(db, reservation.id)
         except Exception as e:
-            logger.warning(f"reconcile_dates sync_sms_tags failed for res={reservation.id}: {e}")
+            logger.warning(f"reconcile_dates reconcile_all_chips failed for res={reservation.id}: {e}")
         logger.info(
             f"Reconciled dates for reservation {reservation.id}: "
             f"removed {len(orphaned)} orphaned, inserted {inserted_count} missing"
