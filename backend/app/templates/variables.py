@@ -281,11 +281,11 @@ def _inject_surcharge_vars(context: Dict[str, Any], reservation, room_assignment
             is_double = _is_double_room(db, room)
 
     # 단가 조회 (Tenant 설정)
+    # 더블룸 = 일반 인원 추가비(unit_standard × excess) + 객실 변경비(double_room_fee, 박수에만 곱함)
     tenant_id = current_tenant_id.get()
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first() if tenant_id else None
     unit_standard = getattr(tenant, 'surcharge_unit_standard', 20000) if tenant else 20000
-    unit_double = getattr(tenant, 'surcharge_unit_double', 25000) if tenant else 25000
-    unit_price = unit_double if is_double else unit_standard
+    double_room_fee = getattr(tenant, 'surcharge_double_room_fee', 5000) if tenant else 5000
 
     # guest_count / excess / nights 계산 (surcharge.py 와 공유 helper 사용)
     guest_count = compute_guest_count(reservation)
@@ -293,7 +293,8 @@ def _inject_surcharge_vars(context: Dict[str, Any], reservation, room_assignment
     excess = compute_excess(reservation, room)
     nights = _calculate_stay_nights(reservation)
 
-    per_night = unit_price * excess
+    excess_fee_per_night = unit_standard * excess
+    per_night = excess_fee_per_night + (double_room_fee if is_double else 0)
     total = per_night * nights
 
     context['base_capacity'] = base_capacity

@@ -383,6 +383,9 @@ def init_db():
             if "surcharge_unit_double" not in cols:
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN surcharge_unit_double INTEGER DEFAULT 25000 NOT NULL"))
                 print("AUTO-MIGRATE: Added surcharge_unit_double column to tenants table")
+            if "surcharge_double_room_fee" not in cols:
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN surcharge_double_room_fee INTEGER DEFAULT 5000 NOT NULL"))
+                print("AUTO-MIGRATE: Added surcharge_double_room_fee column to tenants table")
 
     # Task 1.5: admin 기본 비밀번호 환경변수화
     db = SessionLocal()

@@ -505,8 +505,9 @@ class Tenant(Base):
     aligo_testmode = Column(Boolean, default=True)  # True=테스트모드(실제 미발송), False=실제 발송
     chip_priority_keys = Column(Text, nullable=True)  # JSON array of template_keys for chip display order
     custom_highlight_colors = Column(Text, nullable=True)  # JSON array of custom hex colors e.g. ["#FF5733","#33FF57"]
-    surcharge_unit_standard = Column(Integer, default=20000)  # 일반 객실 초과 1인/1박 단가 (원)
-    surcharge_unit_double = Column(Integer, default=25000)    # 더블 객실 초과 1인/1박 단가 (원)
+    surcharge_unit_standard = Column(Integer, default=20000)  # 일반 객실 초과 1인/1박 단가 (원, 모든 객실 공통)
+    surcharge_unit_double = Column(Integer, default=25000)    # [DEPRECATED] 옛 더블 통합 단가 — 신규 로직은 unit_standard + double_room_fee 사용
+    surcharge_double_room_fee = Column(Integer, default=5000) # 더블 객실 1박당 추가 변경비 (원, 인원과 무관)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
