@@ -2243,7 +2243,7 @@ const RoomAssignment = () => {
                 return renderGuestRow(guest, true);
               }
               return (
-                <div key={`empty-${i}`} className={`flex items-center h-9 cursor-default`}>
+                <div key={`empty-${i}`} className={`flex items-center ${hasGuests ? 'h-10' : 'h-9'} cursor-default`}>
                   <div
                     className="flex-1 grid items-center py-1"
                     style={{ gridTemplateColumns: GUEST_COLS }}
