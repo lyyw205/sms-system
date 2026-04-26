@@ -1057,6 +1057,11 @@ const RoomAssignment = () => {
       }
     });
 
+    // 파티만 행: 예약 생성 시각 오래된 순 (최신이 맨 아래)
+    partyOnlyList.sort((a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
     // 최근 이동한 게스트를 맨 위로
     if (recentlyMovedId !== null) {
       const bumpToTop = (list: Reservation[]) => {
