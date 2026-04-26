@@ -49,13 +49,26 @@ function Modal({ show, onClose, size = "md", popup, children, className }: Modal
     }
   }, [show])
 
+  // 백드롭 클릭 닫기 — 텍스트 드래그가 모달 밖에서 끝나도 닫히지 않도록
+  // mousedown 시작 지점과 click 종료 지점이 모두 백드롭일 때만 닫는다.
+  const mouseDownTargetRef = React.useRef<EventTarget | null>(null)
+
   if (!show) return null
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-2 sm:p-4 dark:bg-gray-900/80"
+      onMouseDown={(e) => {
+        mouseDownTargetRef.current = e.target
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (
+          e.target === e.currentTarget &&
+          mouseDownTargetRef.current === e.currentTarget
+        ) {
+          onClose()
+        }
+        mouseDownTargetRef.current = null
       }}
     >
       <div

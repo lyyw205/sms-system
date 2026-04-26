@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 
 import { reservationsAPI } from '@/services/api';
 import { normalizeUtcString } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
@@ -137,7 +138,37 @@ function SourceBadge({ source }: { source?: string | null }) {
   return <span className={`text-body font-medium ${m.className}`}>{m.label}</span>;
 }
 
+type PageItem = number | 'ellipsis-l' | 'ellipsis-r';
+
+function getPageNumbers(current: number, total: number, maxVisible: number): PageItem[] {
+  if (total <= maxVisible) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const startBound = maxVisible - 2;
+  const endBound = total - maxVisible + 3;
+  if (current <= startBound) {
+    const pages: PageItem[] = [];
+    for (let i = 1; i <= maxVisible - 2; i++) pages.push(i);
+    pages.push('ellipsis-r', total);
+    return pages;
+  }
+  if (current >= endBound) {
+    const pages: PageItem[] = [1, 'ellipsis-l'];
+    for (let i = total - maxVisible + 3; i <= total; i++) pages.push(i);
+    return pages;
+  }
+  const middleSize = maxVisible - 4;
+  const half = Math.floor(middleSize / 2);
+  const start = current - half;
+  const end = start + middleSize - 1;
+  const pages: PageItem[] = [1, 'ellipsis-l'];
+  for (let i = start; i <= end; i++) pages.push(i);
+  pages.push('ellipsis-r', total);
+  return pages;
+}
+
 export default function Reservations() {
+  const isMobile = useIsMobile();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading]           = useState(false);
   const [syncing, setSyncing]           = useState(false);
@@ -600,19 +631,28 @@ export default function Reservations() {
               >
                 이전
               </Button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`min-w-[36px] h-9 px-3 py-1.5 rounded-lg text-body font-medium transition-colors cursor-pointer ${
-                    page === currentPage
-                      ? 'bg-[#3182F6] text-white'
-                      : 'text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              {getPageNumbers(currentPage, totalPages, isMobile ? 5 : 10).map((item) =>
+                typeof item === 'number' ? (
+                  <button
+                    key={item}
+                    onClick={() => setCurrentPage(item)}
+                    className={`min-w-[36px] h-9 px-3 py-1.5 rounded-lg text-body font-medium transition-colors cursor-pointer ${
+                      item === currentPage
+                        ? 'bg-[#3182F6] text-white'
+                        : 'text-[#8B95A1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#2C2C34]'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ) : (
+                  <span
+                    key={item}
+                    className="min-w-[36px] h-9 px-3 py-1.5 inline-flex items-center justify-center text-body text-[#B0B8C1] dark:text-gray-600 select-none"
+                  >
+                    …
+                  </span>
+                )
+              )}
               <Button
                 color="light"
                 size="sm"
