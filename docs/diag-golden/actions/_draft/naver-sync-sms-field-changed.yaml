@@ -1,0 +1,33 @@
+action: naver_sync_sms_field_changed (네이버 sync — SMS 필드 변경 감지)
+description: |
+  네이버 sync cron 실행 중 예약의 F1 필드 (성별 / naver_room_type) 가
+  변경된 것을 감지했을 때 발생하는 단일 sub-event.
+  더 큰 naver_sync trace 안에 끼어 들어오며, 독립 요청이 아니다.
+
+reference_session: 2026-04-24
+created_at: 2026-04-27
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  cron_trigger: true      # 네이버 sync cron 실행 중
+  field_changed: true     # gender_changed 또는 naver_room_type_changed 중 하나 이상 true
+
+expected_trace:
+  - event: naver_sync.sms_field_changed
+    category: MANDATORY
+    fields:
+      reservation_id: "*"
+      gender_changed: "*"          # bool — True / False
+      naver_room_type_changed: "*" # bool — True / False
+      tid: "*"
+      req: "-"
+
+forbidden_events:
+  - event: request.enter
+    reason: cron 내부 sub-event — 독립 HTTP 요청 없음
+
+notes: |
+  - gender_changed=True, naver_room_type_changed=False 가 관측 케이스.
+  - 두 필드 모두 False 인 경우엔 이 이벤트 자체가 발생하지 않아야 함.
+  - 더 큰 naver_sync.* trace 의 컨텍스트 내 발생 — 단독 정답지로 분리.

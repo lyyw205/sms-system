@@ -1,0 +1,85 @@
+action: reservation_extend_stay (연박 추가)
+description: |
+  예약 컨텍스트 메뉴에서 "연박 추가" 클릭. 기존 예약에 1박을 이어 붙여
+  새 예약을 생성하고 stay_group 으로 자동 연결.
+  reconcile_chips 가 먼저 돌고 그 다음 reservation.extend_stay 가 기록된다.
+
+reference_session: 2026-04-24
+created_at: 2026-04-27
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  user_action: 예약 컨텍스트 메뉴 → 연박 추가
+  action_tag: ctx_menu:extend_stay
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: POST
+      path: /api/reservations/*/extend-stay   # source reservation_id 는 "*"
+      action_prefix: ctx_menu:extend_stay
+
+  - event: stay_group.manually_linked
+    category: MANDATORY
+    fields:
+      group_id: "*"       # manual-... 형태
+      member_count: "*"
+
+  - event: reconcile_chips_for_reservation.enter
+    category: MANDATORY
+    fields:
+      res_id: "*"
+
+  - event: filter.apply.enter
+    category: VARIABLE_COUNT
+    min: 1
+    fields:
+      schedule_id: "*"
+      target_date: "*"
+
+  - event: filter.applied
+    category: VARIABLE_COUNT
+    min: 1
+    fields:
+      filter_type: "*"
+      conditions_count: "*"
+
+  - event: filter.apply.exit
+    category: VARIABLE_COUNT
+    min: 1
+
+  - event: reconcile_chips_for_reservation.exit
+    category: MANDATORY
+    fields:
+      res_id: "*"
+      expected: "*"
+      existing: "*"
+      created: "*"
+
+  - event: reservation.extend_stay
+    category: MANDATORY
+    fields:
+      source_reservation_id: "*"
+      new_reservation_id: "*"
+      stay_group_id: "*"
+      conflict_count: "*"   # 0 또는 1+
+      room_id: "*"
+      actor: admin
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: request.error
+    reason: 성공 경로라 에러 없어야 함
+  - event: reservation.extend_stay_cancelled
+    reason: 성공 경로 — 취소 이벤트 발생 시 별도 정답지로 분기
+
+notes: |
+  - reconcile_chips 순서가 reservation.extend_stay 앞에 위치함 (관측 확인).
+  - conflict_count=0 이 일반적이나 방 충돌 발생 시 1+ 도 가능.
+  - reservation.extend_stay_cancelled 는 별도 pending 정답지 후보.

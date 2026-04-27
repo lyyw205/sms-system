@@ -1,0 +1,35 @@
+action: job_detect_consecutive_stays (연박 감지 cron)
+description: |
+  1시간 간격 cron. 연박 패턴을 감지해 stay_group 자동 연결/해제.
+  enter/exit 이벤트가 쌍으로 발생. 수치 필드는 실행 시점마다 다르다.
+
+reference_session: 2026-04-24
+created_at: 2026-04-27
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  cron_trigger: true   # 1시간 간격 — request.enter/exit 없음
+
+expected_trace:
+  - event: job.detect_consecutive_stays.enter
+    category: MANDATORY
+    fields:
+      req: "-"
+
+  - event: job.detect_consecutive_stays.exit
+    category: MANDATORY
+    fields:
+      tenants: "*"
+      linked: "*"
+      unlinked: "*"
+      groups: "*"
+      req: "-"
+
+forbidden_events:
+  - event: request.enter
+    reason: cron 기반 경로 — HTTP 요청 없음
+
+notes: |
+  - linked / unlinked / groups 는 0 이상. 조용한 실행에서는 전부 0.
+  - 2026-04-24 관측 당시 실행은 있었으나 연박 감지 건수는 0.

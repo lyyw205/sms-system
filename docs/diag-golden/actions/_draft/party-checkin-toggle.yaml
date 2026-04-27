@@ -1,0 +1,44 @@
+action: party_checkin_toggle (파티 체크인 토글)
+description: |
+  파티 체크인 페이지에서 개별 예약의 체크인 상태를 토글.
+  PATCH /api/party-checkin/{id}/toggle 호출로 checkin_new / checkin_revert 중 하나가 발생.
+
+reference_session: 2026-04-24
+created_at: 2026-04-27
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  user_action: 파티 체크인 토글 버튼 클릭
+  reservation_exists: true
+
+expected_trace:
+  - event: request.enter
+    category: MANDATORY
+    fields:
+      method: PATCH
+      path: /api/party-checkin/*/toggle   # reservation_id 는 "*"
+
+  - event: party_checkin.toggled
+    category: MANDATORY
+    fields:
+      reservation_id: "*"
+      date: "*"
+      action: "*"   # checkin_new / checkin_revert 등 enum — 상황마다 다름
+      tid: "*"
+      req: "*"
+
+  - event: request.exit
+    category: MANDATORY
+    fields:
+      status: 200
+
+forbidden_events:
+  - event: party_checkin.toggle.not_found
+    reason: 성공 경로 — 예약 없음 오류는 발생하면 안 됨
+  - event: request.error
+    reason: 성공 경로라 에러 없어야 함
+
+notes: |
+  - action 필드는 checkin_new (새로 체크인) / checkin_revert (체크인 취소) 등 복수 값 가능.
+  - req=90iiuaum 케이스 (2026-04-25 date, action=checkin_new) 에서 최초 관측.

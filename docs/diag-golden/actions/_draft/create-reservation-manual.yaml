@@ -23,11 +23,6 @@ expected_trace:
       method: POST
       path: /api/reservations
 
-  - event: reservation.created
-    category: MANDATORY       # 2026-04-24 commit 에서 신규 추가된 diag
-    fields:
-      reservation_id: "*"
-
   - event: reconcile_chips_for_reservation.enter
     category: MANDATORY
     fields:
@@ -58,6 +53,11 @@ expected_trace:
       created: "*"             # 0 이상 정수
       existing: "*"
 
+  - event: reservation.created
+    category: MANDATORY       # 2026-04-24 commit 에서 신규 추가된 diag
+    fields:
+      reservation_id: "*"
+
   - event: request.exit
     category: MANDATORY
     fields:
@@ -76,3 +76,5 @@ notes: |
   - reservation.created diag 는 2026-04-24 회귀 감사에서 신규 추가됨.
     배포 전 trace 엔 이 이벤트 없음 — 배포 후 첫 관측 시 confirmed 승격 검토.
   - extend_stay / link_api / unlink_api 등 연박 관련 경로는 별도 정답지 후보.
+  - 2026-04-27 검증에서 실제 순서 확인 — reconcile 후 reservation.created
+    (req=yn9esx27). 기존 draft 에서 reservation.created 위치를 reconcile.exit 뒤로 이동.

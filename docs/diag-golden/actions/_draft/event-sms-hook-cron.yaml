@@ -1,0 +1,43 @@
+action: event_sms_hook_cron (SMS 훅 cron 실행)
+description: |
+  5분 간격 cron 으로 실행되는 SMS 훅 이벤트 처리.
+  대상 스케줄이 있으면 event_sms_hook.scheduled 발생,
+  매칭 스케줄 없으면 event_sms_hook.no_schedules 가 추가로 발생한다.
+
+reference_commit: 3849bae
+reference_case: 2026-04-27 로그 세션 (scheduled × 62, no_schedules × 62)
+created_at: 2026-04-27
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  cron_trigger: true   # APScheduler 5분 간격 — request.enter/exit 없음
+  tenant_active: true
+
+expected_trace:
+  - event: event_sms_hook.scheduled
+    category: MANDATORY   # cron 이 실행되면 항상 발생
+    fields:
+      reservation_count: "*"
+      tenant_id: "*"
+      tid: "*"
+      req: "-"
+
+  - event: event_sms_hook.no_schedules
+    category: CONDITIONAL  # 해당 테넌트에 매칭 스케줄 없을 때만 함께 발생
+    condition: 매칭 스케줄 0건인 테넌트
+    fields:
+      tenant_id: "*"
+      tid: "*"
+      req: "-"
+
+forbidden_events:
+  - event: request.enter
+    reason: cron 기반 경로 — HTTP 요청 없음
+  - event: request.exit
+    reason: cron 기반 경로 — HTTP 요청 없음
+
+notes: |
+  - scheduled 와 no_schedules 는 1:1 로 함께 나타나는 경우가 많으나
+    대상 스케줄이 있을 때는 no_schedules 없이 scheduled 만 발생 가능.
+  - 관측 기간 중 both 이벤트 동시 발생 62쌍 확인.
