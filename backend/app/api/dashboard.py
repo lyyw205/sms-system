@@ -26,12 +26,13 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
         Reservation.booking_source != "naver_split",
     ).scalar() or 0
 
-    # Recent reservations (last 5) — naver_split sibling 제외 (운영자 화면에 동일 손님 중복 노출 방지)
+    # Recent reservations — naver_split sibling 제외 (운영자 화면에 동일 손님 중복 노출 방지)
+    # 스케줄 표 행 수에 맞춰 프론트가 slice 하므로 충분한 양 확보
     recent_reservations = (
         db.query(Reservation)
         .filter(Reservation.booking_source != "naver_split")
         .order_by(Reservation.created_at.desc())
-        .limit(5)
+        .limit(30)
         .all()
     )
 

@@ -281,7 +281,7 @@ const Dashboard = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                (stats.recent_reservations ?? []).slice(0, 5).map((r: any, idx: number) => (
+                (stats.recent_reservations ?? []).slice(0, Math.max(5, schedules.length)).map((r: any, idx: number) => (
                   <TableRow key={r.id ?? idx}>
                     <TableCell>
                       <span className="font-medium text-gray-900 dark:text-white">{r.customer_name ?? '—'}</span>
