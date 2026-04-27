@@ -64,9 +64,18 @@ expected_trace:
       source_reservation_id: "*"
       new_reservation_id: "*"
       stay_group_id: "*"
-      conflict_count: "*"   # 0 또는 1+
+      original_stay_group_id: "*"   # null / manual-xxx / uuid
+      original_group_kind: "*"      # none | manual | naver_auto
+      conflict_count: "*"
       room_id: "*"
       actor: admin
+    alerts:
+      - condition: original_group_kind == "naver_auto"
+        severity: medium
+        message: |
+          네이버 자동 연박 그룹이 manual- 그룹으로 영구 변환됨.
+          이후 detect_consecutive_stays cron 의 자동 정리 대상에서 제외됨.
+          운영 중 의도된 동작인지 검토 필요.
 
   - event: request.exit
     category: MANDATORY

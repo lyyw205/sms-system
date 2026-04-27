@@ -1210,6 +1210,15 @@ async def extend_stay(
     if not original:
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
 
+    # 1-1. 변환 전 그룹 상태 캡처 (link_reservations 이후 manual- 로 바뀌므로 미리 저장)
+    original_group_id_before = original.stay_group_id
+    if original_group_id_before is None:
+        original_group_kind = "none"
+    elif original_group_id_before.startswith("manual-"):
+        original_group_kind = "manual"
+    else:
+        original_group_kind = "naver_auto"
+
     # 2. 다음날 날짜 계산
     orig_date = date_type.fromisoformat(original.check_in_date)
     next_date = orig_date + timedelta(days=1)
@@ -1290,6 +1299,8 @@ async def extend_stay(
         source_reservation_id=reservation_id,
         new_reservation_id=new_res.id,
         stay_group_id=group_id,
+        original_stay_group_id=original_group_id_before,
+        original_group_kind=original_group_kind,
         conflict_count=len(conflict_guests),
         room_id=request.room_id,
         actor=current_user.username if current_user else None,
