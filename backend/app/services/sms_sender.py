@@ -72,6 +72,27 @@ async def send_single_sms(
         )
         return {"success": False, "message_id": None, "error": "전화번호가 없습니다"}
 
+    import re
+    phone_digits = re.sub(r"[\s\-+().]", "", reservation.phone)
+    if not phone_digits.isdigit() or not (9 <= len(phone_digits) <= 15):
+        logger.error(
+            f"Blocking SMS: invalid phone format. res={reservation.id} phone={reservation.phone!r} template={template_key}"
+        )
+        diag(
+            "sms_sender.blocked_invalid_phone",
+            level="critical",
+            res_id=reservation.id,
+            template_key=template_key,
+            phone_preview=reservation.phone[:20],
+        )
+        from app.services.sms_tracking import record_sms_failed
+        record_sms_failed(
+            db, reservation.id, template_key,
+            error=f"전화번호 형식 오류: {reservation.phone!r}",
+            date=str(date) if date else "",
+        )
+        return {"success": False, "message_id": None, "error": f"전화번호 형식 오류: {reservation.phone!r}"}
+
     effective_date = date or (
         reservation.check_in_date.strftime("%Y-%m-%d")
         if hasattr(reservation.check_in_date, "strftime")
