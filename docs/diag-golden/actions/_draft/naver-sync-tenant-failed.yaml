@@ -1,0 +1,49 @@
+action: naver_sync_tenant_failed (네이버 sync 테넌트 실패 sub-event)
+description: |
+  job.sync_naver_reservations cron 내에서 특정 테넌트의 네이버 API 호출이
+  실패한 경우에 기록되는 sub-event 정답지.
+  fetch_page.enter 후 응답 파싱 단계에서 예외 발생 시 tenant_failed 가 찍히며
+  해당 테넌트는 이 cron 사이클을 건너뛰고 다음 테넌트로 계속 진행.
+
+reference_session: 2026-04-27   # 14:45-16:15 네이버 점검 46회 관측
+created_at: 2026-04-28
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  trigger: job.sync_naver_reservations cron (5분 주기)
+  naver_api_available: false   # 점검/네트워크 장애/쿠키 만료 등
+
+operational_impact: |
+  이 사이클에서 해당 테넌트는 동기화 누락.
+  다음 cron (5분 후) 에서 자동 재시도됨.
+  tenants 카운터는 감소하지 않고 exit 까지 정상 도달 (실패해도 job 은 계속 진행).
+
+expected_trace:
+  - event: job.sync_naver_reservations.tenant_failed
+    category: MANDATORY
+    fields:
+      tenant_id: "*"
+      tenant_slug: "*"   # handam | stable | 그 외
+      error: "*"         # 자유 텍스트 (JSON 파싱 오류 메시지, 네트워크 오류 등)
+      tid: "*"
+      req: "-"           # cron 경로
+
+alerts:
+  - condition: error contains "Expecting value"
+    severity: medium
+    message: |
+      네이버 API 응답이 JSON 이 아닌 HTML 로 반환됨 (line 1 column 3 패턴).
+      네이버 점검 페이지 또는 쿠키 만료 가능성.
+      5분 후 자동 재시도 — 단발성이면 무시 가능.
+  - condition: same tenant_slug 연속 5사이클 (25분) 이상 tenant_failed
+    severity: high
+    message: |
+      테넌트 동기화 25분 이상 연속 실패.
+      네이버 점검이 장기화되거나 쿠키 만료, 실제 API 장애 가능성.
+      Settings 페이지에서 네이버 쿠키 갱신 또는 네이버 스마트플레이스 점검 공지 확인 필요.
+
+notes: |
+  - naver_api.fetch_page.enter 후 fetch_page.exit 없이 tenant_failed 가 바로 찍히는 패턴.
+  - 같은 cron 사이클에서 여러 테넌트가 동시에 실패할 수 있음 (각 tid 별 별도 이벤트).
+  - job.sync_naver_reservations.exit 의 tenants 카운터는 실패 테넌트 수를 감산하지 않음 (관측 확인).

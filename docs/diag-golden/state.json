@@ -1,9 +1,9 @@
 {
   "_comment": "ooo-log-validation 스킬이 자동 갱신하는 체크포인트. 수동 수정 지양.",
-  "last_log_timestamp": "2026-04-27 08:25:04",
-  "last_commit_sha": "9ffd9ae",
-  "last_coverage_scan_sha": "9ffd9ae",
-  "validated_cases_count": 1,
+  "last_log_timestamp": "2026-04-28 00:40:02",
+  "last_commit_sha": "9196347",
+  "last_coverage_scan_sha": "9196347",
+  "validated_cases_count": 2,
   "pending_golden_updates": [
     {
       "event": "schedule.execute.fetch_miss",
@@ -36,11 +36,6 @@
       "added_session": "2026-04-24"
     },
     {
-      "event": "job.sync_naver_reservations.tenant_failed",
-      "reason": "테넌트별 sync 실패 추적 — 배포 후 실패 사례 관찰 시 정답지",
-      "added_session": "2026-04-24"
-    },
-    {
       "event": "reservation.invalid_status",
       "reason": "MED — status enum 400 경로 추적. 배포 후 관찰 시 정답지 작성",
       "added_session": "2026-04-24"
@@ -61,9 +56,14 @@
       "added_session": "2026-04-24"
     },
     {
-      "event": "naver_sync.bed_order_align",
-      "reason": "bed_order 5일 윈도우 효과 모니터링 — 정답지 작성",
-      "added_session": "2026-04-24"
+      "event": "party3_mms.single.created|party3_mms.single.deleted",
+      "reason": "233b938 refactor 에서 추가 — chip 단건 mutation 경로. 배치가 아닌 단건 변경 시 관측",
+      "added_commit": "233b938"
+    },
+    {
+      "event": "template.reordered",
+      "reason": "2500e3b/dcaf42e 템플릿 DnD 정렬 — 사용자가 정렬 사용 시 관측",
+      "added_commit": "2500e3b"
     }
   ],
   "known_gaps": [
@@ -460,9 +460,29 @@
       "confidence": "draft",
       "first_seen": "2026-04-27",
       "instance_count": 1
+    },
+    "_draft/chip-reconcile-party3-mms": {
+      "confidence": "draft",
+      "first_seen": "2026-04-28",
+      "instance_count": 1
+    },
+    "_draft/unassign-room-drag-to-pool": {
+      "confidence": "draft",
+      "first_seen": "2026-04-28",
+      "instance_count": 1
+    },
+    "_draft/naver-sync-tenant-failed": {
+      "confidence": "draft",
+      "first_seen": "2026-04-28",
+      "instance_count": 1
+    },
+    "_draft/naver-sync-sub-events": {
+      "confidence": "draft",
+      "first_seen": "2026-04-28",
+      "instance_count": 1
     }
   },
-  "last_validation_run": "2026-04-27T10:30:00+09:00",
+  "last_validation_run": "2026-04-28T09:00:00+09:00",
   "notes": [
     "2026-04-24 두 번째 검증 실행. 새 에러 0건 (기존 3건만 — 2건은 이미 수정, 1건 race 는 작업 예정).",
     "baseline coverage scan 58건 일괄 suppress. 다음 스캔부터 증분으로만 잡음.",
@@ -471,6 +491,9 @@
     "2026-04-27 세 번째 검증. 실에러 1건 (sms.failed_recorded × 2, res_id=4237 phone 누락 — 사용자 확인됨/의도된 동작).",
     "신규 draft 정답지 7건 추가 (cron/user-action 양쪽). create-reservation-manual 순서 정정.",
     "coverage_scan.py: known_gaps baseline 형식 호환 안 되어 KeyError — 다음 검증 전 패치 필요.",
-    "2026-04-27 known_gaps baseline 재snapshot — 단일 count 마커를 51건 file/line entry 로 펼침. coverage_scan.py 정상화."
+    "2026-04-27 known_gaps baseline 재snapshot — 단일 count 마커를 51건 file/line entry 로 펼침. coverage_scan.py 정상화.",
+    "2026-04-28 네 번째 검증. 실에러 0건, 알려진 sms.failed_recorded 1건 (res_id=4629 크루 — 9196347 가드로 차단 예정).",
+    "신규 draft 정답지 4건 추가 (party3_mms reconcile, unassign room, tenant_failed, naver_sync sub-events).",
+    "package added를 수신할 새 diag 이벤트 (party3_mms.single.*, template.reordered) 는 pending 등록."
   ]
 }

@@ -1,0 +1,45 @@
+action: chip_reconcile_party3_mms (party3 MMS 칩 reconcile)
+description: |
+  매일 23:59 party3 SMS 발송 직전에 실행되는 cron triggered reconcile.
+  233b938 refactor 로 통합된 chip mutation 단일 진입점 경로.
+  party3 MMS 대상 예약의 ReservationSmsAssignment 레코드를 targets 와
+  대조하여 없는 항목은 created, 불필요한 항목은 deleted 처리.
+
+reference_commit: 233b938
+reference_session: 2026-04-27
+created_at: 2026-04-28
+confidence: draft
+promotion_threshold: 3
+
+preconditions:
+  cron_trigger: true  # party3 MMS 발송 직전 reconcile (23:59 cron)
+  trigger: party3_mms 발송 스케줄 직전
+
+expected_trace:
+  - event: party3_mms.reconcile.enter
+    category: MANDATORY
+    fields:
+      date: "*"    # today (절대 날짜 → "*")
+      tid: "*"
+      req: "-"     # cron 경로 — req_id 없음
+
+  - event: party3_mms.reconcile.done
+    category: MANDATORY
+    fields:
+      date: "*"      # today
+      targets: "*"   # 대상 예약 수 (count)
+      existing: "*"  # 기존 chip 수
+      created: "*"   # 신규 생성 수
+      deleted: "*"   # 삭제 수
+      tid: "*"
+      req: "-"
+
+forbidden_events:
+  - event: party3_mms.reconcile.error
+    reason: 성공 경로 — 에러 이벤트 발생 시 별도 정답지로 분기
+
+notes: |
+  - reconcile.done 필드 일관성: targets == existing + created 가 일반적.
+    deleted > 0 인 경우 (이미 취소된 예약 chip 정리) 에는 단순 합산이 아닐 수 있음 — 운영 중 관찰로 검증 필요.
+  - party3_mms.single.created / party3_mms.single.deleted 이벤트는 단건 chip mutation 경로 (배치가 아닌 단건 변경 시).
+    2026-04-28 기준 미관측 — pending_golden_updates 에 등록됨.
