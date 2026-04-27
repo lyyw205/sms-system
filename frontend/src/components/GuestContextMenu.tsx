@@ -80,6 +80,14 @@ export default function GuestContextMenu({
     },
   ];
 
+  if (onExtendStay) {
+    items.push({
+      icon: <CalendarPlus className="h-4 w-4" />,
+      label: '내일 연박추가',
+      onClick: onExtendStay,
+      disabled: false,
+    });
+  }
   if (onCancelExtendStay) {
     items.push({
       icon: <CalendarMinus className="h-4 w-4" />,
@@ -87,13 +95,6 @@ export default function GuestContextMenu({
       onClick: onCancelExtendStay,
       disabled: false,
       danger: true,
-    });
-  } else if (onExtendStay) {
-    items.push({
-      icon: <CalendarPlus className="h-4 w-4" />,
-      label: '내일 연박추가',
-      onClick: onExtendStay,
-      disabled: false,
     });
   }
 

@@ -1699,7 +1699,7 @@ const RoomAssignment = () => {
         toast.success('언스테이블 복사본 제거');
         setContextMenu(null);
       },
-      onExtendStay: (targetIds.length === 1 && !firstRes?.stay_group_id && firstRes?.booking_source !== 'extend' && !contextIsNextDay) ? async () => {
+      onExtendStay: (targetIds.length === 1 && !contextIsNextDay) ? async () => {
         const resId = targetIds[0];
         const res = reservations.find((r) => r.id === resId);
         if (!res) return;
@@ -2274,7 +2274,7 @@ const RoomAssignment = () => {
 
         {/* Next day column */}
         <div
-          className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] border-b transition-all duration-200 ${
+          className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] border-b transition-all duration-200 ${
             dragOverNextRoom === room_id
               ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30'
               : ''
@@ -2726,7 +2726,7 @@ const RoomAssignment = () => {
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">메모<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.notes; setResizeCol('notes'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">문자<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.sms; setResizeCol('sms'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                 </div>
-                <div className="relative flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] flex flex-col justify-center self-stretch transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
+                <div className="relative flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] flex flex-col justify-center self-stretch transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
                   {!nextDayExpanded && (
                     <div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.nextDay; setResizeCol('nextDay'); }} className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:left-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" />
                   )}
@@ -2834,7 +2834,7 @@ const RoomAssignment = () => {
 
                 {/* Next day column for pool */}
                 <div
-                  className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
+                  className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
                     dragOverNextPool ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/8' : ''
                   } ${selectionActive ? 'cursor-pointer' : ''}`}
                   style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay, minHeight: `${Math.max(1, nextDayUnassigned.length) * 40}px` }}
@@ -2945,7 +2945,7 @@ const RoomAssignment = () => {
 
                 {/* Next day column for party */}
                 <div
-                  className={`flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
+                  className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
                     dragOverNextParty ? 'bg-[#7B61FF]/5 dark:bg-[#7B61FF]/8' : ''
                   } ${selectionActive ? 'cursor-pointer' : ''}`}
                   style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay, minHeight: `${Math.max(1, nextDayPartyOnly.length) * 40}px` }}
@@ -3039,7 +3039,7 @@ const RoomAssignment = () => {
                   </div>
 
                   {/* Next day column - empty */}
-                  <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
+                  <div className="flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
                 </div>
               )}
 
@@ -3061,7 +3061,7 @@ const RoomAssignment = () => {
                   </div>
 
                   {/* Next day column - empty */}
-                  <div className="flex-shrink-0 border-l-8 border-white dark:border-[#2C2C34] shadow-[inset_1px_0_0_#E5E8EB,-1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
+                  <div className="flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
                 </div>
               )}
             </div>
