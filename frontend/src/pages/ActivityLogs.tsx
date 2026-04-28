@@ -126,6 +126,9 @@ const ActivityLogs = () => {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  // 디바운스된 검색어 — fetch 트리거에만 사용 (입력 UI 는 searchQuery 그대로 즉시 반응).
+  // useDeferredValue 는 렌더 우선순위만 낮추고 effect 자체를 지연하지 않음 → setTimeout 진짜 디바운스 사용.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
 
   // Pagination
   const [page, setPage] = useState(0)
@@ -164,7 +167,7 @@ const ActivityLogs = () => {
         if (filterType) params.type = filterType
         if (filterStatus) params.status = filterStatus
         if (filterDate) params.date = filterDate
-        if (searchQuery.trim()) params.search = searchQuery.trim()
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim()
 
         const res = await activityLogsAPI.getAll(params)
         const data: ActivityLog[] = res.data ?? []
@@ -177,12 +180,18 @@ const ActivityLogs = () => {
         setLoading(false)
       }
     },
-    [filterType, filterStatus, filterDate, searchQuery],
+    [filterType, filterStatus, filterDate, debouncedSearch],
   )
 
   useEffect(() => {
     loadStats()
   }, [loadStats])
+
+  // 검색어 디바운스 — typing 중 매 키스트로크마다 fetch 발동되지 않도록 300ms 지연.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
 
   useEffect(() => {
     setPage(0)

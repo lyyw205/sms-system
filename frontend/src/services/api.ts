@@ -1,4 +1,17 @@
 import axios from 'axios';
+import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
+
+// 401 처리 후 ProtectedRoute 가 /login 으로 리다이렉트하도록 유도.
+// 페이지 강제 리로드(window.location.href) 회피 — 작성 중인 폼/state 보존.
+// 동시 요청 다수가 401 받을 때 toast 중복 방지: 고정 id 로 sonner 가 dedupe.
+function handleAuthFailure(reason: 'no_refresh_token' | 'refresh_failed') {
+  // 백엔드 diag 추적용 — 다음 axios 요청에 자동 첨부되지만 logout 직후라 발화 가능성 낮음.
+  // 보존성 차원에서 세팅 (재로그인 직후 첫 요청에 실릴 수 있음).
+  window.__diagAction = `auto_logout_${reason}`;
+  useAuthStore.getState().logout();
+  toast.error('세션이 만료되었습니다. 다시 로그인해주세요.', { id: 'session-expired' });
+}
 
 const api = axios.create({
   baseURL: '',
@@ -67,10 +80,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('sms-refresh-token')
 
       if (!refreshToken) {
-        localStorage.removeItem('sms-token')
-        localStorage.removeItem('sms-user')
-        localStorage.removeItem('sms-refresh-token')
-        window.location.href = '/login'
+        handleAuthFailure('no_refresh_token')
         return Promise.reject(error)
       }
 
@@ -98,10 +108,7 @@ api.interceptors.response.use(
         return api(originalRequest)
       } catch {
         processQueue(error, null)
-        localStorage.removeItem('sms-token')
-        localStorage.removeItem('sms-user')
-        localStorage.removeItem('sms-refresh-token')
-        window.location.href = '/login'
+        handleAuthFailure('refresh_failed')
         return Promise.reject(error)
       } finally {
         isRefreshing = false

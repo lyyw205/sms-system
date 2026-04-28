@@ -1230,7 +1230,7 @@ const Templates: React.FC = () => {
       </ModalHeader>
 
       <ModalBody className="!p-0">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 p-6 h-[75vh]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 p-6 h-[75dvh]">
           {/* Left column: settings */}
           <div className="space-y-5 overflow-y-auto pr-2">
             {/* Key */}
