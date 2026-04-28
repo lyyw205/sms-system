@@ -1,7 +1,8 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useClickOutside } from '@/hooks/use-click-outside'
 import { useAuthStore } from '@/stores/auth-store'
 import { useTenantStore } from '@/stores/tenant-store'
 import { Badge } from '@/components/ui/badge'
@@ -146,6 +147,8 @@ const ROLE_LABELS: Record<string, string> = {
 function TenantSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const { tenants, currentTenantId } = useTenantStore()
   const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLElement | null>(null)
+  useClickOutside(ref, () => setOpen(false), open)
 
   if (tenants.length <= 1) return null
 
@@ -162,6 +165,7 @@ function TenantSwitcher({ collapsed = false }: { collapsed?: boolean }) {
     return (
       <Tooltip content={currentLabel} placement="right">
         <button
+          ref={ref as React.MutableRefObject<HTMLButtonElement | null> as React.RefObject<HTMLButtonElement>}
           onClick={() => setOpen(!open)}
           className="relative flex h-9 w-9 items-center justify-center rounded-xl text-[#4E5968] hover:bg-[#F2F4F6] dark:text-gray-400 dark:hover:bg-[#1E1E24]"
         >
@@ -190,7 +194,7 @@ function TenantSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   }
 
   return (
-    <div className="relative">
+    <div ref={ref as React.MutableRefObject<HTMLDivElement | null> as React.RefObject<HTMLDivElement>} className="relative">
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-body text-[#4E5968] hover:bg-[#F2F4F6] dark:text-gray-400 dark:hover:bg-[#1E1E24] transition-colors"

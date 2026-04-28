@@ -39,23 +39,22 @@ export default function Settings() {
   const [unstableCookieInput, setUnstableCookieInput] = useState('');
 
 
-  const fetchStatus = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    else setChecking(true);
+  // silent=true: 스피너 표시 없음 (mount 의 Promise.all 에서 사용 — global loading 으로 처리)
+  // silent=false (기본): 개별 checking 스피너 표시 (refresh 버튼 / 저장 후 재조회 시 사용)
+  const fetchStatus = async (silent = false) => {
+    if (!silent) setChecking(true);
     try {
       const res = await settingsAPI.getNaverStatus();
       setStatus(res.data);
     } catch {
       toast.error('상태 확인 실패');
     } finally {
-      setLoading(false);
       setChecking(false);
     }
   };
 
-  const fetchUnstableStatus = async (showLoading = false) => {
-    if (showLoading) setLoading(true);
-    else setUnstableChecking(true);
+  const fetchUnstableStatus = async (silent = false) => {
+    if (!silent) setUnstableChecking(true);
     try {
       const res = await settingsAPI.getUnstableStatus();
       setUnstableStatus(res.data);
@@ -65,16 +64,15 @@ export default function Settings() {
     } catch {
       // unstable 미설정 시 무시
     } finally {
-      setLoading(false);
       setUnstableChecking(false);
     }
   };
 
 
   useEffect(() => {
-    fetchStatus();
-    fetchUnstableStatus(true);
-
+    // 둘 다 끝나야 loading=false. 빠른 쪽이 끝났다고 거짓 "로딩 완료" 표시되는 race 방지.
+    Promise.all([fetchStatus(true), fetchUnstableStatus(true)])
+      .finally(() => setLoading(false));
   }, []);
 
   const handleSaveCookie = async () => {

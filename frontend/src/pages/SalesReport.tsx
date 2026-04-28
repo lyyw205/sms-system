@@ -12,6 +12,9 @@ import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from 
 import { salesReportAPI, partyHostsAPI } from '@/services/api';
 import { normalizeUtcString } from '@/lib/utils';
 
+// 펼침 상세 행의 배경색 — 다크 모드 분기 포함 (인라인 style 로는 dark variant 불가)
+const DETAIL_ROW_BG = 'bg-[#F8F9FB] dark:bg-[#2C2C34]';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -387,19 +390,19 @@ export default function SalesReport() {
                         {isExpanded && <>
                           {host.dates.map((dd) => (
                             <TableRow key={`${host.host_username}|${dd.date}`} className="hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34]" style={{ height: '36px' }}>
-                              <TableCell style={{ padding: '4px', background: '#F8F9FB' }}></TableCell>
-                              <TableCell style={{ padding: '4px', background: '#F8F9FB' }}></TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{dd.date}</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{dd.participants}명</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{fmt(dd.sales_total)}</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>{fmt(dd.auction_amount ?? 0)}</TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
+                              <TableCell className={DETAIL_ROW_BG} style={{ padding: '4px' }}></TableCell>
+                              <TableCell className={DETAIL_ROW_BG} style={{ padding: '4px' }}></TableCell>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>{dd.date}</TableCell>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#4E5968] dark:text-gray-300 ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>{dd.participants}명</TableCell>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#191F28] dark:text-white ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>{fmt(dd.sales_total)}</TableCell>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#191F28] dark:text-white ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>{fmt(dd.auction_amount ?? 0)}</TableCell>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#191F28] dark:text-white ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>
                                 {dd.participants > 0 ? fmt(Math.round(dd.sales_total / dd.participants)) : '-'}
                               </TableCell>
-                              <TableCell className="text-center text-caption tabular-nums text-[#191F28] dark:text-white" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
+                              <TableCell className={`text-center text-caption tabular-nums text-[#191F28] dark:text-white ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>
                                 {dd.participants > 0 ? fmt(Math.round((dd.auction_amount ?? 0) / dd.participants)) : '-'}
                               </TableCell>
-                              <TableCell className="text-center" style={{ padding: '4px 8px', background: '#F8F9FB' }}>
+                              <TableCell className={`text-center ${DETAIL_ROW_BG}`} style={{ padding: '4px 8px' }}>
                                 {dd.items.length > 0 && (
                                   <Button color="light" size="xs" onClick={() => setDetailModal({ open: true, host: host.host_username, dd })}>
                                     <Eye className="h-3.5 w-3.5 mr-1" />상세

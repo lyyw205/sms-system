@@ -19,15 +19,25 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Load saved credentials on mount
+  // Load saved username on mount + migrate (strip legacy password field)
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SAVED_CREDENTIALS_KEY)
-      if (saved) {
-        const { username: u, password: p } = JSON.parse(saved)
-        setUsername(u || '')
-        setPassword(p || '')
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      const u = typeof parsed?.username === 'string' ? parsed.username : ''
+      const hadLegacyPassword = typeof parsed?.password === 'string' && parsed.password.length > 0
+      if (u) {
+        setUsername(u)
         setRememberMe(true)
+      }
+      // 1회성 마이그레이션: legacy 평문 password 필드 제거
+      if (hadLegacyPassword) {
+        if (u) {
+          localStorage.setItem(SAVED_CREDENTIALS_KEY, JSON.stringify({ username: u }))
+        } else {
+          localStorage.removeItem(SAVED_CREDENTIALS_KEY)
+        }
       }
     } catch { /* ignore */ }
   }, [])
@@ -40,9 +50,9 @@ export default function Login() {
       const res = await authAPI.login({ username, password })
       const { access_token, refresh_token, user } = res.data
 
-      // Save or clear credentials
+      // Save username only (never password — security)
       if (rememberMe) {
-        localStorage.setItem(SAVED_CREDENTIALS_KEY, JSON.stringify({ username, password }))
+        localStorage.setItem(SAVED_CREDENTIALS_KEY, JSON.stringify({ username }))
       } else {
         localStorage.removeItem(SAVED_CREDENTIALS_KEY)
       }
@@ -114,7 +124,7 @@ export default function Login() {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="h-4 w-4 rounded border-[#E5E8EB] text-[#3182F6] focus:ring-[#3182F6] dark:border-gray-600 dark:bg-[#2C2C34]"
               />
-              <span className="text-label text-[#8B95A1] dark:text-gray-400">아이디/비밀번호 저장</span>
+              <span className="text-label text-[#8B95A1] dark:text-gray-400">아이디 저장</span>
             </label>
 
             {error && (

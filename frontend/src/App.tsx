@@ -18,6 +18,7 @@ import ActivityLogs from './pages/ActivityLogs'
 import PartyCheckin from './pages/PartyCheckin'
 import EventSms from './pages/EventSms'
 import SalesReport from './pages/SalesReport'
+import NotFound from './pages/NotFound'
 
 // 스태프 전용 리다이렉트: staff 계정은 /party-checkin 으로만 이동
 function StaffRedirect({ children }: { children: React.ReactNode }) {
@@ -71,6 +72,8 @@ function App() {
               />
               {/* 파티 체크인: 모든 역할 접근 가능 */}
               <Route path="/party-checkin" element={<PartyCheckin />} />
+              {/* 404: 인증된 사용자가 잘못된 URL 진입 시. 미인증은 ProtectedRoute 가 /login 으로 먼저 리다이렉트 */}
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
         </Router>

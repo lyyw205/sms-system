@@ -26,15 +26,17 @@ const ROLE_LABELS: Record<string, string> = {
   staff: '직원',
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  superadmin: '#8B5CF6',
-  admin: '#3182F6',
-  staff: '#8B95A1',
+// 다크 모드 분기를 포함하기 위해 hex → Tailwind 클래스로 변경.
+// 인라인 style 로는 dark variant 적용 불가. 사용처(line 212, 217)에서도 className 으로 바인딩.
+const ROLE_COLOR_CLASS: Record<string, string> = {
+  superadmin: 'text-[#8B5CF6] dark:text-[#A78BFA]',
+  admin: 'text-[#3182F6] dark:text-[#60A5FA]',
+  staff: 'text-[#8B95A1] dark:text-[#B0B8C1]',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  active: '#00C9A7',
-  inactive: '#F04452',
+const STATUS_COLOR_CLASS: Record<string, string> = {
+  active: 'text-[#00C9A7] dark:text-[#34D399]',
+  inactive: 'text-[#F04452] dark:text-[#F87171]',
 }
 
 function formatDate(dateStr?: string) {
@@ -209,12 +211,12 @@ export default function UserManagement() {
                     {user.name}
                   </TableCell>
                   <TableCell>
-                    <span className="text-label font-medium" style={{ color: ROLE_COLORS[user.role] }}>
+                    <span className={`text-label font-medium ${ROLE_COLOR_CLASS[user.role] || 'text-[#191F28] dark:text-white'}`}>
                       {ROLE_LABELS[user.role] || user.role}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-label font-medium" style={{ color: user.active ? STATUS_COLORS.active : STATUS_COLORS.inactive }}>
+                    <span className={`text-label font-medium ${user.active ? STATUS_COLOR_CLASS.active : STATUS_COLOR_CLASS.inactive}`}>
                       {user.active ? '활성' : '비활성'}
                     </span>
                   </TableCell>
