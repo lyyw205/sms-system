@@ -38,6 +38,22 @@ function App() {
     loadTenants()
   }, [loadFromStorage, loadTenants])
 
+  // Phase 3.2 — 다중 탭 인증 상태 동기화.
+  // 같은 origin 의 다른 탭에서 sms-auth (또는 legacy 키) 변경 시 storage 이벤트 발화.
+  // logout 만이 아닌 token refresh / 재로그인까지 모두 rehydrate 로 반영.
+  // 같은 탭 내 변경에는 storage 이벤트 미발화 (브라우저 spec) → 자기 탭 무한 루프 없음.
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      // sms-auth 또는 legacy 키 변경에 모두 반응
+      if (e.key === 'sms-auth' || e.key === 'sms-token' || e.key === 'sms-refresh-token' || e.key === 'sms-user' || e.key === null) {
+        // 전체 storage 클리어(e.key === null) 도 포함
+        useAuthStore.persist.rehydrate()
+      }
+    }
+    window.addEventListener('storage', handler)
+    return () => window.removeEventListener('storage', handler)
+  }, [])
+
   return (
     <ThemeProvider>
         <Router>

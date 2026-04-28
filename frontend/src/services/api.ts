@@ -20,9 +20,9 @@ const api = axios.create({
   },
 });
 
-// Auth interceptor - attach token
+// Auth interceptor - attach token (single source of truth = useAuthStore)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sms-token')
+  const token = useAuthStore.getState().token
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -77,7 +77,7 @@ api.interceptors.response.use(
     const originalRequest = error.config
 
     if (error.response?.status === 401 && window.location.pathname !== '/login' && !originalRequest._retry) {
-      const refreshToken = localStorage.getItem('sms-refresh-token')
+      const refreshToken = useAuthStore.getState().refreshToken
 
       if (!refreshToken) {
         handleAuthFailure('no_refresh_token')
@@ -101,8 +101,8 @@ api.interceptors.response.use(
 
       try {
         const { data } = await axios.post('/api/auth/refresh', { refresh_token: refreshToken })
-        localStorage.setItem('sms-token', data.access_token)
-        localStorage.setItem('sms-refresh-token', data.refresh_token)
+        // store 경유 — persist middleware 가 localStorage 자동 동기화
+        useAuthStore.getState().setTokens(data.access_token, data.refresh_token)
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`
         processQueue(null, data.access_token)
         return api(originalRequest)
