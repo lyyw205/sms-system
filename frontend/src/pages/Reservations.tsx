@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 
-import { reservationsAPI } from '@/services/api';
+import { reservationsAPI, type ReservationCreatePayload } from '@/services/api';
 import { normalizeUtcString } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -304,7 +304,7 @@ export default function Reservations() {
       if (maleCount > 0) genderParts.push(`남${maleCount}`);
       if (femaleCount > 0) genderParts.push(`여${femaleCount}`);
 
-      const payload: Record<string, unknown> = {
+      const payload: ReservationCreatePayload = {
         customer_name:      form.customer_name.trim(),
         phone:              form.phone.trim(),
         check_in_date:      form.reservation_date,

@@ -120,11 +120,100 @@ api.interceptors.response.use(
 )
 
 
+// ============================================================================
+// API Payload 타입 — backend Pydantic 스키마와 1:1 매칭. update 는 Partial<> 활용.
+// 일부 함수(reservationsAPI.update 등)는 동적 [field] 패턴 caller 호환성 위해
+// any 유지. 점진적 타입화 (Phase 5.1).
+// ============================================================================
+
+export interface ReservationCreatePayload {
+  customer_name: string
+  phone: string
+  check_in_date: string  // YYYY-MM-DD
+  check_in_time: string  // HH:MM
+  check_out_date?: string | null
+  status?: string
+  notes?: string | null
+  gender?: string | null
+  male_count?: number | null
+  female_count?: number | null
+  party_size?: number | null
+  party_type?: string | null
+  booking_source?: string
+  naver_room_type?: string | null
+  section?: string | null
+}
+
+export interface BizItemLinkPayload {
+  biz_item_id: string
+  male_priority?: number
+  female_priority?: number
+}
+
+export interface RoomCreatePayload {
+  room_number: string
+  room_type: string
+  base_capacity?: number
+  max_capacity?: number
+  active?: boolean
+  sort_order?: number
+  naver_biz_item_id?: string | null
+  biz_item_ids?: string[] | null
+  biz_item_links?: BizItemLinkPayload[] | null
+  building_id?: number | null
+  dormitory?: boolean
+  bed_capacity?: number
+  door_password?: string | null
+  room_memo?: string | null
+}
+
+export type RoomUpdatePayload = Partial<RoomCreatePayload>
+
+export interface TemplateCreatePayload {
+  template_key: string
+  name: string
+  short_label?: string | null
+  content: string
+  variables?: string
+  category?: string
+  active?: boolean
+  participant_buffer?: number | null
+}
+
+export type TemplateUpdatePayload = Partial<TemplateCreatePayload>
+
+export interface TemplateScheduleCreatePayload {
+  template_id: number
+  schedule_name: string
+  schedule_type: string
+  hour?: number
+  minute?: number
+  day_of_week?: string
+  interval_minutes?: number
+  timezone?: string
+  filters?: Array<{ type: string; value: string }>
+  exclude_sent?: boolean
+  active?: boolean
+  schedule_category?: 'standard' | 'event' | 'custom_schedule'
+  custom_type?: string | null
+  hours_since_booking?: number | null
+  gender_filter?: 'male' | 'female' | null
+  max_checkin_days?: number | null
+  expires_after_days?: number | null
+  send_condition_date?: string | null
+  send_condition_ratio?: number | null
+  send_condition_operator?: string | null
+}
+
+export type TemplateScheduleUpdatePayload = Partial<TemplateScheduleCreatePayload>
+
 // Reservations API
 export const reservationsAPI = {
   getAll: (params?: { skip?: number; limit?: number; status?: string; date?: string; search?: string; source?: string }) =>
     api.get('/api/reservations', { params }),
-  create: (data: any) => api.post('/api/reservations', data),
+  create: (data: ReservationCreatePayload) => api.post('/api/reservations', data),
+  // update: 동적 [field] 패턴 caller (RoomAssignment.tsx:631) 호환성 위해 any 유지.
+  // 백엔드 ReservationUpdate 스키마 기준 Partial 적용 시 caller 측 cast 필요 — 별도 작업.
   update: (id: number, data: any) => api.put(`/api/reservations/${id}`, data),
   delete: (id: number) => api.delete(`/api/reservations/${id}`),
   assignRoom: (id: number, data: { room_id: number | null; date?: string; apply_subsequent?: boolean; apply_group?: boolean }) =>
@@ -137,9 +226,8 @@ export const reservationsAPI = {
 // Rooms API
 export const roomsAPI = {
   getAll: (params?: { include_inactive?: boolean }) => api.get('/api/rooms', { params }),
-  create: (data: { room_number: string; room_type: string; active?: boolean; sort_order?: number; biz_item_ids?: string[] }) =>
-    api.post('/api/rooms', data),
-  update: (id: number, data: any) => api.put(`/api/rooms/${id}`, data),
+  create: (data: RoomCreatePayload) => api.post('/api/rooms', data),
+  update: (id: number, data: RoomUpdatePayload) => api.put(`/api/rooms/${id}`, data),
   reorder: (orderedIds: number[]) =>
     api.post('/api/rooms/reorder', { ordered_ids: orderedIds }),
   delete: (id: number) => api.delete(`/api/rooms/${id}`),
@@ -166,16 +254,8 @@ export const templatesAPI = {
   getAll: (params?: { category?: string; active?: boolean }) =>
     api.get('/api/templates', { params }),
   getById: (id: number) => api.get(`/api/templates/${id}`),
-  create: (data: {
-    template_key: string;
-    name: string;
-    short_label?: string | null;
-    content: string;
-    variables?: string;
-    category?: string;
-    active?: boolean;
-  }) => api.post('/api/templates', data),
-  update: (id: number, data: any) => api.put(`/api/templates/${id}`, data),
+  create: (data: TemplateCreatePayload) => api.post('/api/templates', data),
+  update: (id: number, data: TemplateUpdatePayload) => api.put(`/api/templates/${id}`, data),
   reorder: (orderedIds: number[]) =>
     api.post('/api/templates/reorder', { ordered_ids: orderedIds }),
   delete: (id: number) => api.delete(`/api/templates/${id}`),
@@ -199,29 +279,8 @@ export const templateSchedulesAPI = {
   getAll: (params?: { active?: boolean; template_id?: number }) =>
     api.get('/api/template-schedules', { params }),
   getById: (id: number) => api.get(`/api/template-schedules/${id}`),
-  create: (data: {
-    template_id: number;
-    schedule_name: string;
-    schedule_type: string;
-    hour?: number;
-    minute?: number;
-    day_of_week?: string;
-    interval_minutes?: number;
-    timezone?: string;
-    filters?: Array<{ type: string; value: string }>;
-    exclude_sent?: boolean;
-    active?: boolean;
-    schedule_category?: 'standard' | 'event' | 'custom_schedule';
-    custom_type?: string | null;
-    hours_since_booking?: number | null;
-    gender_filter?: 'male' | 'female' | null;
-    max_checkin_days?: number | null;
-    expires_after_days?: number | null;
-    send_condition_date?: string | null;
-    send_condition_ratio?: number | null;
-    send_condition_operator?: string | null;
-  }) => api.post('/api/template-schedules', data),
-  update: (id: number, data: any) => api.put(`/api/template-schedules/${id}`, data),
+  create: (data: TemplateScheduleCreatePayload) => api.post('/api/template-schedules', data),
+  update: (id: number, data: TemplateScheduleUpdatePayload) => api.put(`/api/template-schedules/${id}`, data),
   delete: (id: number) => api.delete(`/api/template-schedules/${id}`),
   run: (id: number) => api.post(`/api/template-schedules/${id}/run`),
   preview: (id: number) => api.get(`/api/template-schedules/${id}/preview`),
