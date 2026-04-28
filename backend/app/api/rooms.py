@@ -582,6 +582,46 @@ async def update_room(
     )
 
 
+class RoomReorderRequest(BaseModel):
+    ordered_ids: List[int]  # 새 정렬 순서대로 정렬된 room id 배열
+
+
+@router.post("/reorder", response_model=ActionResponse)
+def reorder_rooms(
+    payload: RoomReorderRequest,
+    db: Session = Depends(get_tenant_scoped_db),
+    current_user: User = Depends(require_admin_or_above),
+):
+    """ordered_ids 순서대로 sort_order 일괄 갱신 (DnD용).
+
+    현재 테넌트의 전체 객실 ID 와 정확히 일치해야 함 (중복/누락 모두 거부).
+    부분 reorder 를 허용하면 보내지 않은 객실과 sort_order 가 충돌할 수 있음.
+    프론트에서 N개 PUT 병렬 → 1회 호출로 단순화 + 트랜잭션 보장.
+    """
+    sent_ids = payload.ordered_ids
+    if not sent_ids:
+        raise HTTPException(status_code=400, detail="ordered_ids가 비어 있습니다")
+
+    if len(sent_ids) != len(set(sent_ids)):
+        raise HTTPException(status_code=400, detail="중복된 객실 ID가 포함되어 있습니다")
+
+    # 현재 테넌트의 모든 객실 (TenantMixin auto-filter 적용)
+    all_ids = {row[0] for row in db.query(Room.id).all()}
+    if set(sent_ids) != all_ids:
+        raise HTTPException(status_code=400, detail="전체 객실 목록과 일치하지 않습니다")
+
+    rooms_list = db.query(Room).filter(Room.id.in_(sent_ids)).all()
+    by_id = {r.id: r for r in rooms_list}
+
+    for index, rid in enumerate(sent_ids):
+        by_id[rid].sort_order = index + 1  # 1-based (기존 RoomSettings 동작과 일치)
+
+    db.commit()
+
+    diag("rooms.reordered", level="critical", count=len(sent_ids))
+    return {"success": True, "message": "정렬 순서가 변경되었습니다"}
+
+
 @router.delete("/{room_id}", response_model=ActionResponse)
 async def delete_room(room_id: int, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user)):
     """Delete a room"""

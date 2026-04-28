@@ -140,6 +140,8 @@ export const roomsAPI = {
   create: (data: { room_number: string; room_type: string; active?: boolean; sort_order?: number; biz_item_ids?: string[] }) =>
     api.post('/api/rooms', data),
   update: (id: number, data: any) => api.put(`/api/rooms/${id}`, data),
+  reorder: (orderedIds: number[]) =>
+    api.post('/api/rooms/reorder', { ordered_ids: orderedIds }),
   delete: (id: number) => api.delete(`/api/rooms/${id}`),
   getBizItems: () => api.get('/api/rooms/naver/biz-items'),
   syncBizItems: () => api.post('/api/rooms/naver/biz-items/sync'),

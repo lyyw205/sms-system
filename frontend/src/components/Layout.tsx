@@ -450,12 +450,8 @@ function MobileSidebar() {
   )
 }
 
-// ── Header ──
-function AppHeader({
-  isMobile,
-}: {
-  isMobile: boolean
-}) {
+// ── Header Actions (admin/staff 공통: 사용자 뱃지 + 테마 토글 + 로그아웃) ──
+function HeaderActions() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
 
@@ -465,31 +461,42 @@ function AppHeader({
   }
 
   return (
+    <div className="flex items-center gap-2">
+      {user && (
+        <>
+          <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
+            {user.name}
+          </span>
+          <Badge color={ROLE_BADGE_COLORS[user.role]} size="sm">
+            {ROLE_LABELS[user.role] || user.role}
+          </Badge>
+        </>
+      )}
+      <ThemeToggleButton />
+      <button
+        onClick={handleLogout}
+        className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
+        aria-label="로그아웃"
+        title="로그아웃"
+      >
+        <LogOut size={18} />
+      </button>
+    </div>
+  )
+}
+
+// ── Header (admin/superadmin) ──
+function AppHeader({
+  isMobile,
+}: {
+  isMobile: boolean
+}) {
+  return (
     <header className="sticky top-0 z-20 flex h-14 w-full items-center justify-between bg-[#FAFBFC]/90 px-4 py-2.5 backdrop-blur-md dark:bg-[#17171C]/90">
       <div className="flex items-center gap-3">
         {isMobile && <MobileSidebar />}
       </div>
-      <div className="flex items-center gap-2">
-        {user && (
-          <>
-            <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
-              {user.name}
-            </span>
-            <Badge color={ROLE_BADGE_COLORS[user.role]} size="sm">
-              {ROLE_LABELS[user.role] || user.role}
-            </Badge>
-          </>
-        )}
-        <ThemeToggleButton />
-        <button
-          onClick={handleLogout}
-          className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
-          aria-label="로그아웃"
-          title="로그아웃"
-        >
-          <LogOut size={18} />
-        </button>
-      </div>
+      <HeaderActions />
     </header>
   )
 }
@@ -502,15 +509,9 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const isMobile = useIsMobile()
-  const navigate = useNavigate()
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
 
   const isStaff = user?.role === 'staff'
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
 
   // 스태프: 사이드바 없이 전체 화면 레이아웃
   if (isStaff) {
@@ -522,27 +523,7 @@ export default function Layout({ children }: LayoutProps) {
               <span className="text-label font-bold">S</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {user && (
-              <>
-                <span className="hidden text-label text-[#4E5968] dark:text-gray-300 sm:inline">
-                  {user.name}
-                </span>
-                <Badge color={ROLE_BADGE_COLORS[user.role]} size="sm">
-                  {ROLE_LABELS[user.role] || user.role}
-                </Badge>
-              </>
-            )}
-            <ThemeToggleButton />
-            <button
-              onClick={handleLogout}
-              className="rounded-xl p-2 text-[#B0B8C1] hover:bg-[#F2F4F6] dark:text-gray-500 dark:hover:bg-[#1E1E24]"
-              aria-label="로그아웃"
-              title="로그아웃"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
+          <HeaderActions />
         </header>
         <main className="min-w-0 flex-1 p-4 md:p-6">
           {children}

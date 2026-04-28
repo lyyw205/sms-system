@@ -401,27 +401,59 @@ const RoomSettings = () => {
     }
     setSavingBuildings(true);
     try {
-      // Delete removed buildings
+      // 단계별 Promise.allSettled — 순차 await 의 부분 저장 문제 해결.
+      // 삭제 → 생성 → 수정 순서는 유지 (같은 이름 빌딩 재생성 시나리오 보존).
       const deletedIds = buildingRows.filter((r) => r._deleted && r.id !== null).map((r) => r.id!);
-      for (const id of deletedIds) {
-        await buildingsAPI.delete(id);
+      const newRows = visibleRows.filter((r) => r.id === null);
+      const updateRows = visibleRows.filter((r) => {
+        if (r.id === null) return false;
+        const original = buildings.find((b) => b.id === r.id);
+        return !!original && (original.name !== r.name.trim() || (original.description || '') !== r.description.trim());
+      });
+
+      const failures: string[] = [];
+
+      // Stage 1: 삭제
+      if (deletedIds.length > 0) {
+        const results = await Promise.allSettled(deletedIds.map((id) => buildingsAPI.delete(id)));
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') failures.push(`삭제[id=${deletedIds[i]}]`);
+        });
       }
-      // Create or update
-      for (const row of visibleRows) {
-        if (row.id === null) {
-          await buildingsAPI.create({ name: row.name.trim(), description: row.description.trim() });
-        } else {
-          const original = buildings.find((b) => b.id === row.id);
-          if (original && (original.name !== row.name.trim() || (original.description || '') !== row.description.trim())) {
-            await buildingsAPI.update(row.id, { name: row.name.trim(), description: row.description.trim() });
-          }
-        }
+
+      // Stage 2: 생성
+      if (newRows.length > 0) {
+        const results = await Promise.allSettled(
+          newRows.map((row) => buildingsAPI.create({ name: row.name.trim(), description: row.description.trim() })),
+        );
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') failures.push(`생성[${newRows[i].name}]`);
+        });
       }
-      toast.success('건물 저장 완료');
-      setBuildingManageOpen(false);
+
+      // Stage 3: 수정
+      if (updateRows.length > 0) {
+        const results = await Promise.allSettled(
+          updateRows.map((row) => buildingsAPI.update(row.id!, { name: row.name.trim(), description: row.description.trim() })),
+        );
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') failures.push(`수정[${updateRows[i].name}]`);
+        });
+      }
+
+      if (failures.length > 0) {
+        toast.error(`${failures.length}건 저장 실패: ${failures.join(', ')}. 다시 시도해주세요.`);
+        // 백엔드 진단용 — 다음 요청에 첨부
+        window.__diagAction = `building_save_partial_failure_${failures.length}`;
+      } else {
+        toast.success('건물 저장 완료');
+        setBuildingManageOpen(false);
+      }
+      // 부분 저장 / 전체 성공 모두 최신 상태로 재조회
       loadBuildings();
       loadRooms();
     } catch (err: any) {
+      // Promise.allSettled 가 throw 안 하므로 일반적으로 여기 안 옴. 안전 fallback.
       toast.error(err?.response?.data?.detail || '저장 실패');
     } finally {
       setSavingBuildings(false);
@@ -520,14 +552,13 @@ const RoomSettings = () => {
     setRooms(newRooms);
 
     try {
-      await Promise.all(
-        newRooms.map((room, idx) => roomsAPI.update(room.id, { sort_order: idx + 1 }))
-      );
+      // N개 PUT 병렬 → reorder 1회 호출 (트랜잭션 보장 + 동시 race 차단).
+      await roomsAPI.reorder(newRooms.map((room) => room.id));
       toast.success('정렬 순서 변경 완료');
       loadRooms();
-    } catch {
-      toast.error('정렬 순서 변경 실패');
-      loadRooms();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || '정렬 순서 변경 실패');
+      loadRooms();  // 실패 시 서버 상태로 되돌림
     }
   };
 

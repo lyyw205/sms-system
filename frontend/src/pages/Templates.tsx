@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -696,9 +696,18 @@ const Templates: React.FC = () => {
     }
   };
 
+  // 진행 중 reorder API 가 있으면 새 드래그 차단 — 응답 도착 순서 꼬임 방지.
+  // useRef 사용: 리렌더 없이 동기적으로 read/write.
+  const reorderingRef = useRef(false);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    if (reorderingRef.current) {
+      toast.info('이전 변경이 처리 중입니다. 잠시 후 다시 시도해주세요.', { id: 'template-reorder-busy' });
+      return;
+    }
 
     const oldIndex = templates.findIndex(t => t.id === active.id);
     const newIndex = templates.findIndex(t => t.id === over.id);
@@ -707,11 +716,15 @@ const Templates: React.FC = () => {
     const reordered = arrayMove(templates, oldIndex, newIndex);
     setTemplates(reordered); // 즉시 반영 (옵티미스틱)
 
+    reorderingRef.current = true;
     templatesAPI
       .reorder(reordered.map(t => t.id))
       .catch((err: any) => {
         toast.error(err.response?.data?.detail ?? '순서 저장 실패');
         fetchTemplates(); // 롤백
+      })
+      .finally(() => {
+        reorderingRef.current = false;
       });
   };
 

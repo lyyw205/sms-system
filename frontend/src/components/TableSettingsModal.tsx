@@ -76,6 +76,8 @@ export default function TableSettingsModal({
   const [colorPopupDivIdx, setColorPopupDivIdx] = useState<number | null>(null);
   const [colorPopupPos, setColorPopupPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const colorPopupRef = useRef<HTMLDivElement>(null);
+  // 팝업 트리거 버튼 참조 — 모달 스크롤/뷰포트 리사이즈 시 좌표 재계산용
+  const colorPopupTriggerRef = useRef<HTMLElement | null>(null);
 
   // --- Tab 3: Row style state ---
   const [localRowColors, setLocalRowColors] = useState<RowColorSettings>({ ...DEFAULT_ROW_COLORS });
@@ -170,6 +172,24 @@ export default function TableSettingsModal({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [colorPopupDivIdx]);
 
+  // 팝업 위치 동적 추적 — 모달 body 스크롤 / 뷰포트 리사이즈 시 트리거 버튼 옆에 정확히 위치.
+  // capture: true 로 전체 스크롤(중첩 모달 body 포함) 캐치.
+  useEffect(() => {
+    if (colorPopupDivIdx === null) return;
+    const updatePos = () => {
+      const trigger = colorPopupTriggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setColorPopupPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+    };
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [colorPopupDivIdx]);
+
   // --- Tab 2 handlers ---
   function toggleDivider(divIdx: number) {
     setDividers(prev => {
@@ -254,8 +274,11 @@ export default function TableSettingsModal({
                   e.stopPropagation();
                   if (isPopupOpen) {
                     setColorPopupDivIdx(null);
+                    colorPopupTriggerRef.current = null;
                   } else {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    const target = e.currentTarget as HTMLElement;
+                    colorPopupTriggerRef.current = target;
+                    const rect = target.getBoundingClientRect();
                     setColorPopupPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
                     setColorPopupDivIdx(divIdx);
                   }
