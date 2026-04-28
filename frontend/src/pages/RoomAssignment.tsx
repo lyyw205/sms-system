@@ -2296,7 +2296,7 @@ const RoomAssignment = () => {
         onMouseLeave={onZoneLeave}
       >
         {/* Room label - vertically centered, spans all rows */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b" style={{ ...borderStyle, ...stripeBgStyle }}>
+        <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-r-[#E5E8EB] dark:border-r-gray-700 border-b" style={{ ...borderStyle, ...stripeBgStyle }}>
           <span className="font-semibold text-[#191F28] dark:text-white text-body shrink-0">{room_number}</span>
           <RoomMemoEditor roomId={room_id} memo={roomMemoMap[room_id] || ''} onSave={saveRoomMemo} />
         </div>
@@ -2343,7 +2343,7 @@ const RoomAssignment = () => {
 
         {/* Next day column */}
         <div
-          className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] border-b transition-all duration-200 ${
+          className={`relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none border-b transition-all duration-200 ${
             dragOverNextRoom === room_id
               ? 'bg-[#E8F3FF] dark:bg-[#3182F6]/8 ring-1 ring-inset ring-[#3182F6]/30'
               : ''
@@ -2795,7 +2795,7 @@ const RoomAssignment = () => {
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">메모<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.notes; setResizeCol('notes'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                   <div className="relative pl-[9px] pr-1.5 text-label font-semibold uppercase tracking-wide text-[#8B95A1] dark:text-[#8B95A1]">문자<div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.sms; setResizeCol('sms'); }} className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:right-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" /></div>
                 </div>
-                <div className="relative flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] flex flex-col justify-center self-stretch transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
+                <div className="relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none flex flex-col justify-center self-stretch transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }}>
                   {!nextDayExpanded && (
                     <div onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); resizeStartXRef.current = e.clientX; resizeStartWidthRef.current = colWidths.nextDay; setResizeCol('nextDay'); }} className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 before:content-[''] before:absolute before:left-0 before:top-1 before:bottom-1 before:w-px before:bg-[#D1D5DB] dark:before:bg-[#4E5968] hover:before:bg-[#3182F6] active:before:bg-[#3182F6]" />
                   )}
@@ -2903,7 +2903,7 @@ const RoomAssignment = () => {
 
                 {/* Next day column for pool */}
                 <div
-                  className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
+                  className={`relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
                     dragOverNextPool ? 'bg-[#FF9500]/50 dark:bg-[#FF9500]/8' : ''
                   } ${selectionActive ? 'cursor-pointer' : ''}`}
                   style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay, minHeight: `${Math.max(1, nextDayUnassigned.length) * 40}px` }}
@@ -3014,7 +3014,7 @@ const RoomAssignment = () => {
 
                 {/* Next day column for party */}
                 <div
-                  className={`flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
+                  className={`relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200 ${
                     dragOverNextParty ? 'bg-[#7B61FF]/5 dark:bg-[#7B61FF]/8' : ''
                   } ${selectionActive ? 'cursor-pointer' : ''}`}
                   style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay, minHeight: `${Math.max(1, nextDayPartyOnly.length) * 40}px` }}
@@ -3108,7 +3108,7 @@ const RoomAssignment = () => {
                   </div>
 
                   {/* Next day column - empty */}
-                  <div className="flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
+                  <div className="relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
                 </div>
               )}
 
@@ -3130,7 +3130,7 @@ const RoomAssignment = () => {
                   </div>
 
                   {/* Next day column - empty */}
-                  <div className="flex-shrink-0 shadow-[inset_1px_0_0_#E5E8EB] z-[2] bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
+                  <div className="relative flex-shrink-0 z-[2] before:content-[''] before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[#E5E8EB] dark:before:bg-gray-700 before:z-10 before:pointer-events-none bg-[#F8F9FA] dark:bg-[#17171C] border-b border-b-[#E5E8EB] dark:border-b-gray-700 transition-all duration-200" style={{ width: nextDayExpanded ? NEXT_DAY_EXPANDED_WIDTH : colWidths.nextDay }} />
                 </div>
               )}
             </div>
@@ -3941,6 +3941,12 @@ const RoomAssignment = () => {
 
       {/* Context menu */}
       {contextMenu && contextMenuActions && (
+        <>
+          <div
+            className="fixed inset-0 z-[55]"
+            onClick={() => { setContextMenu(null); setMobileContextMenuOpen(false); }}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); setMobileContextMenuOpen(false); }}
+          />
         <GuestContextMenu
           position={{ x: contextMenu.x, y: contextMenu.y }}
           targetCount={contextMenuActions.targetCount}
@@ -3961,6 +3967,7 @@ const RoomAssignment = () => {
           hideDelete={isMobile && mobileContextMenuOpen}
           onClose={() => { setContextMenu(null); setMobileContextMenuOpen(false); }}
         />
+        </>
       )}
     </div>
   );
