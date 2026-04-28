@@ -3,7 +3,7 @@ Sales Report API - 진행자별 매출 분석 + 날짜별 상세
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from sqlalchemy import and_, or_
 from pydantic import BaseModel
 from typing import Optional, List
 from app.api.deps import get_tenant_scoped_db

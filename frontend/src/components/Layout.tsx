@@ -498,7 +498,6 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const isMobile = useIsMobile()
-  const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
 

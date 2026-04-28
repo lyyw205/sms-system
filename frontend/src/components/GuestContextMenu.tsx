@@ -42,7 +42,6 @@ export default function GuestContextMenu({
   onCancelExtendStay,
   onChangeDates,
   hideDelete,
-  onClose,
 }: GuestContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState<{ x: number; y: number }>(position);

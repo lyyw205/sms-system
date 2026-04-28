@@ -27,8 +27,6 @@ import {
   Layers,
   Circle,
   Minus,
-  PanelRightOpen,
-  PanelRightClose,
   ChevronsLeft,
   ChevronsRight,
   Menu,
@@ -48,6 +46,96 @@ import {
   saveRowColors,
   type RowColorSettings,
 } from '@/lib/highlight-colors';
+
+interface RoomMemoEditorProps {
+  roomId: number;
+  memo: string;
+  onSave: (roomId: number, memo: string) => Promise<void>;
+}
+
+function RoomMemoEditor({ roomId, memo, onSave }: RoomMemoEditorProps) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(memo);
+  const [saving, setSaving] = useState(false);
+  const lastTapRef = useRef(0);
+
+  useEffect(() => {
+    if (!editing) setValue(memo);
+  }, [memo, editing]);
+
+  const activate = (e?: React.SyntheticEvent) => {
+    if (e) e.stopPropagation();
+    setEditing(true);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      e.preventDefault();
+      activate(e);
+    }
+    lastTapRef.current = now;
+  };
+
+  const commit = async () => {
+    const next = value.trim();
+    if (next === memo) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(roomId, next);
+      setEditing(false);
+    } catch {
+      setValue(memo);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="text"
+        value={value}
+        autoFocus
+        disabled={saving}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === 'Escape') {
+            setValue(memo);
+            setEditing(false);
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        placeholder="메모"
+        className="text-caption flex-1 min-w-0 bg-transparent border-b border-[#3182F6] outline-none px-1 py-0 text-[#191F28] dark:text-white placeholder-[#D1D5DB] dark:placeholder-[#4E5968]"
+      />
+    );
+  }
+
+  return (
+    <span
+      onDoubleClick={activate}
+      onTouchEnd={handleTouchEnd}
+      title="더블클릭하여 메모 수정"
+      className={`text-caption truncate cursor-text select-none flex-1 min-w-0 ${
+        memo
+          ? 'text-[#8B95A1] dark:text-gray-400'
+          : 'text-[#D1D5DB] dark:text-[#4E5968]'
+      }`}
+    >
+      {memo || '메모'}
+    </span>
+  );
+}
 
 interface SmsAssignment {
   id: number;
@@ -131,9 +219,7 @@ interface SmsCellProps {
 
 const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selectedDate, onToggle, onAssign, onRemove }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showArrows, setShowArrows] = useState(false);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -164,21 +250,6 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
     });
   })();
 
-  const checkScroll = useCallback(() => {
-    if (scrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-      setShowArrows(scrollWidth > clientWidth);
-      setCanScrollLeft(scrollLeft > 0);
-      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkScroll();
-    const handleResize = () => checkScroll();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [checkScroll, assignments]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -203,12 +274,6 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
     }
   }, [dropdownOpen]);
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: direction === 'left' ? -100 : 100, behavior: 'smooth' });
-      setTimeout(checkScroll, 300);
-    }
-  };
 
   const getLabel = (key: string) => {
     const tpl = templateLabels.find(t => t.template_key === key);
@@ -237,7 +302,6 @@ const SmsCell: React.FC<SmsCellProps> = ({ reservation, templateLabels, selected
     <div className="relative flex items-center h-8">
       <div
         ref={scrollRef}
-        onScroll={checkScroll}
         className="overflow-x-auto overflow-y-hidden flex items-center min-w-0 scrollbar-none"
       >
         <div className="flex items-center gap-1 flex-nowrap">
@@ -454,7 +518,7 @@ const RoomAssignment = () => {
   const undoInProgress = useRef(false);
 
   const [recentlyMovedId, setRecentlyMovedId] = useState<number | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [processing] = useState(false);
   const [quickAddedId, setQuickAddedId] = useState<number | null>(null);
   const [collapsedBuildings, setCollapsedBuildings] = useState<Set<number | null>>(new Set());
 
@@ -664,6 +728,24 @@ const RoomAssignment = () => {
     });
     return map;
   }, [rooms]);
+
+  const roomMemoMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    rooms.forEach((room) => {
+      map[room.id] = room.room_memo || '';
+    });
+    return map;
+  }, [rooms]);
+
+  const saveRoomMemo = useCallback(async (roomId: number, memo: string) => {
+    try {
+      await roomsAPI.update(roomId, { room_memo: memo });
+      setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, room_memo: memo } : r)));
+    } catch {
+      toast.error('메모 저장 실패');
+      throw new Error('save failed');
+    }
+  }, []);
 
   const activeRoomEntries = useMemo(() => {
     return rooms.filter((room) => room.active).map((room) => ({
@@ -1168,7 +1250,6 @@ const RoomAssignment = () => {
         return;
       }
 
-      const sourceDate = sourceIsNextDay ? selectedDate.add(1, 'day') : selectedDate;
       const destDate = dropIsNextDay ? selectedDate.add(1, 'day') : selectedDate;
       const destDateStr = destDate.format('YYYY-MM-DD');
       const destCheckout = destDate.add(1, 'day').format('YYYY-MM-DD');
@@ -1836,11 +1917,6 @@ const RoomAssignment = () => {
 
   const handleSmsToggle = async (resId: number, templateKey: string) => {
     const res = reservations.find(r => r.id === resId);
-    const dateStr = selectedDate.format('YYYY-MM-DD');
-    const assignment = res?.sms_assignments?.find(a => a.template_key === templateKey && a.date === dateStr)
-      || res?.sms_assignments?.find(a => a.template_key === templateKey);
-    const wasSent = !!assignment?.sent_at;
-
     const tpl = templateLabels.find(t => t.template_key === templateKey);
     setSendConfirm({
       type: 'toggle',
@@ -1933,11 +2009,7 @@ const RoomAssignment = () => {
     e.preventDefault();
     e.stopPropagation();
 
-    const isTouch = pe.pointerType === 'touch';
-    const row = (e.target as HTMLElement).closest('.group\\/guest') as HTMLElement | null;
-
     const res = findReservation(resId)?.res;
-    let newTargetIds: number[] = [];
 
     setSelectedGuestIds(prev => {
       const next = new Set(prev);
@@ -1960,7 +2032,6 @@ const RoomAssignment = () => {
           next.add(resId);
         }
       }
-      newTargetIds = [...next];
       return next;
     });
 
@@ -2226,10 +2297,8 @@ const RoomAssignment = () => {
       >
         {/* Room label - vertically centered, spans all rows */}
         <div className="flex items-center gap-1.5 flex-shrink-0 w-42 pl-3 pr-2 py-2 border-r border-b" style={{ ...borderStyle, ...stripeBgStyle }}>
-          <span className="font-semibold text-[#191F28] dark:text-white text-body">{room_number}</span>
-          {roomInfoMap[room_number] && (
-            <span className="text-caption text-[#B0B8C1] dark:text-[#8B95A1] truncate">{roomInfoMap[room_number]}</span>
-          )}
+          <span className="font-semibold text-[#191F28] dark:text-white text-body shrink-0">{room_number}</span>
+          <RoomMemoEditor roomId={room_id} memo={roomMemoMap[room_id] || ''} onSave={saveRoomMemo} />
         </div>
 
         {/* Guest rows */}

@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from app.rate_limit import limiter
 
 
-from app.api import messages, reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin, events, tenants
+from app.api import reservations, dashboard, scheduler, rooms, templates, template_schedules, auth, settings, activity_logs, buildings, party_checkin, events, tenants
 from app.api.event_sms import router as event_sms_router
 from app.api.onsite_sales import router as onsite_sales_router
 from app.api.sales_report import router as sales_report_router
@@ -148,7 +148,6 @@ async def diag_correlation_middleware(request, call_next):
 @app.get("/sentry-debug")
 async def trigger_error():
     """Sentry 연동 테스트용 (의도적 500 에러)"""
-    division_by_zero = 1 / 0
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -195,7 +194,6 @@ async def shutdown_event():
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(messages.router)
 app.include_router(reservations.router)
 app.include_router(rooms.router)
 app.include_router(dashboard.router)

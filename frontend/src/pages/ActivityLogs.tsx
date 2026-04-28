@@ -17,7 +17,6 @@ import {
   User,
   CheckCircle2,
   XCircle,
-  AlertCircle,
   Cog,
   ScrollText,
 } from 'lucide-react'

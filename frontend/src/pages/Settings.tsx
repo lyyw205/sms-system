@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, RefreshCw, Trash2, X } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { settingsAPI } from '@/services/api';
 import { useTenantStore } from '@/stores/tenant-store';

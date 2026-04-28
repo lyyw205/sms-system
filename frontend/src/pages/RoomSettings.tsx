@@ -307,18 +307,6 @@ const RoomSettings = () => {
     });
   };
 
-  const updatePriority = (bizItemId: string, field: 'male_priority' | 'female_priority', value: number) => {
-    setForm((f) => ({
-      ...f,
-      biz_item_priorities: {
-        ...f.biz_item_priorities,
-        [bizItemId]: {
-          ...(f.biz_item_priorities[bizItemId] || { male_priority: 0, female_priority: 0 }),
-          [field]: value,
-        },
-      },
-    }));
-  };
 
   const handleSubmit = async () => {
     if (!form.room_number.trim() || !form.room_type.trim()) {

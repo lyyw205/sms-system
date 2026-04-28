@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from app.api.deps import get_tenant_scoped_db
 from app.auth.dependencies import get_current_user
 from app.db.models import PartyHost, User

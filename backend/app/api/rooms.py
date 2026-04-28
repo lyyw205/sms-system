@@ -47,6 +47,7 @@ class RoomCreate(BaseModel):
     dormitory: bool = False
     bed_capacity: int = 1
     door_password: Optional[str] = None
+    room_memo: Optional[str] = None
 
 
 class RoomUpdate(BaseModel):
@@ -63,6 +64,7 @@ class RoomUpdate(BaseModel):
     dormitory: Optional[bool] = None
     bed_capacity: Optional[int] = None
     door_password: Optional[str] = None
+    room_memo: Optional[str] = None
 
 
 class RoomResponse(BaseModel):
@@ -83,6 +85,7 @@ class RoomResponse(BaseModel):
     room_group_id: Optional[int] = None
     room_group_name: Optional[str] = None
     door_password: Optional[str] = None
+    room_memo: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -141,6 +144,7 @@ def _room_to_response(room: Room) -> dict:
         dormitory=room.is_dormitory,
         bed_capacity=room.bed_capacity,
         door_password=room.door_password,
+        room_memo=room.room_memo,
         created_at=room.created_at,
         updated_at=room.updated_at,
     )
@@ -482,6 +486,7 @@ async def create_room(room: RoomCreate, db: Session = Depends(get_tenant_scoped_
         is_dormitory=room.dormitory,
         bed_capacity=room.bed_capacity,
         door_password=room.door_password,
+        room_memo=room.room_memo,
     )
     db.add(db_room)
     db.flush()  # Get room.id before creating links

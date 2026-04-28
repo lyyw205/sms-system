@@ -272,17 +272,6 @@ export default function PartyCheckin() {
     finally { setAuctionSaving(false) }
   }
 
-  async function handleAuctionDelete() {
-    if (!auction) return
-    try {
-      await onsiteAuctionAPI.delete(auction.id)
-      setAuction(null)
-      setAuctionItemName('')
-      setAuctionAmount('')
-      setAuctionWinner('')
-      toast.success('경매 기록이 삭제되었습니다')
-    } catch { toast.error('삭제에 실패했습니다') }
-  }
 
   const renderGuestTable = (guestList: PartyGuest[], label: string) => (
     <div className="section-card overflow-hidden">

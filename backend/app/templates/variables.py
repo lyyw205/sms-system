@@ -37,9 +37,9 @@ AVAILABLE_VARIABLES = {
         "example": "101",
         "category": "room"
     },
-    "naver_room_type": {
-        "description": "객실 타입",
-        "example": "스탠다드 더블",
+    "room_type": {
+        "description": "객실 타입 (실제 배정된 객실의 room_type)",
+        "example": "더블룸",
         "category": "room"
     },
     "room_password": {
@@ -332,7 +332,6 @@ def calculate_template_variables(
     # 직접 매핑 (모델 필드 = 변수명)
     variables['customer_name'] = reservation.customer_name or ''
     variables['phone'] = reservation.phone or ''
-    variables['naver_room_type'] = reservation.naver_room_type or ''
 
     # 객실 정보 - room_assignment 기반 (denormalized fallback 제거, Phase 3-1)
     effective_room_password = room_assignment.room_password if room_assignment else ""
@@ -345,6 +344,8 @@ def calculate_template_variables(
     room_obj = None
     if room_assignment and room_assignment.room_id:
         room_obj = db.query(Room).filter(Room.id == room_assignment.room_id).first()
+
+    variables['room_type'] = room_obj.room_type if room_obj else ''
 
     effective_room_number = room_obj.room_number if room_obj else ""
 

@@ -28,48 +28,11 @@ class UserRole(str, enum.Enum):
     STAFF = "staff"
 
 
-class MessageDirection(str, enum.Enum):
-    INBOUND = "inbound"
-    OUTBOUND = "outbound"
-
-
-class MessageStatus(str, enum.Enum):
-    PENDING = "pending"
-    SENT = "sent"
-    FAILED = "failed"
-    RECEIVED = "received"
-
-
 class ReservationStatus(str, enum.Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
-
-
-class Message(TenantMixin, Base):
-    """SMS message records"""
-
-    __tablename__ = "messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    message_id = Column(String(100))  # indexed via uq_tenant_message_id (tenant_id, message_id)
-    direction = Column(Enum(MessageDirection, name="message_direction", native_enum=False), nullable=False, index=True)
-    from_ = Column("from_phone", String(20), nullable=False, index=True)
-    to = Column(String(20), nullable=False, index=True)
-    content = Column("message", Text, nullable=False)
-    status = Column(Enum(MessageStatus, name="message_status", native_enum=False), default=MessageStatus.PENDING)
-    created_at = Column(DateTime, default=utc_now)
-
-    # Auto-response metadata
-    auto_response = Column(Text, nullable=True)
-    auto_response_confidence = Column(Float, nullable=True)
-    needs_review = Column("is_needs_review", Boolean, default=False, index=True)
-    response_source = Column(String(20), nullable=True, index=True)  # 'rule', 'llm', 'manual'
-
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "message_id", name="uq_tenant_message_id"),
-    )
 
 
 class Reservation(TenantMixin, Base):
@@ -292,6 +255,7 @@ class Room(TenantMixin, Base):
     is_dormitory = Column(Boolean, default=False)
     bed_capacity = Column("dormitory_beds", Integer, default=1)
     door_password = Column("default_password", String(20), nullable=True)  # 객실 고정 비밀번호
+    room_memo = Column(Text, nullable=True)  # 운영자용 메모 (RoomAssignment 라벨 셀에 표시)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -593,7 +557,7 @@ class PartyHost(TenantMixin, Base):
 from app.db.tenant_context import register_tenant_model as _register  # noqa: E402
 
 for _model in [
-    Message, Reservation, MessageTemplate, ReservationSmsAssignment,
+    Reservation, MessageTemplate, ReservationSmsAssignment,
     RoomBizItemLink, Building, RoomGroup, Room, RoomAssignment,
     NaverBizItem, TemplateSchedule, ActivityLog, PartyCheckin, ReservationDailyInfo,
     ParticipantSnapshot, OnsiteSale, DailyHost, OnsiteAuction, PartyHost,

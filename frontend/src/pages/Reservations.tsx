@@ -19,8 +19,6 @@ import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from 
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import { TextInput } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -79,16 +77,6 @@ const EMPTY_FORM: FormState = {
   notes: '',
 };
 
-function fmtDate(val: string | null | undefined): string {
-  if (!val) return '-';
-  return dayjs(val).format('YYYY.MM.DD');
-}
-
-function fmtTime(val: string | null | undefined): string {
-  if (!val) return '';
-  if (val.includes('T')) return dayjs(val).format('HH:mm');
-  return val.slice(0, 5);
-}
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 

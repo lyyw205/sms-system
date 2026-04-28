@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, func
 
 from app.db.models import TemplateSchedule, Reservation, RoomAssignment, ReservationSmsAssignment, Room, ReservationStatus
 from app.diag_logger import diag

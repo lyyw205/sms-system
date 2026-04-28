@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import List
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import RoomAssignment, Reservation, Room
+from app.db.models import RoomAssignment, Reservation
 from app.config import KST
 from app.diag_logger import diag
 

@@ -283,35 +283,6 @@ function getFirstSendMinutes(s: TemplateSchedule): number {
   return Number.MAX_SAFE_INTEGER;
 }
 
-function getFilterLabel(f: ScheduleFilter, buildingList?: Building[]): string {
-  if (f.type === 'assignment') {
-    const af = f as AssignmentFilter;
-    if (af.value === 'room') {
-      const parts = ['객실 예약'];
-      if (af.buildings?.length) {
-        const names = af.buildings.map(id => buildingList?.find(b => b.id === id)?.name ?? `#${id}`);
-        parts.push(`(${names.join(', ')})`);
-      }
-      if (af.include_unassigned) parts.push('+ 미배정');
-      if (af.stay_filter === 'exclude') parts.push('· 연박자 제외');
-      return parts.join(' ');
-    }
-    if (af.value === 'party') return '파티만';
-    if (af.value === 'unassigned') return '미배정';
-    if (af.value === 'unstable') return '언스테이블';
-  }
-  if (f.type === 'column_match') {
-    const parsed = parseColumnMatchValue(f.value);
-    if (parsed) {
-      const colLabel = COLUMN_LABEL_MAP[parsed.column] || parsed.column;
-      if (parsed.operator === 'is_empty') return `${colLabel} 비어있음`;
-      if (parsed.operator === 'is_not_empty') return `${colLabel} 값 있음`;
-      const opLabel = parsed.operator === 'not_contains' ? '미포함' : '포함';
-      return `${colLabel}에 '${parsed.text}' ${opLabel}`;
-    }
-  }
-  return '';
-}
 
 function parseFilters(raw: unknown): ScheduleFilter[] {
   if (Array.isArray(raw)) return raw;
@@ -330,22 +301,6 @@ function getScheduleDateLabel(record: TemplateSchedule): string {
   }
 }
 
-function getDateFilterLabel(dateFilter: string | null): string | null {
-  if (!dateFilter) return null;
-  if (dateFilter === 'today') return '오늘';
-  if (dateFilter === 'tomorrow') return '내일';
-  if (dateFilter === 'today+tomorrow') return '오늘+내일';
-  return dateFilter;
-}
-
-function getTargetLabel(record: TemplateSchedule, buildingList?: Building[]): string {
-  const parts: string[] = [];
-  const dateLabel = getScheduleDateLabel(record);
-  if (dateLabel) parts.push(dateLabel);
-  const filters = parseFilters(record.filters);
-  if (filters.length > 0) parts.push(filters.map(f => getFilterLabel(f, buildingList)).join(' + '));
-  return parts.length > 0 ? parts.join(' · ') : '전체';
-}
 
 function getEventTargetSummary(record: TemplateSchedule): React.ReactNode {
   const parts: string[] = [];
@@ -401,13 +356,6 @@ function getTargetSummary(record: TemplateSchedule, buildingList?: Building[]): 
   return <span className="text-caption text-[#4E5968] dark:text-gray-400">{parts.join(' · ')}의 {dateLabel} 예약자</span>;
 }
 
-const CATEGORY_ICON: Record<string, string> = {
-  reservation: '예약 정보',
-  room: '객실 정보',
-  party: '파티 정보',
-  datetime: '날짜/시간',
-  other: '기타',
-};
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -957,23 +905,6 @@ const Templates: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Schedule filter toggle helpers
   // ---------------------------------------------------------------------------
-  const toggleScheduleFilter = (type: string, value: string) => {
-    setSFilters(prev => {
-      const hasIt = prev.some(f => f.type === type && f.value === value);
-      if (hasIt) {
-        return prev.filter(f => !(f.type === type && f.value === value));
-      } else {
-        return [...prev, { type, value }];
-      }
-    });
-  };
-
-  const isFilterActive = (type: string, value: string) =>
-    sFilters.some(f => f.type === type && f.value === value);
-
-  const isFilterAllActive = (type: string) =>
-    !sFilters.some(f => f.type === type);
-
   // Sync cmRows → sFilters (column_match entries)
   const syncCmRowsToFilters = (rows: typeof cmRows) => {
     const validFilters = rows
@@ -1009,8 +940,6 @@ const Templates: React.FC = () => {
     });
   };
 
-  const clearFilterType = (type: string) =>
-    setSFilters(prev => prev.filter(f => f.type !== type));
 
   // ---------------------------------------------------------------------------
   // Render – Tab 1: Templates

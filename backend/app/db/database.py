@@ -143,13 +143,6 @@ def init_db():
                 conn.execute(text("ALTER TABLE template_schedules RENAME COLUMN active TO is_active"))
                 print("AUTO-MIGRATE: Renamed template_schedules.active to is_active")
 
-        # messages.needs_review → is_needs_review
-        if "messages" in inspector.get_table_names():
-            cols = [c["name"] for c in inspector.get_columns("messages")]
-            if "needs_review" in cols and "is_needs_review" not in cols:
-                conn.execute(text("ALTER TABLE messages RENAME COLUMN needs_review TO is_needs_review"))
-                print("AUTO-MIGRATE: Renamed messages.needs_review to is_needs_review")
-
         # documents.indexed → is_indexed
         if "documents" in inspector.get_table_names():
             cols = [c["name"] for c in inspector.get_columns("documents")]
