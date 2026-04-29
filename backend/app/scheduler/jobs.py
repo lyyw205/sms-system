@@ -477,7 +477,7 @@ def setup_scheduler():
         replace_existing=True,
     )
 
-    # Snapshot refresh - at 08:50 and 11:50 KST
+    # Snapshot refresh - 4 times daily KST (08:50, 09:50, 11:50, 22:50)
     scheduler.add_job(
         refresh_snapshots_job,
         trigger=CronTrigger(hour=8, minute=50, timezone='Asia/Seoul'),
@@ -487,9 +487,23 @@ def setup_scheduler():
     )
     scheduler.add_job(
         refresh_snapshots_job,
+        trigger=CronTrigger(hour=9, minute=50, timezone='Asia/Seoul'),
+        id='refresh_snapshots_morning_late',
+        name='참여자 스냅샷 갱신 (09:50)',
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        refresh_snapshots_job,
         trigger=CronTrigger(hour=11, minute=50, timezone='Asia/Seoul'),
         id='refresh_snapshots_noon',
         name='참여자 스냅샷 갱신 (11:50)',
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        refresh_snapshots_job,
+        trigger=CronTrigger(hour=22, minute=50, timezone='Asia/Seoul'),
+        id='refresh_snapshots_night',
+        name='참여자 스냅샷 갱신 (22:50)',
         replace_existing=True,
     )
 
