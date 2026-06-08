@@ -37,7 +37,7 @@ export function ReservationFormModal({
                   key={opt.value}
                   type="button"
                   onClick={() => {
-                    setFormValues({ ...formValues, guest_type: opt.value });
+                    setFormValues({ ...formValues, guest_type: opt.value, party_type: opt.value === 'manual' ? null : formValues.party_type });
                   }}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
                     ${(formValues.guest_type || 'party_only') === opt.value
@@ -118,32 +118,46 @@ export function ReservationFormModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>성별 / 인원</Label>
-            <div className="flex gap-3">
-              <div className="flex items-center gap-0 flex-1">
-                <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">남</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={formValues.male_count ?? ''}
-                  onChange={(e) => setFormValues({ ...formValues, male_count: e.target.value ? Number(e.target.value) : null })}
-                  placeholder="0"
-                  className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-0 flex-1">
-                <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">여</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={formValues.female_count ?? ''}
-                  onChange={(e) => setFormValues({ ...formValues, female_count: e.target.value ? Number(e.target.value) : null })}
-                  placeholder="0"
-                  className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
-                />
+          <div className="flex gap-3 items-end">
+            <div className="space-y-2 flex-1">
+              <Label>성별 / 인원</Label>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-0 flex-1">
+                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">남</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formValues.male_count ?? ''}
+                    onChange={(e) => setFormValues({ ...formValues, male_count: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="0"
+                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-0 flex-1">
+                  <span className="flex-shrink-0 px-3 py-1.5 rounded-l-lg bg-[#F2F4F6] dark:bg-[#2C2C34] border border-r-0 border-[#E5E8EB] dark:border-[#2C2C34] text-sm font-medium text-[#4E5968] dark:text-white">여</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formValues.female_count ?? ''}
+                    onChange={(e) => setFormValues({ ...formValues, female_count: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="0"
+                    className="w-full rounded-r-lg rounded-l-none border border-[#E5E8EB] dark:border-[#2C2C34] bg-white dark:bg-[#1E1E24] text-sm text-[#191F28] dark:text-white px-3 py-1.5 focus:border-[#3182F6] focus:ring-[#3182F6] outline-none"
+                  />
+                </div>
               </div>
             </div>
+            {!editingId && (formValues.guest_type || 'party_only') === 'party_only' && (
+              <div className="space-y-2 w-24">
+                <Label htmlFor="party-type">파티</Label>
+                <TextInput
+                  id="party-type"
+                  value={formValues.party_type ?? ''}
+                  onChange={(e) => setFormValues({ ...formValues, party_type: e.target.value || null })}
+                  placeholder="1/2/2차만"
+                  sizing="sm"
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
