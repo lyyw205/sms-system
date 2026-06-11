@@ -1,6 +1,6 @@
 """_get_targets_event() 통합 테스트 — in-memory SQLite."""
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from app.db.models import (
     Reservation, ReservationStatus, MessageTemplate, TemplateSchedule,
     ReservationSmsAssignment,
@@ -11,6 +11,11 @@ from app.config import today_kst
 
 def _executor(db):
     return TemplateScheduleExecutor(db, tenant=None)
+
+
+def _future(days=3):
+    """체크인 임박 안전가드(check_in_date > today)를 통과하는 미래 날짜."""
+    return (date.fromisoformat(today_kst()) + timedelta(days=days)).isoformat()
 
 
 def _make_template(db, key="evt_tpl"):
@@ -40,7 +45,8 @@ def _make_event_schedule(db, template, hours_since_booking=None, gender_filter=N
 
 
 def _make_reservation(db, check_in=None, confirmed_at=None, gender=None,
-                       status=ReservationStatus.CONFIRMED, is_long_stay=False):
+                       status=ReservationStatus.CONFIRMED, is_long_stay=False,
+                       male_count=None, female_count=None):
     check_in = check_in or today_kst()
     res = Reservation(
         tenant_id=1, customer_name="손님", phone="01012345678",
@@ -49,6 +55,8 @@ def _make_reservation(db, check_in=None, confirmed_at=None, gender=None,
         confirmed_at=confirmed_at,
         gender=gender,
         is_long_stay=is_long_stay,
+        male_count=male_count,
+        female_count=female_count,
     )
     db.add(res)
     db.flush()
@@ -60,8 +68,10 @@ class TestGetTargetsEvent:
         """예약 확정 N시간 이내 → 포함."""
         tpl = _make_template(db)
         sched = _make_event_schedule(db, tpl, hours_since_booking=24)
-        confirmed = datetime.now(timezone.utc) - timedelta(hours=1)
-        res = _make_reservation(db, check_in=today_kst(), confirmed_at=confirmed)
+        # confirmed_at 은 운영 DB 에 naive UTC 로 저장됨 (TIMESTAMP WITHOUT TIME ZONE) —
+        # 코드의 cutoff 도 naive 라 테스트도 naive 로 맞춘다.
+        confirmed = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        res = _make_reservation(db, check_in=_future(), confirmed_at=confirmed)
 
         executor = _executor(db)
         targets = executor._get_targets_event(sched)
@@ -79,30 +89,38 @@ class TestGetTargetsEvent:
         assert res.id not in [r.id for r in targets]
 
     def test_gender_filter_male_only(self, db):
-        """gender_filter=male — 남성 예약자만 포함."""
+        """gender_filter=male — 남성만 포함 (수동 합성 '남2' 포함, 혼성 제외)."""
         tpl = _make_template(db, key="evt_male")
         sched = _make_event_schedule(db, tpl, gender_filter='male')
-        res_male = _make_reservation(db, check_in=today_kst(), gender='남')
-        res_female = _make_reservation(db, check_in=today_kst(), gender='여')
+        res_male = _make_reservation(db, check_in=_future(), gender='남', male_count=1, female_count=0)
+        res_male_composite = _make_reservation(db, check_in=_future(), gender='남2', male_count=2, female_count=None)
+        res_female = _make_reservation(db, check_in=_future(), gender='여', male_count=0, female_count=1)
+        res_mixed = _make_reservation(db, check_in=_future(), gender='남1여1', male_count=1, female_count=1)
 
         executor = _executor(db)
         targets = executor._get_targets_event(sched)
         ids = [r.id for r in targets]
         assert res_male.id in ids
+        assert res_male_composite.id in ids  # ★ 수동 합성 포맷도 포함
         assert res_female.id not in ids
+        assert res_mixed.id not in ids        # 혼성은 제외
 
     def test_gender_filter_female_only(self, db):
-        """gender_filter=female — 여성 예약자만 포함."""
+        """gender_filter=female — 여성만 포함 (수동 합성 '여2' 포함, 혼성 제외)."""
         tpl = _make_template(db, key="evt_female")
         sched = _make_event_schedule(db, tpl, gender_filter='female')
-        res_male = _make_reservation(db, check_in=today_kst(), gender='남')
-        res_female = _make_reservation(db, check_in=today_kst(), gender='여')
+        res_male = _make_reservation(db, check_in=_future(), gender='남', male_count=1, female_count=0)
+        res_female = _make_reservation(db, check_in=_future(), gender='여', male_count=0, female_count=1)
+        res_female_composite = _make_reservation(db, check_in=_future(), gender='여2', male_count=None, female_count=2)
+        res_mixed = _make_reservation(db, check_in=_future(), gender='남1여1', male_count=1, female_count=1)
 
         executor = _executor(db)
         targets = executor._get_targets_event(sched)
         ids = [r.id for r in targets]
         assert res_female.id in ids
+        assert res_female_composite.id in ids  # ★ 수동 합성 포맷도 포함
         assert res_male.id not in ids
+        assert res_mixed.id not in ids          # 혼성은 제외
 
     def test_max_checkin_days_filters_far_future(self, db):
         """max_checkin_days — 범위 밖 체크인 제외."""

@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, and_, func
 
 from app.db.models import TemplateSchedule, Reservation, RoomAssignment, ReservationSmsAssignment, Room, ReservationStatus
 from app.diag_logger import diag
@@ -709,11 +709,20 @@ class TemplateScheduleExecutor:
                 Reservation.check_in_date <= max_date_str,
             )
 
-        # 2) 성별 필터 — 예약자 본인 기준 (Reservation.gender)
+        # 2) 성별 필터 — male/female_count 기반 (gender 문자열 '여2' 합성 포맷 누락 회피)
+        #    event_sms.py /search 와 동일 패턴: 표시문자열 OR (해당 성별 count>0 AND 반대 count 없음)
         if schedule.gender_filter == 'male':
-            query = query.filter(Reservation.gender == '남')
+            query = query.filter(or_(
+                Reservation.gender == '남',
+                and_(Reservation.male_count.isnot(None), Reservation.male_count > 0,
+                     (Reservation.female_count.is_(None) | (Reservation.female_count == 0))),
+            ))
         elif schedule.gender_filter == 'female':
-            query = query.filter(Reservation.gender == '여')
+            query = query.filter(or_(
+                Reservation.gender == '여',
+                and_(Reservation.female_count.isnot(None), Reservation.female_count > 0,
+                     (Reservation.male_count.is_(None) | (Reservation.male_count == 0))),
+            ))
 
         # 이벤트는 structural filters (건물/배정/객실) 미적용 — 대상이 아직 미배정인 경우가 대부분
 
