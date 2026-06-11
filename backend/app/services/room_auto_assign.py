@@ -23,6 +23,7 @@ from app.db.models import (
     TemplateSchedule, RoomBizItemLink, ReservationSmsAssignment,
 )
 from app.services import room_assignment
+from app.services.dorm_gender import dorm_gender_conflict, single_gender
 from app.db.tenant_context import get_session_tenant_id, is_session_bypass
 from app.diag_logger import diag
 
@@ -263,8 +264,11 @@ def _sort_candidate_rooms(rooms: List[Room], biz_item_id: str, gender: str) -> L
 
 
 def _gender_sort_key(res: Reservation) -> int:
-    """Sort key: females first (0), males second (1), unknown last (2)."""
-    g = (res.gender or "").strip()
+    """Sort key: females first (0), males second (1), unknown last (2).
+
+    single_gender 로 정규화 — 수동 합성 포맷('여2')도 올바른 성별로 정렬.
+    """
+    g = single_gender(res)
     if g == "여": return 0
     if g == "남": return 1
     return 2
@@ -350,8 +354,8 @@ def _assign_all_rooms(
 
     for res in candidates:
         candidate_rooms = biz_to_rooms.get(res.naver_biz_item_id, [])
-        # Sort rooms by gender-specific priority
-        res_gender = (res.gender or "").strip()
+        # Sort rooms by gender-specific priority — single_gender 정규화('여2'→'여')
+        res_gender = single_gender(res)
         candidate_rooms = _sort_candidate_rooms(candidate_rooms, res.naver_biz_item_id, res_gender)
 
         # Same-room preference: stay_group (연장) or single long-stay (연박)
@@ -411,14 +415,8 @@ def _assign_all_rooms(
                     existing_reservations = db.query(Reservation).filter(
                         Reservation.id.in_([e.reservation_id for e in existing])
                     ).all()
-                    res_gender = (res.gender or "").strip()
-                    gender_conflict = False
-                    for existing_res in existing_reservations:
-                        existing_gender = (existing_res.gender or "").strip()
-                        if existing_gender and res_gender and existing_gender != res_gender:
-                            gender_conflict = True
-                            break
-                    if gender_conflict:
+                    # 혼성 체크 — male/female_count 기반 (gender 문자열 포맷 불일치 회피)
+                    if dorm_gender_conflict(res, existing_reservations):
                         last_failure_reason = "gender_lock"
                         continue
 

@@ -16,6 +16,7 @@ from app.db.models import RoomAssignment, Reservation, Room
 from app.db.tenant_context import get_session_tenant_id
 from app.services.activity_logger import log_activity
 from app.services.password_display import build_prefixed_password
+from app.services.dorm_gender import dorm_gender_conflict
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +307,6 @@ def assign_room(
 
     # Dormitory manual-assignment hardline check (1-5)
     if is_dorm and assigned_by == "manual":
-        new_gender = (reservation.gender or "").strip()
         new_count = reservation.party_size or reservation.booking_count or 1
 
         # C-B 배치 최적화: 미래 날짜들의 others를 한 번에 조회
@@ -339,15 +339,11 @@ def assign_room(
                 if not others:
                     continue
 
-                # 혼성 체크
-                gender_conflict = False
-                if new_gender:
-                    for o_ra in others:
-                        o_res = other_res_map.get(o_ra.reservation_id)
-                        o_gender = (o_res.gender or "").strip() if o_res else ""
-                        if o_gender and o_gender != new_gender:
-                            gender_conflict = True
-                            break
+                # 혼성 체크 — male/female_count 기반 (gender 문자열 포맷 불일치 회피)
+                gender_conflict = dorm_gender_conflict(
+                    reservation,
+                    (other_res_map.get(o_ra.reservation_id) for o_ra in others),
+                )
 
                 # 용량 체크
                 total_occupancy = 0

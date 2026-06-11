@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.models import RoomAssignment, Reservation
 from app.config import today_kst
 from app.diag_logger import diag
+from app.services.dorm_gender import dorm_gender_conflict
 
 
 def check_assignment_validity(db: Session, reservation: Reservation) -> List[str]:
@@ -68,7 +69,6 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
         ).all()
         other_res_map = {r.id: r for r in rows}
 
-    res_gender = (reservation.gender or "").strip()
     res_count = reservation.party_size or reservation.booking_count or 1
 
     for ra in assignments:
@@ -79,24 +79,19 @@ def check_assignment_validity(db: Session, reservation: Reservation) -> List[str
 
         if room.is_dormitory:
             # 성별 충돌 체크
-            if res_gender:
-                gender_conflict = False
-                for o in others:
-                    o_res = other_res_map.get(o.reservation_id)
-                    o_gender = (o_res.gender or "").strip() if o_res else ""
-                    if o_gender and o_gender != res_gender:
-                        gender_conflict = True
-                        break
-                if gender_conflict:
-                    invalid.append(ra.date)
-                    diag(
-                        "invariant.violation",
-                        level="verbose",
-                        res_id=reservation.id,
-                        date=ra.date,
-                        reason="gender_conflict",
-                    )
-                    continue
+            if dorm_gender_conflict(
+                reservation,
+                (other_res_map.get(o.reservation_id) for o in others),
+            ):
+                invalid.append(ra.date)
+                diag(
+                    "invariant.violation",
+                    level="verbose",
+                    res_id=reservation.id,
+                    date=ra.date,
+                    reason="gender_conflict",
+                )
+                continue
 
             # 용량 체크
             other_total = sum(

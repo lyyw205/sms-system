@@ -109,6 +109,37 @@ class TestAutoAssignFailureReasons:
         ).first()
         assert ra is None
 
+    def test_same_gender_different_format_coexist(self, db):
+        """★ 회귀: 여(네이버) + 여2(수동 합성포맷)가 같은 도미토리에 공존.
+
+        예전엔 gender 문자열 등호비교('여' != '여2')로 gender_lock 오탐 → 배정 실패.
+        이제 male/female_count 기반 판정이라 같은 성별로 인식돼 배정 성공.
+        (production: tid=2 res=6614 '여' vs res=6747 '여2' on B206)
+        """
+        b = _make_building(db)
+        room = _make_dorm_room(db, b.id, bed_capacity=4)
+        _make_biz_link(db, room.id)
+
+        # 네이버 스타일 여성 1명 (단일글자 '여')이 먼저 점유
+        existing = _make_reservation(db, gender="여", party_size=1)
+        existing.female_count, existing.male_count = 1, 0
+        db.flush()
+        _make_assignment(db, existing.id, room.id, "2026-04-10", bed_order=1)
+
+        # 수동 추가 여성 2명 (합성 '여2')
+        manual = _make_reservation(db, gender="여2", party_size=2)
+        manual.female_count, manual.male_count = 2, 0
+        db.flush()
+
+        auto_assign_rooms(db, "2026-04-10")
+
+        ra = db.query(RoomAssignment).filter(
+            RoomAssignment.reservation_id == manual.id,
+            RoomAssignment.date == "2026-04-10",
+        ).first()
+        assert ra is not None, "여2(수동)가 여(네이버) 점유 도미토리에 공존 배정돼야 함"
+        assert ra.room_id == room.id
+
     def test_capacity_full_failure(self, db):
         """도미토리 용량 초과 시 배정 실패."""
         b = _make_building(db)
