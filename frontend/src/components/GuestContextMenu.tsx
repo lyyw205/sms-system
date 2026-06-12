@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Trash2, Link2, X, Zap, XCircle, CalendarPlus, CalendarMinus, Palette, ChevronRight, Calendar, Phone, RotateCcw } from 'lucide-react';
+import { Trash2, Link2, X, Zap, XCircle, CalendarPlus, CalendarMinus, Palette, ChevronRight, Calendar, Phone, RotateCcw, ClipboardList } from 'lucide-react';
 import { GOOGLE_SHEETS_PALETTE } from '../lib/highlight-colors';
 
 interface GuestContextMenuProps {
@@ -20,6 +20,8 @@ interface GuestContextMenuProps {
   onCancelExtendStay?: () => void;
   onChangeDates?: () => void;
   onCall?: () => void;
+  /** 우클릭한 게스트가 속한 건물의 배정 게스트 명단(이름/전화)을 클립보드로 복사. room 배정 게스트일 때만 전달됨. */
+  onCopyBuildingRoster?: () => void;
   hideDelete?: boolean;
   /**
    * Cancelled 행 전용 — "삭제 취소" 단일 액션 모드.
@@ -46,6 +48,7 @@ export default function GuestContextMenu({
   onCancelExtendStay,
   onChangeDates,
   onCall,
+  onCopyBuildingRoster,
   hideDelete,
   onRestore,
   onClose,
@@ -330,6 +333,19 @@ export default function GuestContextMenu({
           <X className="h-2.5 w-2.5 text-[#8B95A1]" />
         </button>
       </div>
+
+      {onCopyBuildingRoster && !isUnstableCopy && (
+        <>
+          <div className="border-t border-[#E5E8EB] dark:border-gray-800 my-1" />
+          <button
+            onClick={(e) => { e.stopPropagation(); onCopyBuildingRoster(); }}
+            className="w-full px-3 py-2 text-body flex items-center gap-2 text-[#191F28] dark:text-white hover:bg-[#F2F4F6] dark:hover:bg-[#2C2C34] cursor-pointer transition-colors"
+          >
+            <ClipboardList className="h-4 w-4" />
+            이 건물 명단 복사
+          </button>
+        </>
+      )}
 
       {!isUnstableCopy && !hideDelete && (
         <>

@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/core';
 import { useIsMobile } from '../hooks/use-mobile';
 import GuestContextMenu from '../components/GuestContextMenu';
+import { copyTextToClipboard } from '../lib/clipboard';
 import TableSettingsModal from '../components/TableSettingsModal';
 import type { Reservation } from './RoomAssignment/types';
 import { useConfirmDialog } from './RoomAssignment/hooks/useConfirmDialog';
@@ -576,6 +577,7 @@ const RoomAssignment = () => {
         onCancelExtendStay: undefined,
         onChangeDates: undefined,
         onCall: undefined,
+        onCopyBuildingRoster: undefined,
         onRestore: restore,
       };
     }
@@ -736,8 +738,46 @@ const RoomAssignment = () => {
         // tel: 호출은 OS(iOS/Android)가 자체 확인 다이얼로그를 띄우므로 앱 측 확인은 생략.
         window.location.href = `tel:${phone}`;
       } : undefined,
+      // 우클릭한 게스트가 속한 건물의 배정 게스트 명단(이름/전화)을 클립보드로 복사.
+      // room 배정 게스트(room_id 있음)일 때만 노출. 백엔드 호출이 없어 __diagAction 은 설정하지 않는다
+      // (설정 시 다음 무관한 API 요청에 diag 태그가 잘못 붙음).
+      onCopyBuildingRoster: firstRes.room_id ? () => {
+        const entry = activeRoomEntries.find((e: any) => e.room_id === firstRes.room_id);
+        const buildingId = (entry as any)?.building_id ?? null;
+        const buildingName = (entry as any)?.building_name || '기타';
+        // building_id 로 전역 수집 — 같은 건물이 여러 블록으로 쪼개져도 누락 없음.
+        const roomIds = activeRoomEntries
+          .filter((e: any) => ((e.building_id ?? null) === buildingId))
+          .map((e: any) => e.room_id);
+        const seen = new Set<number>();
+        const guests: Reservation[] = [];
+        for (const rid of roomIds) {
+          for (const g of (assignedRooms.get(rid) || [])) {
+            if (seen.has(g.id)) continue;
+            seen.add(g.id);
+            guests.push(g);
+          }
+        }
+        setContextMenu(null);
+        if (guests.length === 0) {
+          toast.info(`${buildingName} — 복사할 배정 게스트가 없습니다`);
+          return;
+        }
+        // 표·전화걸기와 동일하게 customer_name/phone 사용. 번호 없으면 이름만.
+        const text = guests
+          .map((g) => {
+            const name = (g.customer_name || '').trim();
+            const phone = (g.phone || '').trim();
+            return phone ? `${name} ${phone}` : name;
+          })
+          .join('\n');
+        copyTextToClipboard(text).then((ok) => {
+          if (ok) toast.success(`${buildingName} ${guests.length}명 복사됨`, { id: 'copy-roster' });
+          else toast.error('복사 실패', { id: 'copy-roster' });
+        });
+      } : undefined,
     };
-  }, [contextMenu, reservations, nextDayReservations, findReservation, sectionOverrides, handleDropOnPool, handleDropOnParty, handleDeleteGuest, selectedDate, qc, stayGroup.open, stayGroup.unlink, showConfirm, activeRoomEntries, setColorMutation, copyToUnstableMutation, removeFromUnstableMutation, extendStayMutation, cancelExtendStayMutation, _invalidateReservations]);
+  }, [contextMenu, reservations, nextDayReservations, findReservation, sectionOverrides, handleDropOnPool, handleDropOnParty, handleDeleteGuest, selectedDate, qc, stayGroup.open, stayGroup.unlink, showConfirm, activeRoomEntries, assignedRooms, setColorMutation, copyToUnstableMutation, removeFromUnstableMutation, extendStayMutation, cancelExtendStayMutation, _invalidateReservations]);
 
 
 
@@ -1274,6 +1314,7 @@ const RoomAssignment = () => {
           onCancelExtendStay={contextMenuActions.onCancelExtendStay}
           onChangeDates={contextMenuActions.onChangeDates}
           onCall={contextMenuActions.onCall}
+          onCopyBuildingRoster={contextMenuActions.onCopyBuildingRoster}
           onRestore={(contextMenuActions as any).onRestore}
           onClose={() => setContextMenu(null)}
         />
