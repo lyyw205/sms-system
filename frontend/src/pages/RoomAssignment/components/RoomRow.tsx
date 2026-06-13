@@ -97,10 +97,17 @@ export function RoomRow({
   const guestByBed = isDormitory ? mapBedSlots(guests, bed_capacity) : new Map<number, Reservation>();
   const nextByBed = isDormitory ? mapBedSlots(nextGuests, bed_capacity) : new Map<number, Reservation>();
 
-  // 도미토리: 활성이면 4행 하한 + 예약자 수만큼 확장 + bed_capacity 상한, 비활성은 1행.
+  // 초과 배정(정원 > bed_capacity) 시 침대번호가 bed_capacity 를 넘을 수 있다(예: 4인실에 6명 → bed_order 6,7).
+  // mapBedSlots 는 그 번호 슬롯에 그대로 배치하므로, 실제 점유된 최대 침대번호까지 렌더하지 않으면
+  // 초과 게스트가 화면에서 사라진다. 오늘/내일 양쪽의 최대 슬롯을 보장한다.
+  const maxBedIdx = isDormitory
+    ? Math.max(0, ...Array.from(guestByBed.keys()), ...Array.from(nextByBed.keys()))
+    : 0;
+
+  // 도미토리: 활성이면 4행 하한 + 예약자 수만큼 확장 + bed_capacity 상한, 단 초과 배정된 침대번호는 모두 표시. 비활성은 1행.
   // 비도미토리는 게스트 수만큼 (최소 1).
   const totalRows = isDormitory
-    ? (isActive ? Math.min(bed_capacity, Math.max(4, guests.length)) : 1)
+    ? (isActive ? Math.max(Math.min(bed_capacity, Math.max(4, guests.length)), maxBedIdx) : 1)
     : Math.max(1, guests.length);
   const hasGuests = guests.length > 0;
   const rowHeight = hasGuests ? ROOM_ROW_HEIGHT : ROOM_ROW_HEIGHT_EMPTY;
