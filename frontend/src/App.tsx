@@ -19,6 +19,7 @@ import PartyCheckin from './pages/PartyCheckin'
 import EventSms from './pages/EventSms'
 import SalesReport from './pages/SalesReport'
 import ConsecutiveStays from './pages/ConsecutiveStays'
+import Quick from './pages/Quick'
 import NotFound from './pages/NotFound'
 
 // 스태프 전용 리다이렉트: staff 계정은 /party-checkin 으로만 이동
@@ -110,6 +111,8 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              {/* 객실 통합 편집(Quick): URL 직접 접근 전용 (사이드바 미노출) */}
+              <Route path="/quick" element={<ProtectedRoute requiredRoles={['superadmin', 'admin']}><Quick /></ProtectedRoute>} />
               {/* 404: 인증된 사용자가 잘못된 URL 진입 시. 미인증은 ProtectedRoute 가 /login 으로 먼저 리다이렉트 */}
               <Route path="*" element={<NotFound />} />
             </Route>

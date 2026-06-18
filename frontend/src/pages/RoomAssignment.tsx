@@ -946,9 +946,13 @@ const RoomAssignment = () => {
 
   // Summary stats
   const summary = useMemo(() => {
+    // 취소행(CancelledZone)에 보이는 취소 예약은 표시는 유지하되 인원 합계에서는 제외.
+    // reservations 안의 cancelled = 취소행에 표시되는 집합과 정확히 동일(useReservationsData filterActive/분류 기준 일치).
+    const active = reservations.filter((r) => r.status !== 'cancelled');
+
     // Room guest totals (복사본 = unstable_party=true인 비-unstable 예약자 제외)
     let roomTotal = 0, roomMale = 0, roomFemale = 0;
-    for (const r of reservations) {
+    for (const r of active) {
       if (r.section !== 'unstable' && r.unstable_party) continue; // 복사본 제외
       const m = r.male_count || 0;
       const f = r.female_count || 0;
@@ -958,7 +962,7 @@ const RoomAssignment = () => {
     }
 
     // Party guest totals — 표준 파티값('1'/'2'/'2차만')만. 'X'/'x'(파티 미신청)·비표준 값 제외.
-    const partyGuests = reservations.filter((r) => r.party_type != null && PARTY_TYPE_VALUES.has(r.party_type));
+    const partyGuests = active.filter((r) => r.party_type != null && PARTY_TYPE_VALUES.has(r.party_type));
     let partyMale = 0, partyFemale = 0;
     let firstMale = 0, firstFemale = 0;
     let secondOnlyMale = 0, secondOnlyFemale = 0;
@@ -992,6 +996,7 @@ const RoomAssignment = () => {
     // Unstable guest totals (순수 section="unstable" + 복사된 unstable_party=true)
     let unstableMale = 0, unstableFemale = 0;
     for (const r of unstableGuests) {
+      if (r.status === 'cancelled') continue; // 취소행 예약은 합계 제외(복사본 경로 방어)
       unstableMale += r.male_count || 0;
       unstableFemale += r.female_count || 0;
     }

@@ -73,9 +73,13 @@ export function MobileRoomCard({
   // 도미토리 침대 매핑 (오늘)
   const guestByBed = isDormitory ? mapBedSlots(guests, bed_capacity) : new Map<number, Reservation>();
 
-  // 도미토리: 활성 시 bed_capacity 만큼 슬롯, 비활성 시 0 (빈 침대 안 보임). 비도미토리: 게스트 수만큼 (최소 1).
+  // 초과 배정(정원 > bed_capacity) 시 침대번호가 bed_capacity 를 넘을 수 있어, 점유된 최대 침대번호까지 슬롯 확장
+  // (PC RoomRow 와 동일 정책 — 초과 게스트가 화면에서 사라지지 않도록). 빈 슬롯은 null 이라 화면엔 안 보임.
+  const maxBedIdx = isDormitory ? Math.max(0, ...Array.from(guestByBed.keys())) : 0;
+
+  // 도미토리: 활성 시 max(bed_capacity, 최대침대번호) 만큼 슬롯, 비활성 시 0 (빈 침대 안 보임). 비도미토리: 게스트 수만큼 (최소 1).
   const totalSlots = isDormitory
-    ? (isActive ? bed_capacity : 0)
+    ? (isActive ? Math.max(bed_capacity, maxBedIdx) : 0)
     : Math.max(1, guests.length);
 
   const hasGuests = guests.length > 0;
