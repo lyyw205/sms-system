@@ -155,8 +155,13 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
             name = biz_name_map.get(bid, bid)
             res_data["room_type"] = name
             res_data["biz_item_name"] = name
-            # 인원 enrichment: 도미토리 vs 일반실 분기
-            if biz_dormitory_map.get(bid, False):
+            # 인원 enrichment: 액티비티 vs 도미토리 vs 일반실 분기
+            if biz_section_map.get(bid) == 'activity':
+                # 액티비티: bookingCount = 신청 인원 (도미토리 방식).
+                # 미매핑 biz_item 의 capacity fallback=1 인원박제 버그 회피.
+                res_data["people_count"] = res_data.get("booking_count") or 1
+                res_data["_is_activity"] = True
+            elif biz_dormitory_map.get(bid, False):
                 # 도미토리: bookingCount = 인원 (인원수 옵션 무시)
                 res_data["people_count"] = res_data.get("booking_count") or 1
                 res_data["_is_dormitory"] = True
@@ -679,11 +684,13 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
 
     naver_room_type = res_data.get("room_type", "")
     section_hint = res_data.get("_section_hint")
-    section = section_hint if section_hint in ('party', 'room', 'unstable') else 'unassigned'
+    section = section_hint if section_hint in ('party', 'room', 'unstable', 'activity') else 'unassigned'
 
     # 패키지 상품: default_party_type이 있으면 Reservation.party_type 자동 세팅
+    # 액티비티는 자동상속 차단 (D8 Option A: deliberate party_type 세팅만 파티합류로 인정,
+    # 자동상속 시 party3 MMS 오발송 + party_checkin 자동노출).
     default_pt = res_data.get("_default_party_type")
-    if default_pt and not res_data.get("party_type"):
+    if default_pt and not res_data.get("party_type") and section != 'activity':
         res_data["party_type"] = default_pt
 
     reservation = Reservation(
@@ -823,9 +830,10 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         existing.visit_count = res_data["visit_count"]
     # 성별 인원 재계산: 도미토리는 매 동기화마다, 일반실은 초기화 시에만
     if not existing.gender_manual:
-        is_dormitory = res_data.get("_is_dormitory", False)
-        if is_dormitory:
-            # 도미토리: booking_count + gender로 항상 재계산
+        # 도미토리/액티비티는 booking_count=인원이라 매 동기화 재계산, 일반실은 최초 1회
+        is_recalc = res_data.get("_is_dormitory", False) or res_data.get("_is_activity", False)
+        if is_recalc:
+            # 도미토리/액티비티: booking_count + gender로 항상 재계산
             male_count, female_count = _init_gender_counts(res_data)
             existing.male_count = male_count
             existing.female_count = female_count

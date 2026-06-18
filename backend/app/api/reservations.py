@@ -289,7 +289,7 @@ async def update_reservation(
     if section_changed:
         old_section = db_reservation.section or "unassigned"
         new_section = update_data["section"]
-        section_labels = {"room": "객실", "unassigned": "미배정", "party": "파티만", "unstable": "언스테이블"}
+        section_labels = {"room": "객실", "unassigned": "미배정", "party": "파티만", "unstable": "언스테이블", "activity": "액티비티"}
         log_activity(
             db, type="room_move",
             title=f"[{db_reservation.customer_name}] 섹션이동 {section_labels.get(old_section, old_section)} → {section_labels.get(new_section, new_section)}",
