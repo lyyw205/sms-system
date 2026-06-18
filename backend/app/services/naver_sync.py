@@ -710,7 +710,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
         party_size=res_data.get("people_count") or 1,
         male_count=male_count,
         female_count=female_count,
-        check_out_date=res_data.get("end_date"),
+        check_out_date=res_data.get("end_date") or None,  # §6-A: '' → None (provider 빈값/액티비티 단일일정 정규화)
         biz_item_name=res_data.get("biz_item_name"),
         booking_count=res_data.get("booking_count", 1),
         booking_options=res_data.get("booking_options"),
@@ -781,7 +781,7 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         db, existing, ChangeSource.NAVER, {"check_in_date": incoming_check_in}
     )
     existing.check_in_time = res_data.get("time", existing.check_in_time)
-    incoming_end = res_data.get("end_date")
+    incoming_end = res_data.get("end_date") or None  # §6-A: '' → None (gate가 빈값을 실값으로 오인 + 재발화 방지)
     if incoming_end is not None:
         # 보호 가드 — check_out_pinned 단독으로 모든 수동 변경 케이스 cover.
         # manually_extended_until 의 보호 효과는 단계 #8 1:1 매핑으로 check_out_pinned 가 흡수.

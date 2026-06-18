@@ -173,6 +173,8 @@ async def extend_stay(
     original = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not original:
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
+    if original.section == 'activity':
+        raise HTTPException(status_code=400, detail="액티비티는 연박(연장) 대상이 아닙니다")
 
     current_end = original.check_out_date
     # New night = current checkout date (last night of new stay)

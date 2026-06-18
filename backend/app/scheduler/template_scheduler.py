@@ -835,7 +835,8 @@ class TemplateScheduleExecutor:
         for res in results:
             # check_out_date IS NULL 또는 check_out_date == check_in_date 는
             # 모두 "당일 1박" 케이스로 동일 취급 — check_in 이 곧 마지막 투숙일.
-            if res.check_out_date is None or res.check_out_date == res.check_in_date:
+            if not res.check_out_date or res.check_out_date == res.check_in_date:
+                # §6-A: '' (빈문자열)도 falsy → 1박취급 (strptime('') ValueError 방어)
                 if res.check_in_date == target_date:
                     filtered.append(res)
                 continue
