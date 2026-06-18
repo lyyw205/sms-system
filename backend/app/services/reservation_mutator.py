@@ -113,6 +113,19 @@ class ReservationMutator:
         edits = dict(reservation.manually_edited_fields or {})
 
         for field, new_value in fields.items():
+            # §6-B: 액티비티 분류 영구 고정 — activity → 객실/파티/미배정/언스 전이 거부 (전 source 일괄).
+            # 직접대입(assign_room)은 §6-H가, POST 생성자는 인입 화이트리스트가 담당. 여기는 PATCH/네이버 mutator 경로.
+            if field == 'section' and getattr(reservation, 'section', None) == 'activity' \
+                    and new_value in ('room', 'party', 'unassigned', 'unstable'):
+                diag(
+                    "mutator.skipped",
+                    level="critical",
+                    res_id=reservation.id,
+                    source=source.value,
+                    field=field,
+                    reason="section_locked",
+                )
+                continue
             # 1) 권한 평가
             perm_row = FIELD_PERMISSIONS.get(field)
             if perm_row is None:

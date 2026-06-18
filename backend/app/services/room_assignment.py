@@ -236,6 +236,13 @@ def assign_room(
     if not reservation:
         raise ValueError(f"Reservation {reservation_id} not found")
 
+    # §6-H: 액티비티는 객실 배정 대상이 아님 — RoomAssignment 행 생성 전에 거부.
+    # 필드 보호(section!=activity)만으론 불충분: 행 생성+reconcile_all_chips가 section 대입(:532)보다
+    # 선행하므로, 행이 남아 자동격리(surcharge/upgrade/room SUM/consecutive JOIN) 전제가 깨짐.
+    if reservation.section == 'activity':
+        diag("assign_room.activity_blocked", level="critical", res_id=reservation_id, room_id=room_id)
+        raise ValueError("액티비티는 객실 배정 대상이 아닙니다")
+
     room_obj = db.query(Room).filter(
         Room.id == room_id, Room.is_active == True, Room.is_hidden == False
     ).first()
@@ -370,7 +377,7 @@ def assign_room(
                 try:
                     for o_ra in others:
                         o_res = other_res_map.get(o_ra.reservation_id)
-                        if o_res:
+                        if o_res and o_res.section != 'activity':  # §6-H: 액티비티 분류 보존(도달 불가하나 방어)
                             o_res.section = "unassigned"
                         db.delete(o_ra)
                         all_pushed_res_ids.add(o_ra.reservation_id)

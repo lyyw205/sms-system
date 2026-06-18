@@ -229,7 +229,7 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
             Reservation.tenant_id == tid,
             Reservation.naver_biz_item_id.isnot(None),
             Reservation.status == ReservationStatus.CONFIRMED,
-            Reservation.section.notin_(['party', 'unstable']),
+            Reservation.section.notin_(['party', 'unstable', 'activity']),
             Reservation.check_in_date <= target_date,
         )
         .filter(
