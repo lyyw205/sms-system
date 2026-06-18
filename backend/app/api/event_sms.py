@@ -60,6 +60,7 @@ async def search_reservations(
         Reservation.check_in_date <= req.date_to,
         Reservation.phone.isnot(None),
         Reservation.phone != '',
+        Reservation.section != 'activity',  # §4-12: 방문자 명단(phone dedup 박수합산)에서 액티비티 제외
     )
 
     if req.gender:

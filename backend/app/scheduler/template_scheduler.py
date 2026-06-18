@@ -703,6 +703,10 @@ class TemplateScheduleExecutor:
         #    — 운영자가 실수로 빈 값 저장해도 무의미한 발송 사고 방지.
         query = query.filter(Reservation.check_in_date > today_str)
 
+        # §4-9 / D10: event(신규 예약 즉시발송)는 structural filter 미적용 → 액티비티가 객실 환영문자에
+        #             잡히지 않도록 base query 에서 직접 제외 (Phase 4 전까지 event=activity 전면차단).
+        query = query.filter(func.coalesce(Reservation.section, '') != 'activity')
+
         # 2) 옵션: 체크인 N일 이내 상한 (max_checkin_days 가 설정된 경우만)
         if schedule.max_checkin_days:
             max_date_str = (today_kst_date() + timedelta(days=schedule.max_checkin_days)).strftime('%Y-%m-%d')
