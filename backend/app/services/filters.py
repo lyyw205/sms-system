@@ -494,10 +494,13 @@ def apply_structural_filters(
 
     assignment_conds: list = []
     cm_conds: list = []
+    activity_opt_in = False  # §6-I: 스케줄이 액티비티를 명시 타겟하면 격리 해제 (Phase 4 opt-in)
 
     for f in filters:
         ftype = f.get("type")
         if ftype == "assignment":
+            if f.get("value") == "activity":
+                activity_opt_in = True
             cond = _condition_assignment(f, ctx, only_date_independent=only_date_independent)
             if cond is not None:
                 assignment_conds.append(cond)
@@ -524,6 +527,14 @@ def apply_structural_filters(
     if cm_conds:
         diag("filter.applied", level="verbose",
              filter_type="column_match", conditions_count=len(cm_conds))
+
+    # §6-I: 표준 격리 — 액티비티를 명시 타겟하지 않은 스케줄(빈 필터 포함)은 액티비티 제외.
+    # 표준 발송(_get_targets_standard)·표준 칩(chip_reconciler)이 이 chokepoint 를 공유 → 단일 격리.
+    # (event 경로는 structural filter 미적용 → 별도 가드.)
+    if not activity_opt_in:
+        query = query.filter(func.coalesce(Reservation.section, '') != 'activity')
+        diag("filter.activity_excluded", level="verbose",
+             schedule_id=getattr(schedule, 'id', None), target_date=target_date)
 
     diag("filter.apply.exit", level="verbose")
     return query
