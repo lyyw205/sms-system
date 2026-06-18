@@ -382,7 +382,7 @@ class TemplateScheduleExecutor:
 
     def _check_send_condition(self, schedule: TemplateSchedule) -> bool:
         """Check if send condition (gender ratio) is met."""
-        from app.services.filters import stay_coverage_filter
+        from app.services.filters import stay_coverage_filter, activity_stats_filter
 
         # 기준 날짜 결정
         if schedule.send_condition_date == 'tomorrow':
@@ -397,6 +397,7 @@ class TemplateScheduleExecutor:
         ).filter(
             Reservation.status == ReservationStatus.CONFIRMED,
             stay_coverage_filter(target),
+            activity_stats_filter(self.db, target),  # §6-G: 액티비티 인원 격리 (성비 판정 오염 방지)
         ).first()
 
         total_male = int(row.male)

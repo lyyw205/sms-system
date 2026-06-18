@@ -78,6 +78,32 @@ def stay_coverage_filter(date_str: str):
     )
 
 
+def activity_stats_filter(db, target_date: str):
+    """통계 SUM/COUNT 에서 액티비티 인원을 격리하는 조건 (D1 / D8 Option A).
+
+    포함: 비-activity 전부 + (activity AND 그 날짜 effective party_type ∈ 파티참여).
+    effective party_type = COALESCE(ReservationDailyInfo.party_type[target_date], Reservation.party_type)
+      — party3/party_checkin/sales_report 와 동일 키 해석(통계만 daily-only 면 PATCH 직접세팅 시 silent drift).
+    제외: activity 이면서 미참여(party_type NULL / 'X').
+    NULL section 은 비-activity 로 취급(coalesce '').
+    """
+    _PARTY_JOINED = ('1', '2', '2차만')  # = PARTY_TYPE_VALUES (party_checkin/sales_report)
+    daily_pt = (
+        db.query(ReservationDailyInfo.party_type)
+        .filter(
+            ReservationDailyInfo.reservation_id == Reservation.id,
+            ReservationDailyInfo.date == target_date,
+        )
+        .correlate(Reservation)
+        .scalar_subquery()
+    )
+    effective_pt = func.coalesce(daily_pt, Reservation.party_type)
+    return or_(
+        func.coalesce(Reservation.section, '') != 'activity',
+        and_(Reservation.section == 'activity', effective_pt.in_(_PARTY_JOINED)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dual-parse: v1 → v2 normalization (normalize-on-read)
 # ---------------------------------------------------------------------------

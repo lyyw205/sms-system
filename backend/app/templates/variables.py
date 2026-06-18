@@ -154,7 +154,7 @@ def _apply_buffers(male: int, female: int, custom_vars: dict) -> tuple:
 
 def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot:
     """SMS 발송 시 호출 — 있으면 그대로 반환, 없으면 1회 생성."""
-    from app.services.filters import stay_coverage_filter
+    from app.services.filters import stay_coverage_filter, activity_stats_filter
 
     existing = db.query(ParticipantSnapshot).filter(
         ParticipantSnapshot.date == target_date
@@ -168,6 +168,7 @@ def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot
         func.coalesce(func.sum(Reservation.female_count), 0).label("total_female"),
     ).filter(
         stay_coverage_filter(target_date),
+        activity_stats_filter(db, target_date),  # §6-G: 액티비티 인원 격리 (파티참여일만 포함)
         Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
     ).first()
 
@@ -196,7 +197,7 @@ def get_or_create_snapshot(db: Session, target_date: str) -> ParticipantSnapshot
 def refresh_snapshot(db: Session, target_date: str) -> Optional[ParticipantSnapshot]:
     """스케줄러(08:50/11:50) 호출 — 있으면 갱신, 없으면 생성."""
     import logging
-    from app.services.filters import stay_coverage_filter
+    from app.services.filters import stay_coverage_filter, activity_stats_filter
     _logger = logging.getLogger(__name__)
 
     # target_date 에 투숙/방문 중인 예약 합계 (연박 중간일 + NULL/당일 포함)
@@ -205,6 +206,7 @@ def refresh_snapshot(db: Session, target_date: str) -> Optional[ParticipantSnaps
         func.coalesce(func.sum(Reservation.female_count), 0).label("total_female"),
     ).filter(
         stay_coverage_filter(target_date),
+        activity_stats_filter(db, target_date),  # §6-G: 액티비티 인원 격리 (파티참여일만 포함)
         Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
     ).first()
 

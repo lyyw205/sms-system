@@ -30,6 +30,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
         Reservation.tenant_id == _tid,
         Reservation.created_at >= today_start,
         Reservation.booking_source != "naver_split",
+        func.coalesce(Reservation.section, '') != 'activity',  # D9: 액티비티는 '오늘 예약' 지표 제외
     ).scalar() or 0
 
     # Recent reservations — naver_split sibling 제외 (운영자 화면에 동일 손님 중복 노출 방지)
@@ -37,6 +38,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
     recent_reservations = (
         db.query(Reservation)
         .filter(Reservation.booking_source != "naver_split")
+        .filter(func.coalesce(Reservation.section, '') != 'activity')  # D9: 최근 목록 액티비티 제외
         .order_by(Reservation.created_at.desc())
         .limit(30)
         .all()
@@ -51,7 +53,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
 
     # Gender stats (7 days: today + 6 days forward) — 연박 중간일 + NULL/당일 모두 포함
     from datetime import timedelta
-    from app.services.filters import stay_coverage_filter
+    from app.services.filters import stay_coverage_filter, activity_stats_filter
     today = today_kst_date()
     date_strs = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
     gender_daily = []
@@ -61,6 +63,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
             func.coalesce(func.sum(Reservation.female_count), 0).label("female"),
         ).select_from(Reservation).filter(
             stay_coverage_filter(d),
+            activity_stats_filter(db, d),  # §6-G: 액티비티 인원 격리 (대시보드 성별차트)
             Reservation.status.in_([ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED]),
         ).first()
         gender_daily.append({
