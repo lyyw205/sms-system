@@ -585,6 +585,8 @@ const RoomAssignment = () => {
 
     const effectiveSection = firstRes.room_id ? 'room' : (sectionOverrides[firstRes.id] ?? firstRes.section ?? 'unassigned');
     const isCopied = contextMenu.zone === 'unstable' && firstRes.section !== 'unstable';
+    // §6-D: 액티비티는 숙박/파티 관련 메뉴 숨김 (백엔드도 400 거부 — UX 차원 사전 숨김)
+    const isActivity = firstRes.section === 'activity';
     const dateStr = (contextIsNextDay ? selectedDate.add(1, 'day') : selectedDate).format('YYYY-MM-DD');
     const optimisticUpdate = (updater: (r: Reservation) => Reservation) => {
       qc.setQueryData<Reservation[]>(queryKeys.reservations.list(dateStr), (prev) =>
@@ -624,7 +626,7 @@ const RoomAssignment = () => {
         }
         setContextMenu(null);
       },
-      onLinkStayGroup: targetIds.length === 1 && !firstRes.stay_group_id ? () => {
+      onLinkStayGroup: targetIds.length === 1 && !firstRes.stay_group_id && !isActivity ? () => {
         // DIAG_BLOCK_START
         window.__diagAction = 'ctx_menu:stay_group_link';
         // DIAG_BLOCK_END
@@ -650,7 +652,7 @@ const RoomAssignment = () => {
         );
         setContextMenu(null);
       },
-      onCopyToUnstable: () => {
+      onCopyToUnstable: isActivity ? undefined : () => {
         // DIAG_BLOCK_START
         window.__diagAction = 'ctx_menu:copy_to_unstable';
         // DIAG_BLOCK_END
@@ -663,7 +665,7 @@ const RoomAssignment = () => {
         );
         setContextMenu(null);
       },
-      onRemoveFromUnstable: () => {
+      onRemoveFromUnstable: isActivity ? undefined : () => {
         // DIAG_BLOCK_START
         window.__diagAction = 'ctx_menu:remove_from_unstable';
         // DIAG_BLOCK_END
@@ -676,7 +678,7 @@ const RoomAssignment = () => {
         );
         setContextMenu(null);
       },
-      onExtendStay: (targetIds.length === 1 && !contextIsNextDay) ? () => {
+      onExtendStay: (targetIds.length === 1 && !contextIsNextDay && !isActivity) ? () => {
         const resId = targetIds[0];
         const res = reservations.find((r) => r.id === resId);
         if (!res) return;
@@ -706,7 +708,7 @@ const RoomAssignment = () => {
           },
         );
       } : undefined,
-      onCancelExtendStay: (targetIds.length === 1 && !!firstRes?.manually_extended_until) ? () => {
+      onCancelExtendStay: (targetIds.length === 1 && !!firstRes?.manually_extended_until && !isActivity) ? () => {
         const resId = targetIds[0];
         setContextMenu(null);
         // DIAG_BLOCK_START
@@ -714,7 +716,7 @@ const RoomAssignment = () => {
         // DIAG_BLOCK_END
         cancelExtendStayMutation.mutate(resId);
       } : undefined,
-      onChangeDates: (targetIds.length === 1) ? () => {
+      onChangeDates: (targetIds.length === 1 && !isActivity) ? () => {
         const res = findReservation(targetIds[0])?.res;
         if (!res) return;
         setDateChangeModal({
