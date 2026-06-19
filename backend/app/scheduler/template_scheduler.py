@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
 from app.db.models import TemplateSchedule, Reservation, RoomAssignment, ReservationSmsAssignment, Room, ReservationStatus
+from app.services.section_registry import non_lodging_sections
 from app.diag_logger import diag
 from app.services.filters import (
     apply_structural_filters as _standalone_structural_filters,
@@ -705,7 +706,7 @@ class TemplateScheduleExecutor:
 
         # §4-9 / D10: event(신규 예약 즉시발송)는 structural filter 미적용 → 액티비티가 객실 환영문자에
         #             잡히지 않도록 base query 에서 직접 제외 (Phase 4 전까지 event=activity 전면차단).
-        query = query.filter(func.coalesce(Reservation.section, '') != 'activity')
+        query = query.filter(func.coalesce(Reservation.section, '').notin_(non_lodging_sections()))
 
         # 2) 옵션: 체크인 N일 이내 상한 (max_checkin_days 가 설정된 경우만)
         if schedule.max_checkin_days:

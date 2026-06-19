@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func
 from app.api.deps import get_tenant_scoped_db
 from app.db.models import Reservation, ActivityLog, ReservationStatus, User
+from app.services.section_registry import non_lodging_sections
 from app.db.tenant_context import get_session_tenant_id
 from app.diag_logger import diag
 from app.auth.dependencies import get_current_user
@@ -30,7 +31,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
         Reservation.tenant_id == _tid,
         Reservation.created_at >= today_start,
         Reservation.booking_source != "naver_split",
-        func.coalesce(Reservation.section, '') != 'activity',  # D9: 액티비티는 '오늘 예약' 지표 제외
+        func.coalesce(Reservation.section, '').notin_(non_lodging_sections()),  # D9: 액티비티는 '오늘 예약' 지표 제외
     ).scalar() or 0
 
     # Recent reservations — naver_split sibling 제외 (운영자 화면에 동일 손님 중복 노출 방지)
@@ -38,7 +39,7 @@ async def get_dashboard_stats(db: Session = Depends(get_tenant_scoped_db), curre
     recent_reservations = (
         db.query(Reservation)
         .filter(Reservation.booking_source != "naver_split")
-        .filter(func.coalesce(Reservation.section, '') != 'activity')  # D9: 최근 목록 액티비티 제외
+        .filter(func.coalesce(Reservation.section, '').notin_(non_lodging_sections()))  # D9: 최근 목록 액티비티 제외
         .order_by(Reservation.created_at.desc())
         .limit(30)
         .all()

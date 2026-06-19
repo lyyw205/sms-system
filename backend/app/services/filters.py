@@ -39,6 +39,7 @@ from app.db.models import (
     RoomAssignment,
     ReservationDailyInfo,
 )
+from app.services.section_registry import non_lodging_sections
 
 
 # ---------------------------------------------------------------------------
@@ -532,7 +533,7 @@ def apply_structural_filters(
     # 표준 발송(_get_targets_standard)·표준 칩(chip_reconciler)이 이 chokepoint 를 공유 → 단일 격리.
     # (event 경로는 structural filter 미적용 → 별도 가드.)
     if not activity_opt_in:
-        query = query.filter(func.coalesce(Reservation.section, '') != 'activity')
+        query = query.filter(func.coalesce(Reservation.section, '').notin_(non_lodging_sections()))
         diag("filter.activity_excluded", level="verbose",
              schedule_id=getattr(schedule, 'id', None), target_date=target_date)
 

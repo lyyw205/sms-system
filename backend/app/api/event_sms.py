@@ -9,6 +9,7 @@ from sqlalchemy import or_, and_, exists
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.auth.dependencies import get_current_user
 from app.db.models import Reservation, ReservationStatus, User
+from app.services.section_registry import non_lodging_sections
 from app.factory import get_sms_provider_for_tenant
 from app.services.activity_logger import log_activity
 from app.diag_logger import diag
@@ -60,7 +61,7 @@ async def search_reservations(
         Reservation.check_in_date <= req.date_to,
         Reservation.phone.isnot(None),
         Reservation.phone != '',
-        Reservation.section != 'activity',  # §4-12: 방문자 명단(phone dedup 박수합산)에서 액티비티 제외
+        Reservation.section.notin_(non_lodging_sections()),  # §4-12: 방문자 명단(phone dedup 박수합산)에서 액티비티 제외
     )
 
     if req.gender:
