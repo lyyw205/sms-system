@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 from app.config import today_kst, today_kst_date
+from app.services.stay_logic import is_single_day_stay
 
 
 def get_schedule_dates(schedule, reservation) -> List[str]:
@@ -22,7 +23,7 @@ def get_schedule_dates(schedule, reservation) -> List[str]:
         # check_out_date IS NULL 또는 check_out_date == check_in_date 는
         # 모두 "당일 1박" 으로 동일 취급 — 체크인일이 곧 마지막 투숙일.
         # _filter_last_day(template_scheduler.py) 와 동일 invariant.
-        if not reservation.check_out_date or reservation.check_out_date == reservation.check_in_date:
+        if is_single_day_stay(reservation.check_in_date, reservation.check_out_date):
             return [reservation.check_in_date] if reservation.check_in_date else []
         if reservation.stay_group_id:
             if reservation.is_last_in_group:

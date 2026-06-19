@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import today_kst_date
+from app.services.stay_logic import stay_nights
 from app.db.models import Reservation, ReservationStatus, ParticipantSnapshot
 from app.diag_logger import diag
 
@@ -240,16 +241,8 @@ def refresh_snapshot(db: Session, target_date: str) -> Optional[ParticipantSnaps
 
 
 def _calculate_stay_nights(reservation) -> int:
-    """체크인~체크아웃 박수. NULL 이면 1박."""
-    if not reservation.check_out_date or not reservation.check_in_date:
-        return 1
-    try:
-        ci = datetime.strptime(reservation.check_in_date, "%Y-%m-%d").date()
-        co = datetime.strptime(reservation.check_out_date, "%Y-%m-%d").date()
-        diff = (co - ci).days
-        return max(1, diff)
-    except (ValueError, TypeError):
-        return 1
+    """체크인~체크아웃 박수. NULL 이면 1박. (stay_logic.stay_nights thin wrapper — §4 step6)"""
+    return stay_nights(reservation.check_in_date, reservation.check_out_date)
 
 
 def _format_man_won(amount_won: int) -> str:

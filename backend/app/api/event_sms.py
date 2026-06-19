@@ -10,6 +10,7 @@ from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.auth.dependencies import get_current_user
 from app.db.models import Reservation, ReservationStatus, User
 from app.services.section_registry import non_lodging_sections
+from app.services.stay_logic import stay_nights
 from app.factory import get_sms_provider_for_tenant
 from app.services.activity_logger import log_activity
 from app.diag_logger import diag
@@ -118,14 +119,7 @@ async def search_reservations(
     # 박수 계산 후 전화번호 기준으로 중복 제거
     customers = {}
     for r in reservations:
-        nights = 1
-        if r.check_in_date and r.check_out_date:
-            try:
-                ci = datetime.strptime(r.check_in_date, "%Y-%m-%d")
-                co = datetime.strptime(r.check_out_date, "%Y-%m-%d")
-                nights = max((co - ci).days, 1)
-            except ValueError:
-                nights = 1
+        nights = stay_nights(r.check_in_date, r.check_out_date)
 
         # 박수 필터 적용
         if req.min_nights is not None and nights < req.min_nights:

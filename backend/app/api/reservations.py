@@ -12,6 +12,7 @@ from app.factory import get_reservation_provider_for_tenant
 from app.auth.dependencies import get_current_user
 from app.rate_limit import limiter
 from app.services.activity_logger import log_activity
+from app.services.filters import stay_coverage_filter
 from app.api.shared_schemas import ActionResponse
 import logging
 from app.diag_logger import diag
@@ -67,15 +68,8 @@ async def get_reservations(
 
     if date:
         # Single date: check-in <= date < check-out, OR check-in == date (covers same-day checkout & NULL end_date)
-        query = query.filter(
-            or_(
-                and_(
-                    Reservation.check_in_date <= date,
-                    Reservation.check_out_date > date,
-                ),
-                Reservation.check_in_date == date,
-            )
-        )
+        # = filters.stay_coverage_filter (canonical SQL twin — §4 step7)
+        query = query.filter(stay_coverage_filter(date))
     elif date_from or date_to:
         # Date range: reservations overlapping with [date_from, date_to]
         if date_from:
