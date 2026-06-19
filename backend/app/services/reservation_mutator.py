@@ -113,6 +113,13 @@ class ReservationMutator:
         edits = dict(reservation.manually_edited_fields or {})
 
         for field, new_value in fields.items():
+            # §LB-04: check_out_date 빈문자열('') → None 정규화 (mutator 단일소스).
+            #   check_out_date 는 nullable=True 라 None 이 "당일 1박"의 정답 표현. '' 가 그대로 저장되면
+            #   (1) is_(None)/func.max SQL 사이트가 '' 를 비-NULL 로 오분류, (2) old(date)!='' 라 applied →
+            #   check_out_pinned=True 영구 핀 → 네이버 정정 차단(naver_sync guarded skip).
+            #   check_in_date 는 nullable=False 라 None 화 시 제약 위반 → 정규화 대상 제외(별도 검증).
+            if field == 'check_out_date' and new_value == '':
+                new_value = None
             # §6-B: 액티비티 분류 영구 고정 — activity → 객실/파티/미배정/언스 전이 거부 (전 source 일괄).
             # 직접대입(assign_room)은 §6-H가, POST 생성자는 인입 화이트리스트가 담당. 여기는 PATCH/네이버 mutator 경로.
             if field == 'section' and getattr(reservation, 'section', None) == 'activity' \
