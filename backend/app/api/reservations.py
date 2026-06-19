@@ -213,7 +213,7 @@ async def create_reservation(reservation: ReservationCreate, db: Session = Depen
         female_count=reservation.female_count,
         party_size=reservation.party_size,
         party_type=reservation.party_type,
-        check_out_date=reservation.check_out_date,
+        check_out_date=reservation.check_out_date or None,  # §LB-05: '' → None (naver_sync create sibling 과 동일 정규화)
         naver_room_type=reservation.naver_room_type,  # Original reservation room type
         section=reservation.section or 'unassigned',
         # 수동 생성 경로(POST /api/reservations)는 visit_count/age_group 메타데이터를 채우지

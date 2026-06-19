@@ -185,8 +185,8 @@
   - **step11(GuestRow/MobileGuestRow stayProgress) 보류**: `totalNights` 가 배지 분모로 직접 표시되어(`${currentNight}/${totalNights}`) 표시 결합도 높음 → 별도 후속(저위험·저가치).
   - **drift-guard 미적용**: 프론트 vitest 미설치 → 백엔드 stay_logic.py 를 단일 사양으로 cross-ref(§8). vitest 도입 시 공유 fixture drift-guard 추가.
 - **Phase C 착수 — LB-04 수정 완료**: mutator `apply_changes` 에 `check_out_date=='' → None` 정규화(단일소스). 4링크 전수확인(직접추적+적대 refuter): 진짜 버그(단 **LATENT** — 현재 FE caller는 '' 미전송, 직접 API/향후 회귀로만 트리거). check_in_date(nullable=False)는 제외. 테스트 5 + 전체 556 passed(baseline 동일). 동작변경(no-op 아님) — '' 헛된 핀 제거 + 클린 None 저장.
-  - **LB-05(POST create) 미해결**: create 는 mutator 우회 → 별도 정규화 필요(후속).
-- **남음**: LB-05 + Phase B(§7 나머지 결정) → 기타 LB → Phase D(불변식 등재 + SQL↔Python 교차테스트). prod 백필('' →NULL)은 사람 수동.
+- **LB-05 수정 완료**: POST create 생성자에 `check_out_date=reservation.check_out_date or None`(naver_sync:715 미러). 4링크 확인(추적+refuter): REAL but **LATENT**(현 FE 미전송, 직접 API만), LB-04보다 경severity(핀 없음·크래시 없음). 엔드포인트 직접호출 테스트 3 + 전체 559 passed.
+- **남음**: Phase B(§7 나머지: co==ci표현/그룹last권위/SQL''-safe/날짜ISO) → 기타 LB(02 high 등) → Phase D(불변식 등재 + SQL↔Python 교차테스트). prod 백필('' →NULL)은 사람 수동.
 
 ## 10. 권장 실행 단계
 
