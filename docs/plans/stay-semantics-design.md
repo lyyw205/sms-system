@@ -178,6 +178,14 @@
 
 ---
 
+## ✅ 진행 현황 (2026-06-19)
+
+- **Phase A 백엔드 완료** (커밋 `ad07e5b`): stay_logic.py + 특성화 15 + 치환 5사이트. 전체 551 passed(baseline 동일) + 독립 적대검증 6/6 NO-OP.
+- **Phase A 프론트 부분 완료**: `stayLogic.ts` 미러 생성 + `useGuestMove.isMultiNight`(step10)·`useStayGroup.nextDateOf`(step12a) 치환(verbatim 복사+별칭 import, tsc 통과).
+  - **step11(GuestRow/MobileGuestRow stayProgress) 보류**: `totalNights` 가 배지 분모로 직접 표시되어(`${currentNight}/${totalNights}`) 표시 결합도 높음 → 별도 후속(저위험·저가치).
+  - **drift-guard 미적용**: 프론트 vitest 미설치 → 백엔드 stay_logic.py 를 단일 사양으로 cross-ref(§8). vitest 도입 시 공유 fixture drift-guard 추가.
+- **남음**: Phase B(§7 결정) → Phase C(LB 수정, mutator 정규화부터) → Phase D(불변식 등재 + SQL↔Python 교차테스트).
+
 ## 10. 권장 실행 단계
 
 1. **Phase A (no-op)**: §4 step1~12a. 각 단계 후 전체 스위트(baseline 4 fail/2 err) + 별도 verifier 적대검증. → 커밋.

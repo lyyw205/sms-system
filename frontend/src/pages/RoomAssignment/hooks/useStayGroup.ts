@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { reservationsAPI, stayGroupAPI } from '../../../services/api';
 import { queryKeys } from '@/lib/queryKeys';
+import { nextCheckinDate as nextDateOf } from '@/lib/stayLogic';
 import type { Reservation } from '../types';
 
 interface ChainEntry {
@@ -15,11 +16,7 @@ interface ChainEntry {
   stay_group_id?: string | null;
 }
 
-// 단일날짜(ci===co) 예약은 ci+1, 연박은 co 사용 — chain next 슬롯 계산.
-const nextDateOf = (r: { check_in_date: string; check_out_date?: string | null }) =>
-  (r.check_out_date && r.check_out_date !== r.check_in_date)
-    ? r.check_out_date
-    : dayjs(r.check_in_date).add(1, 'day').format('YYYY-MM-DD');
+// nextDateOf(chain next 슬롯 계산)는 @/lib/stayLogic.nextCheckinDate 로 이동 (백엔드 규약 정합).
 
 interface UseStayGroupProps {
   reservations: Reservation[];

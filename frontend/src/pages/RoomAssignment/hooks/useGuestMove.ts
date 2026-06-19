@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { reservationsAPI } from '../../../services/api';
 import { queryKeys } from '@/lib/queryKeys';
+import { isMultiNight } from '@/lib/stayLogic';
 import type { Reservation, SmsAssignment } from '../types';
 import type { UndoEntry } from './useUndoStack';
 import type { RoomEntry } from '../components/RoomRow';
@@ -15,15 +16,8 @@ declare global {
   }
 }
 
-// Multi-night detection: covers both naver-detected groups (stay_group_id) and
-// single-record stays extended via the new model (end_date - check_in_date > 1).
-function isMultiNight(res: { stay_group_id?: string | null; check_in_date?: string | null; check_out_date?: string | null }): boolean {
-  if (res.stay_group_id) return true;
-  if (res.check_in_date && res.check_out_date) {
-    return dayjs(res.check_out_date).diff(dayjs(res.check_in_date), 'day') > 1;
-  }
-  return false;
-}
+// Multi-night detection 은 @/lib/stayLogic.isMultiNight 로 이동 (백엔드 stay_logic 미러).
+// stay_group_id(네이버 그룹축) OR-절 + (co-ci)>1 동일.
 
 type SectionOverrides = Record<number, 'party' | 'unassigned'>;
 type SectionOverridesSetter = React.Dispatch<React.SetStateAction<SectionOverrides>>;
