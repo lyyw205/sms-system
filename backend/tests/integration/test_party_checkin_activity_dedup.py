@@ -32,7 +32,8 @@ def _res(db, *, section, party_type=None, male=0, female=0, phone="010", name="g
 
 
 def _list(db):
-    return asyncio.run(
+    # 기존 async 테스트와 동일 패턴 — asyncio.run()은 공유 이벤트루프를 닫아 후속 async 테스트를 깨뜨림
+    return asyncio.get_event_loop().run_until_complete(
         get_party_checkin_list(date=D, party_source="stable", db=db, current_user=None)
     )
 
