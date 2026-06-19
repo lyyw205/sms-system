@@ -99,7 +99,7 @@ export function MobileGuestRow({
   // Step #06a: 모바일도 드래그 활성.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `guest-${res.id}`,
-    disabled: isCancelled,
+    disabled: isCancelled || zone === 'activity',  // §6-D: 액티비티는 객실 배정 대상 아님 → 드래그 비활성
   });
 
   const isCustomHex = isCustomHexColor(res.highlight_color);
@@ -282,7 +282,7 @@ export function MobileGuestRow({
             resId={res.id}
             onSave={handleFieldSave}
             className={`${cellText} font-medium text-label text-center`}
-            placeholder="-"
+            placeholder={zone === 'activity' ? '액티비티' : '-'}
             compact
             onActivate={cancelDeselect} onDeactivate={onInputDeactivate}
             singleClick
