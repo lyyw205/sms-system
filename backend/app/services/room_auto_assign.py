@@ -25,6 +25,7 @@ from app.db.models import (
 from app.services import room_assignment
 from app.services.dorm_gender import dorm_gender_conflict, single_gender
 from app.db.tenant_context import get_session_tenant_id, is_session_bypass
+from app.services.section_registry import non_assignable_sections
 from app.diag_logger import diag
 
 logger = logging.getLogger(__name__)
@@ -229,7 +230,7 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
             Reservation.tenant_id == tid,
             Reservation.naver_biz_item_id.isnot(None),
             Reservation.status == ReservationStatus.CONFIRMED,
-            Reservation.section.notin_(['party', 'unstable', 'activity']),
+            Reservation.section.notin_(non_assignable_sections()),  # 명세서: = ['party','unstable','activity']
             Reservation.check_in_date <= target_date,
         )
         .filter(
