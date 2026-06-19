@@ -30,6 +30,7 @@ import { BuildingGroup, type BuildingGroupData } from '../components/BuildingGro
 import type { RoomEntry } from '../components/RoomRow';
 import { UnassignedZone } from '../components/zones/UnassignedZone';
 import { PartyZone } from '../components/zones/PartyZone';
+import { ActivityZone } from '../components/zones/ActivityZone';
 import { UnstableZone } from '../components/zones/UnstableZone';
 import { CancelledZone } from '../components/zones/CancelledZone';
 import type { ColWidths } from '../hooks/useColumnResize';
@@ -91,6 +92,7 @@ export interface DesktopLayoutProps {
   unassigned: Reservation[];
   nextDayUnassigned: Reservation[];
   partyOnly: Reservation[];
+  activityOnly: Reservation[];
   nextDayPartyOnly: Reservation[];
   unstableGuests: Reservation[];
   cancelledGuests: Reservation[];
@@ -142,6 +144,7 @@ export function DesktopLayout({
   unassigned,
   nextDayUnassigned,
   partyOnly,
+  activityOnly,
   nextDayPartyOnly,
   unstableGuests,
   cancelledGuests,
@@ -292,6 +295,12 @@ export function DesktopLayout({
               <PartyZone
                 guests={partyOnly}
                 nextDayGuests={nextDayPartyOnly}
+                {...sharedZoneProps}
+              />
+
+              <ActivityZone
+                guests={activityOnly}
+                nextDayGuests={[]}
                 {...sharedZoneProps}
               />
 

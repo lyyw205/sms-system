@@ -90,6 +90,7 @@ const RoomAssignment = () => {
     assignedRooms,
     unassigned: rawUnassigned,
     partyOnly: rawPartyOnly,
+    activityOnly,
     unstableGuests, cancelledGuests,
     nextDayUnassigned, nextDayPartyOnly,
     findReservation,
@@ -954,6 +955,7 @@ const RoomAssignment = () => {
     let roomTotal = 0, roomMale = 0, roomFemale = 0;
     for (const r of active) {
       if (r.section !== 'unstable' && r.unstable_party) continue; // 복사본 제외
+      if (r.section === 'activity') continue; // §6-G: 액티비티는 숙박 인원 아님 → 총 예약자 제외
       const m = r.male_count || 0;
       const f = r.female_count || 0;
       roomMale += m;
@@ -962,7 +964,14 @@ const RoomAssignment = () => {
     }
 
     // Party guest totals — 표준 파티값('1'/'2'/'2차만')만. 'X'/'x'(파티 미신청)·비표준 값 제외.
-    const partyGuests = active.filter((r) => r.party_type != null && PARTY_TYPE_VALUES.has(r.party_type));
+    const partyGuestsRaw = active.filter((r) => r.party_type != null && PARTY_TYPE_VALUES.has(r.party_type));
+    // §D4: 동일 phone 의 비-activity 파티참여행이 있으면 그 phone 의 activity 행은 인원 미합산(이중계상 방지)
+    const partyNonActivityPhones = new Set(
+      partyGuestsRaw.filter((r) => r.section !== 'activity' && r.phone).map((r) => r.phone)
+    );
+    const partyGuests = partyGuestsRaw.filter(
+      (r) => !(r.section === 'activity' && r.phone && partyNonActivityPhones.has(r.phone))
+    );
     let partyMale = 0, partyFemale = 0;
     let firstMale = 0, firstFemale = 0;
     let secondOnlyMale = 0, secondOnlyFemale = 0;
@@ -1070,6 +1079,7 @@ const RoomAssignment = () => {
           unassigned,
           nextDayUnassigned,
           partyOnly,
+          activityOnly,
           nextDayPartyOnly,
           unstableGuests,
           cancelledGuests,

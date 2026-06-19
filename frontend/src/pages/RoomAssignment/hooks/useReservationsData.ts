@@ -198,10 +198,11 @@ export function useReservationsData(selectedDate: Dayjs) {
   }, [roomGroups, activeRoomEntries]);
 
   // 예약을 5개 카테고리로 분류 — bumping(recentlyMovedId)은 본체 책임이라 raw 만 반환.
-  const { assignedRooms, unassigned, partyOnly, unstableGuests, cancelledGuests } = useMemo(() => {
+  const { assignedRooms, unassigned, partyOnly, activityOnly, unstableGuests, cancelledGuests } = useMemo(() => {
     const assigned = new Map<number, Reservation[]>();
     const unassignedList: Reservation[] = [];
     const partyOnlyList: Reservation[] = [];
+    const activityList: Reservation[] = [];
     const unstableList: Reservation[] = [];
     const cancelledList: Reservation[] = [];
 
@@ -214,6 +215,9 @@ export function useReservationsData(selectedDate: Dayjs) {
         const list = assigned.get(res.room_id) || [];
         list.push(res);
         assigned.set(res.room_id, list);
+      } else if (res.section === 'activity') {
+        // 액티비티는 최우선 분류(sectionOverrides 무관) — 객실/파티 버킷에 섞이지 않음
+        activityList.push(res);
       } else if (sectionOverrides[res.id] === 'party' || (sectionOverrides[res.id] === undefined && res.section === 'party')) {
         partyOnlyList.push(res);
       } else if (res.section === 'unstable') {
@@ -225,7 +229,7 @@ export function useReservationsData(selectedDate: Dayjs) {
 
     // 스테이블 예약자 중 unstable_party=true인 경우 → 언스테이블 행에 복사본 추가
     reservations.forEach((res) => {
-      if (res.section !== 'unstable' && res.unstable_party) {
+      if (res.section !== 'unstable' && res.section !== 'activity' && res.unstable_party) {
         unstableList.push({ ...res, _isCopied: true } as Reservation & { _isCopied?: boolean });
       }
     });
@@ -239,6 +243,7 @@ export function useReservationsData(selectedDate: Dayjs) {
       assignedRooms: assigned,
       unassigned: unassignedList,
       partyOnly: partyOnlyList,
+      activityOnly: activityList,
       unstableGuests: unstableList,
       cancelledGuests: cancelledList,
     };
@@ -310,6 +315,7 @@ export function useReservationsData(selectedDate: Dayjs) {
     assignedRooms,
     unassigned,
     partyOnly,
+    activityOnly,
     unstableGuests,
     cancelledGuests,
     nextDayUnassigned,

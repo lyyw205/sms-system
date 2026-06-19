@@ -21,6 +21,7 @@ import { SummaryCards } from '../components/SummaryCards';
 import { CampaignToolbar } from '../components/CampaignToolbar';
 import { UnassignedZone } from '../components/zones/UnassignedZone';
 import { PartyZone } from '../components/zones/PartyZone';
+import { ActivityZone } from '../components/zones/ActivityZone';
 import { UnstableZone } from '../components/zones/UnstableZone';
 import { CancelledZone } from '../components/zones/CancelledZone';
 import { type DesktopLayoutProps } from './DesktopLayout';
@@ -59,6 +60,7 @@ export function MobileLayout({
   unassigned,
   nextDayUnassigned,
   partyOnly,
+  activityOnly,
   nextDayPartyOnly,
   unstableGuests,
   cancelledGuests,
@@ -157,6 +159,12 @@ export function MobileLayout({
               <PartyZone
                 guests={partyOnly}
                 nextDayGuests={nextDayPartyOnly}
+                {...sharedZoneProps}
+              />
+
+              <ActivityZone
+                guests={activityOnly}
+                nextDayGuests={[]}
                 {...sharedZoneProps}
               />
 

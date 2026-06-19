@@ -88,7 +88,7 @@ export function GuestRow({
   // Step #06a: 모바일에서도 드래그 활성. cancelled 만 제외.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `guest-${res.id}`,
-    disabled: isCancelled,
+    disabled: isCancelled || zone === 'activity',  // §6-D: 액티비티는 객실 배정 대상 아님 → 드래그 비활성
   });
   const isCustomHex = isCustomHexColor(res.highlight_color);
   const highlightStyle = !isCustomHex && res.highlight_color ? PRESET_HIGHLIGHT_STYLES[res.highlight_color] : null;
@@ -233,7 +233,7 @@ export function GuestRow({
           })()}
         </div>
         <div className="overflow-hidden text-center px-1.5">
-          <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" onActivate={cancelDeselect} singleClick />
+          <InlineInput value={res.party_type || ''} field="party_type" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder={zone === 'activity' ? '액티비티' : '-'} onActivate={cancelDeselect} singleClick />
         </div>
         <div className="overflow-hidden text-center px-1.5">
           <InlineInput value={genderPeople} field="genderPeople" resId={res.id} onSave={handleFieldSave} className={`${cellText} font-medium text-center`} placeholder="-" onActivate={cancelDeselect} singleClick />
