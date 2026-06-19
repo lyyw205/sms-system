@@ -7,6 +7,7 @@ from sqlalchemy import or_, and_
 from typing import Optional
 from app.api.deps import get_tenant_scoped_db, get_current_tenant
 from app.db.models import Reservation, ReservationStatus, User, Tenant, RoomAssignment, ReservationDailyInfo
+from app.services.section_registry import SECTIONS
 from app.factory import get_reservation_provider_for_tenant
 from app.auth.dependencies import get_current_user
 from app.rate_limit import limiter
@@ -289,7 +290,7 @@ async def update_reservation(
     if section_changed:
         old_section = db_reservation.section or "unassigned"
         new_section = update_data["section"]
-        section_labels = {"room": "객실", "unassigned": "미배정", "party": "파티만", "unstable": "언스테이블", "activity": "액티비티"}
+        section_labels = {s: spec.label for s, spec in SECTIONS.items()}  # 명세서 (fallback은 .get(x,x) 유지)
         log_activity(
             db, type="room_move",
             title=f"[{db_reservation.customer_name}] 섹션이동 {section_labels.get(old_section, old_section)} → {section_labels.get(new_section, new_section)}",

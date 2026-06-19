@@ -16,6 +16,7 @@ from app.db.models import (
 from app.auth.dependencies import get_current_user
 from app.api.shared_schemas import ActionResponse
 from app.diag_logger import diag
+from app.services.section_registry import has_stay
 
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
@@ -173,7 +174,7 @@ async def extend_stay(
     original = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not original:
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
-    if original.section == 'activity':
+    if not has_stay(original.section):  # 명세서: 숙박 개념 없는 section(=activity) 은 연박 대상 아님
         raise HTTPException(status_code=400, detail="액티비티는 연박(연장) 대상이 아닙니다")
 
     current_end = original.check_out_date

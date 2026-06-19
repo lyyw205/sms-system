@@ -11,6 +11,7 @@ import logging
 import re
 
 from app.db.models import Reservation, ReservationStatus, NaverBizItem, RoomBizItemLink, Room
+from app.services.section_registry import naver_inbound_sections
 from app.diag_logger import diag
 from app.services.consecutive_stay import compute_is_long_stay
 from app.services.room_auto_assign import auto_assign_rooms
@@ -685,7 +686,7 @@ def _create_reservation(res_data: Dict[str, Any]) -> Reservation:
 
     naver_room_type = res_data.get("room_type", "")
     section_hint = res_data.get("_section_hint")
-    section = section_hint if section_hint in ('party', 'room', 'unstable', 'activity') else 'unassigned'
+    section = section_hint if section_hint in naver_inbound_sections() else 'unassigned'  # 명세서: party/room/unstable/activity
 
     # 패키지 상품: default_party_type이 있으면 Reservation.party_type 자동 세팅
     # 액티비티는 자동상속 차단 (D8 Option A: deliberate party_type 세팅만 파티합류로 인정,

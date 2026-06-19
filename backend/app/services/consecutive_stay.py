@@ -19,6 +19,7 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from app.db.models import Reservation, ReservationStatus
+from app.services.section_registry import has_stay
 from app.db.tenant_context import get_session_tenant_id
 from app.diag_logger import diag
 
@@ -335,7 +336,7 @@ def _validate_link_inputs(reservations: List[Reservation]) -> None:
                  reason="not_confirmed", reservation_id=r.id,
                  status=getattr(r.status, 'value', str(r.status)))
             raise ValueError(f"{name} 님은 확정 상태가 아닙니다")
-        if r.section == 'activity':
+        if not has_stay(r.section):  # 명세서: 숙박 개념 없는 section(=activity) 은 연박묶기 불가
             # §4-13: 액티비티는 숙박이 아니라 연박 그룹 편입 불가 (check_out NULL → 가짜 연박/칩 날짜 왜곡)
             name = r.customer_name or f"예약#{r.id}"
             diag("stay_group.validate_failed", level="verbose",
