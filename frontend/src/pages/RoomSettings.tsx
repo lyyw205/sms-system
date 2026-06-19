@@ -1353,6 +1353,7 @@ const RoomSettings = () => {
                             >
                               <option value="">미배정</option>
                               <option value="party">파티만</option>
+                              <option value="activity">액티비티</option>
                             </Select>
                           </TableCell>
                           <TableCell>

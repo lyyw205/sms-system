@@ -172,7 +172,8 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
                     res_data["people_count"] = biz_capacity_map.get(bid, 1)
             # split 가드: RoomBizItemLink 매핑 없는 biz_item (차량투어, 미등록 상품 등) 은
             # 도미토리/일반실 판단 불가 → split 대상에서 제외.
-            res_data["_has_room_link"] = bid in biz_link_set
+            # 액티비티는 객실에 매핑돼 있어도 무시 (split/자동배정 대상 아님 — 운영자 오매핑 방어)
+            res_data["_has_room_link"] = (bid in biz_link_set) and not res_data.get("_is_activity")
             # section_hint enrichment (res_data에 저장해서 _create_reservation에서 사용)
             res_data["_section_hint"] = biz_section_map.get(bid)
             # 패키지 상품 기본 파티타입 (새 예약 생성 시에만 적용)
