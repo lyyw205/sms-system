@@ -129,8 +129,9 @@ async def get_sales_report(
     current = dt_from
     while current <= dt_to:
         d = current.strftime("%Y-%m-%d")
-        total = 0
         di_for_date = daily_info_map.get(d, {})
+        # 이 날짜에 파티 참여로 집계 대상인 예약 수집
+        _qualifying = []
         for r in all_reservations:
             if r.check_out_date and r.check_out_date != r.check_in_date:
                 if not (r.check_in_date <= d < r.check_out_date):
@@ -142,7 +143,14 @@ async def get_sales_report(
                 continue
             party_type = di_for_date.get(r.id) or r.party_type
             if party_type in PARTY_TYPE_VALUES:
-                total += (r.male_count or 0) + (r.female_count or 0)
+                _qualifying.append(r)
+        # §D4: 동일 phone 의 비-activity 행이 집계되면 그 phone 의 activity 행 인원 미합산(이중계상 방지)
+        _non_activity_phones = {r.phone for r in _qualifying if r.section != 'activity' and r.phone}
+        total = 0
+        for r in _qualifying:
+            if r.section == 'activity' and r.phone in _non_activity_phones:
+                continue
+            total += (r.male_count or 0) + (r.female_count or 0)
         participants_by_date[d] = total
         current += timedelta(days=1)
 

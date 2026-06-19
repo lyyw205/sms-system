@@ -335,6 +335,12 @@ def _validate_link_inputs(reservations: List[Reservation]) -> None:
                  reason="not_confirmed", reservation_id=r.id,
                  status=getattr(r.status, 'value', str(r.status)))
             raise ValueError(f"{name} 님은 확정 상태가 아닙니다")
+        if r.section == 'activity':
+            # §4-13: 액티비티는 숙박이 아니라 연박 그룹 편입 불가 (check_out NULL → 가짜 연박/칩 날짜 왜곡)
+            name = r.customer_name or f"예약#{r.id}"
+            diag("stay_group.validate_failed", level="verbose",
+                 reason="activity_member", reservation_id=r.id)
+            raise ValueError(f"{name} 님은 액티비티 예약이라 연박 묶기 대상이 아닙니다")
 
     sorted_res = sorted(reservations, key=lambda r: r.check_in_date or "")
     for i in range(len(sorted_res) - 1):

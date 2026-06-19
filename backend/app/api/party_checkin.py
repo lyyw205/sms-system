@@ -32,6 +32,8 @@ class PartyCheckinItem(BaseModel):
     stay_group_id: Optional[str] = None
     stay_group_order: Optional[int] = None
     is_long_stay: bool = False
+    section: Optional[str] = None
+    count_in_total: bool = True  # §D4: 동일 phone 객실행이 명단에 있으면 activity 행은 False(인원 미합산)
 
     class Config:
         from_attributes = True
@@ -99,6 +101,10 @@ async def get_party_checkin_list(
     # 가나다순 정렬
     party_reservations.sort(key=lambda r: r.customer_name or "")
 
+    # §D4: 이중계상 방지 — 동일 phone 의 비-activity 행이 명단에 있으면 그 phone 의 activity 행 인원 미합산.
+    # (Option A: activity 단독 참여는 합산, 객실+activity 둘 다 명단이면 객실행만 합산.)
+    _non_activity_phones = {r.phone for r in party_reservations if r.section != 'activity' and r.phone}
+
     # 체크인 상태 조회
     reservation_ids = [r.id for r in party_reservations]
     checkin_map: dict[int, PartyCheckin] = {}
@@ -140,6 +146,8 @@ async def get_party_checkin_list(
                 stay_group_id=res.stay_group_id,
                 stay_group_order=res.stay_group_order,
                 is_long_stay=bool(res.is_long_stay),
+                section=res.section,
+                count_in_total=not (res.section == 'activity' and res.phone in _non_activity_phones),
             )
         )
 

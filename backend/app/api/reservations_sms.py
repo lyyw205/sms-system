@@ -23,6 +23,23 @@ class SmsAssignRequest(BaseModel):
     date: str = ''
 
 
+# §4-6: 액티비티 행에 객실변수 사용 템플릿을 수동 배정/발송하면 거부.
+# sms_sender 가 발송 자체는 막지만(빈 객실변수 → record_failed), failed 보호칩 잔류 +
+# critical diag 노이즈를 칩 생성 전에 차단한다.
+_ROOM_VARS = ("room_num", "building", "room_password", "prefix_room_password")  # = sms_sender._ROOM_VARS_REQUIRED
+
+
+def _guard_activity_room_template(db: Session, reservation_id: int, template_key: str) -> None:
+    res = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+    if not res or res.section != 'activity':
+        return
+    from app.db.models import MessageTemplate
+    tpl = db.query(MessageTemplate).filter(MessageTemplate.template_key == template_key).first()
+    content = (tpl.content if tpl else '') or ''
+    if any(f"{{{{{v}}}}}" in content for v in _ROOM_VARS):
+        raise HTTPException(status_code=400, detail="액티비티 예약에는 객실 정보 템플릿을 발송할 수 없습니다")
+
+
 @router.post("/{reservation_id}/sms-assign")
 async def assign_sms_template(
     reservation_id: int,
@@ -34,6 +51,8 @@ async def assign_sms_template(
     res = db.query(Reservation).filter(Reservation.id == reservation_id).first()
     if not res:
         raise HTTPException(status_code=404, detail="예약을 찾을 수 없습니다")
+
+    _guard_activity_room_template(db, reservation_id, request.template_key)  # §4-6
 
     # Check if already assigned
     existing = db.query(ReservationSmsAssignment).filter(
@@ -105,6 +124,8 @@ async def toggle_sms_sent(
         skip_send: If True, mark as sent without actually sending SMS.
         date: Target date (YYYY-MM-DD) for date-specific assignment lookup.
     """
+    _guard_activity_room_template(db, reservation_id, template_key)  # §4-6
+
     query = db.query(ReservationSmsAssignment).filter(
         ReservationSmsAssignment.reservation_id == reservation_id,
         ReservationSmsAssignment.template_key == template_key,
