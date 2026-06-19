@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { reservationsAPI } from '../../../services/api';
