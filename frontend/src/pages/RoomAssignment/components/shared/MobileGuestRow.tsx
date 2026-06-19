@@ -25,6 +25,7 @@ import React, { useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
+import { isDraggableSection } from '../../../../lib/sectionSpec';
 import { normalizeUtcString } from '../../../../lib/utils';
 import {
   PRESET_HIGHLIGHT_STYLES,
@@ -99,7 +100,7 @@ export function MobileGuestRow({
   // Step #06a: 모바일도 드래그 활성.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `guest-${res.id}`,
-    disabled: isCancelled || zone === 'activity',  // §6-D: 액티비티는 객실 배정 대상 아님 → 드래그 비활성
+    disabled: isCancelled || !isDraggableSection(zone),  // §6-D: 명세서 draggable=false(=activity) 면 드래그 비활성
   });
 
   const isCustomHex = isCustomHexColor(res.highlight_color);
