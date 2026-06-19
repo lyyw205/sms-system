@@ -35,6 +35,8 @@ interface PartyGuest {
   stay_group_id?: string | null
   stay_group_order?: number | null
   is_long_stay?: boolean
+  section?: string | null
+  count_in_total?: boolean
 }
 
 
@@ -356,8 +358,10 @@ export default function PartyCheckin() {
   }
 
   const allGuests = [...guests, ...unstableGuests]
-  const totalPeople = allGuests.reduce((sum, g) => sum + (g.male_count ?? 0) + (g.female_count ?? 0), 0)
-  const checkedInPeople = allGuests.filter((g) => g.checked_in).reduce((sum, g) => sum + (g.male_count ?? 0) + (g.female_count ?? 0), 0)
+  // §D4: count_in_total === false (동일 phone 객실행과 중복된 activity 행)은 인원 합산 제외. 행 표시는 유지.
+  const countedGuests = allGuests.filter((g) => g.count_in_total !== false)
+  const totalPeople = countedGuests.reduce((sum, g) => sum + (g.male_count ?? 0) + (g.female_count ?? 0), 0)
+  const checkedInPeople = countedGuests.filter((g) => g.checked_in).reduce((sum, g) => sum + (g.male_count ?? 0) + (g.female_count ?? 0), 0)
   const notCheckedInPeople = totalPeople - checkedInPeople
 
   // ── 진행자 카드 통합 저장 (진행자 + 리뷰수 + 경매액) ──

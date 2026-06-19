@@ -579,6 +579,8 @@ export default function Reservations() {
                           <span className="text-body font-medium text-[#3182F6]">{r.room_number}</span>
                         ) : r.section === 'unstable' ? (
                           <span className="text-caption font-medium text-[#FF6B2C]">언스테이블</span>
+                        ) : r.section === 'activity' ? (
+                          <span className="text-caption font-medium text-[#00C9A7]">액티비티</span>
                         ) : (
                           <span className="text-caption text-gray-400">미배정</span>
                         )}
