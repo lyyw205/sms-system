@@ -13,6 +13,7 @@ from app.api.deps import get_tenant_scoped_db
 from app.db.models import Reservation, ReservationStatus, PartyCheckin, ReservationDailyInfo
 from app.auth.dependencies import require_any_role
 from app.diag_logger import diag
+from app.services.party_type import PARTY_JOINED_TYPES, effective_party_type
 
 router = APIRouter(prefix="/api/party-checkin", tags=["party-checkin"])
 
@@ -43,9 +44,6 @@ class ToggleResponse(BaseModel):
     success: bool
     checked_in: bool
     checked_in_at: Optional[str]
-
-
-PARTY_TYPE_VALUES = {'1', '2', '2차만'}
 
 
 @router.get("", response_model=List[PartyCheckinItem])
@@ -95,7 +93,7 @@ async def get_party_checkin_list(
             r for r in reservations
             if r.section != 'unstable'
             and r.id not in daily_unstable
-            and (daily_infos.get(r.id) or r.party_type) in PARTY_TYPE_VALUES
+            and effective_party_type(daily_infos.get(r.id), r.party_type) in PARTY_JOINED_TYPES
         ]
 
     # 가나다순 정렬
@@ -136,7 +134,7 @@ async def get_party_checkin_list(
                 gender=res.gender,
                 male_count=res.male_count,
                 female_count=res.female_count,
-                party_type=daily_infos.get(res.id) or res.party_type,
+                party_type=effective_party_type(daily_infos.get(res.id), res.party_type),
                 checked_in=checkin is not None and checkin.checked_in_at is not None,
                 checked_in_at=(
                     checkin.checked_in_at.isoformat() if checkin and checkin.checked_in_at else None

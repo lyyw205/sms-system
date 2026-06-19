@@ -9,7 +9,7 @@
 target_date 에 투숙 중인 CONFIRMED 예약을 스캔해서:
 
   - 유효 party_type (ReservationDailyInfo.party_type 우선, 없으면 Reservation.party_type)
-    가 PARTY3_TYPES 안에 들면 → MMS 칩 생성 (없으면 유지)
+    가 PARTY3_2CHA_TYPES 안에 들면 → MMS 칩 생성 (없으면 유지)
   - 아니면 → 미발송 MMS 칩 삭제 (이미 발송된 칩은 건드리지 않음)
 
 연박자의 각 밤은 (reservation_id, date) 단위로 칩이 따로 생성되므로,
@@ -30,11 +30,11 @@ from app.db.models import (
     TemplateSchedule,
 )
 from app.diag_logger import diag
+from app.services.party_type import PARTY3_2CHA_TYPES, effective_party_type
 
 logger = logging.getLogger(__name__)
 
 PARTY3_MMS_CUSTOM_TYPE = "party3_today_mms"
-PARTY3_TYPES = ("2", "2차만")
 
 
 def _find_schedule(db: Session) -> Optional[TemplateSchedule]:
@@ -48,7 +48,7 @@ def _find_schedule(db: Session) -> Optional[TemplateSchedule]:
 def reconcile_party3_mms(db: Session, date: str) -> None:
     """target_date 기준 party3 MMS 칩 재조정.
 
-    - 대상: date 에 투숙/방문 중인 CONFIRMED 예약, 유효 party_type ∈ PARTY3_TYPES
+    - 대상: date 에 투숙/방문 중인 CONFIRMED 예약, 유효 party_type ∈ PARTY3_2CHA_TYPES
       (연박 중간일, NULL 체크아웃, 당일 파티/언스테이블 모두 포함)
     - 유효 party_type = ReservationDailyInfo(date).party_type or Reservation.party_type
     - stale 칩은 미발송인 경우만 삭제 (이미 발송된 칩 보존)
@@ -87,8 +87,8 @@ def reconcile_party3_mms(db: Session, date: str) -> None:
     # 3. 유효 party_type 계산 → 타겟 집합
     target_ids: set[int] = set()
     for r in reservations:
-        effective = daily_party_map.get(r.id) or r.party_type
-        if effective in PARTY3_TYPES:
+        effective = effective_party_type(daily_party_map.get(r.id), r.party_type)
+        if effective in PARTY3_2CHA_TYPES:
             target_ids.add(r.id)
 
     # 4. 기존 칩 조회 — uq_res_sms_template_date 와 동일 키(template_key)로 검사.
@@ -175,12 +175,12 @@ def reconcile_party3_mms_for_reservation(
         ReservationDailyInfo.reservation_id == reservation_id,
         ReservationDailyInfo.date == date,
     ).first()
-    effective = (daily.party_type if daily else None) or res.party_type
+    effective = effective_party_type(daily.party_type if daily else None, res.party_type)
 
     is_target = (
         in_stay
         and res.status == ReservationStatus.CONFIRMED
-        and effective in PARTY3_TYPES
+        and effective in PARTY3_2CHA_TYPES
     )
 
     template_key = schedule.template.template_key

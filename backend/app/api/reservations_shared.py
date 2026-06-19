@@ -270,6 +270,7 @@ def _to_response(res: Reservation, override_room: Optional[str] = None, override
         male_count=res.male_count,
         female_count=res.female_count,
         party_size=res.party_size,
+        # is-not-None 폴백: '' override 도 채택 (None 만 폴백) — party_type.py 의 'or'/coalesce 계열과 의도적으로 다름(그리드 표시용 단일 사이트)
         party_type=override_party_type if override_party_type is not None else res.party_type,
         check_out_date=res.check_out_date,
         biz_item_name=res.biz_item_name,

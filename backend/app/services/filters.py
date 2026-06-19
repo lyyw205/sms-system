@@ -40,6 +40,7 @@ from app.db.models import (
     ReservationDailyInfo,
 )
 from app.services.section_registry import non_lodging_sections
+from app.services.party_type import PARTY_JOINED_TYPES, effective_party_type_sql
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +89,6 @@ def activity_stats_filter(db, target_date: str):
     제외: activity 이면서 미참여(party_type NULL / 'X').
     NULL section 은 비-activity 로 취급(coalesce '').
     """
-    _PARTY_JOINED = ('1', '2', '2차만')  # = PARTY_TYPE_VALUES (party_checkin/sales_report)
     daily_pt = (
         db.query(ReservationDailyInfo.party_type)
         .filter(
@@ -98,10 +98,10 @@ def activity_stats_filter(db, target_date: str):
         .correlate(Reservation)
         .scalar_subquery()
     )
-    effective_pt = func.coalesce(daily_pt, Reservation.party_type)
+    effective_pt = effective_party_type_sql(daily_pt, Reservation.party_type)
     return or_(
         func.coalesce(Reservation.section, '') != 'activity',
-        and_(Reservation.section == 'activity', effective_pt.in_(_PARTY_JOINED)),
+        and_(Reservation.section == 'activity', effective_pt.in_(tuple(PARTY_JOINED_TYPES))),
     )
 
 
@@ -379,7 +379,7 @@ def _condition_column_match(spec: dict, ctx: dict):
             .correlate(Reservation)
             .scalar_subquery()
         )
-        effective = func.coalesce(daily_sub, getattr(Reservation, column))
+        effective = effective_party_type_sql(daily_sub, getattr(Reservation, column))
         if operator == 'is_empty':
             return effective.is_(None) | (effective == '')
         if operator == 'is_not_empty':

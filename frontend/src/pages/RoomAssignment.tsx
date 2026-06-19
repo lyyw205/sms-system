@@ -28,6 +28,7 @@ import { useCampaignSend } from './RoomAssignment/hooks/useCampaignSend';
 import { useHighlightColors } from './RoomAssignment/hooks/useHighlightColors';
 import { useStayGroup } from './RoomAssignment/hooks/useStayGroup';
 import { useReservationsData, filterActive } from './RoomAssignment/hooks/useReservationsData';
+import { isPartyJoined } from '../lib/partyTypeSpec';
 import { useColumnResize } from './RoomAssignment/hooks/useColumnResize';
 import { useContextMenu } from './RoomAssignment/hooks/useContextMenu';
 import { useSmsAssignment } from './RoomAssignment/hooks/useSmsAssignment';
@@ -59,9 +60,7 @@ import { QuickMenuBar } from './RoomAssignment/components/QuickMenuBar';
 // 데이터 shape 타입은 RoomAssignment/types.ts 로 분리 (Phase 1 단순 분리).
 // SmsAssignment, Reservation, ConfirmState 는 파일 상단 import 참조.
 
-// 표준 파티 신청값. 'X'/'x'(파티 미신청)·'파티' 등 비표준 값은 신청인원에서 제외.
-// 백엔드 party_checkin.py / sales_report.py 의 PARTY_TYPE_VALUES 와 동일 기준 → 세 페이지 인원 동기화.
-const PARTY_TYPE_VALUES = new Set(['1', '2', '2차만']);
+// 파티 참여 멤버십 집합은 ../lib/partyTypeSpec(isPartyJoined) 로 이동 — 백엔드 party_type.py 미러 + drift-guard.
 
 
 
@@ -966,7 +965,7 @@ const RoomAssignment = () => {
     }
 
     // Party guest totals — 표준 파티값('1'/'2'/'2차만')만. 'X'/'x'(파티 미신청)·비표준 값 제외.
-    const partyGuestsRaw = active.filter((r) => r.party_type != null && PARTY_TYPE_VALUES.has(r.party_type));
+    const partyGuestsRaw = active.filter((r) => isPartyJoined(r.party_type));
     // §D4: 동일 phone 의 비-activity 파티참여행이 있으면 그 phone 의 activity 행은 인원 미합산(이중계상 방지)
     const partyNonActivityPhones = new Set(
       partyGuestsRaw.filter((r) => r.section !== 'activity' && r.phone).map((r) => r.phone)

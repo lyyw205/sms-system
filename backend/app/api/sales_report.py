@@ -13,6 +13,7 @@ from app.db.models import (
     DailyHost, User,
     DailyReviewCount, OnsiteFemaleInvite,
 )
+from app.services.party_type import PARTY_JOINED_TYPES, effective_party_type
 
 router = APIRouter(prefix="/api/sales-report", tags=["sales-report"])
 
@@ -100,8 +101,6 @@ async def get_sales_report(
         invites_by_date_host[(inv.date, inv.host_username)] = invites_by_date_host.get((inv.date, inv.host_username), 0) + inv.count
 
     # 4. 파티 참여 인원 (전체 파티 예약자의 male+female 합계 — 체크인 여부 무관)
-    PARTY_TYPE_VALUES = {'1', '2', '2차만'}
-
     from datetime import datetime, timedelta
     dt_from = datetime.strptime(date_from, "%Y-%m-%d")
     dt_to = datetime.strptime(date_to, "%Y-%m-%d")
@@ -141,8 +140,8 @@ async def get_sales_report(
                     continue
             if r.section == 'unstable':
                 continue
-            party_type = di_for_date.get(r.id) or r.party_type
-            if party_type in PARTY_TYPE_VALUES:
+            party_type = effective_party_type(di_for_date.get(r.id), r.party_type)
+            if party_type in PARTY_JOINED_TYPES:
                 _qualifying.append(r)
         # §D4: 동일 phone 의 비-activity 행이 집계되면 그 phone 의 activity 행 인원 미합산(이중계상 방지)
         _non_activity_phones = {r.phone for r in _qualifying if r.section != 'activity' and r.phone}
