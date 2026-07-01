@@ -250,17 +250,32 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
     ]
 
 
-def _sort_candidate_rooms(rooms: List[Room], biz_item_id: str, gender: str) -> List[Room]:
-    """Sort candidate rooms by gender-specific priority from RoomBizItemLink."""
+def _sort_candidate_rooms(rooms: List[Room], biz_item_id: str, gender: str,
+                          people_count: int = 1) -> List[Room]:
+    """Sort candidate rooms by capacity-fit tier, then gender-specific priority.
+
+    capacity-fit(트윈 3인실 우선배정): 3인 이상 예약은 트윈 3인실(grade==4)을 먼저,
+    2인 이하는 3인실을 최후로(3인 예약용으로 아껴둠) 정렬한다. tier 결정 후 같은 tier
+    안에서는 기존 (gender priority → sort_order → id) 순서를 그대로 유지한다.
+    grade 가 균일한 후보군(도미/더블/스파트윈/스위트/grade=NULL)에서는 cap_rank 가 모두
+    같아 no-op. None==4 → False 라 grade 미설정 방은 안전하게 non-3인실 취급.
+    설계·안전감사: docs/plans/twin-capacity-assign-design.md
+    """
+    needs_extra = people_count >= 3
     def get_priority(room: Room) -> tuple:
+        three_capable = (room.grade == 4)   # 트윈 3인실 전용 (스위트 grade5 제외)
+        if needs_extra:
+            cap_rank = 0 if three_capable else 1   # 3인+: 3인실 먼저
+        else:
+            cap_rank = 1 if three_capable else 0   # 2인-: 3인실 최후로 아껴둠
         for link in room.biz_item_links:
             if link.biz_item_id == biz_item_id:
                 if gender == "여":
-                    return (link.female_priority or 0, room.sort_order, room.id)
+                    return (cap_rank, link.female_priority or 0, room.sort_order, room.id)
                 elif gender == "남":
-                    return (link.male_priority or 0, room.sort_order, room.id)
+                    return (cap_rank, link.male_priority or 0, room.sort_order, room.id)
                 break
-        return (0, room.sort_order, room.id)
+        return (cap_rank, 0, room.sort_order, room.id)
     return sorted(rooms, key=get_priority)
 
 
@@ -355,9 +370,16 @@ def _assign_all_rooms(
 
     for res in candidates:
         candidate_rooms = biz_to_rooms.get(res.naver_biz_item_id, [])
-        # Sort rooms by gender-specific priority — single_gender 정규화('여2'→'여')
+        # Sort rooms by capacity-fit(트윈3인실) then gender priority — single_gender 정규화('여2'→'여')
         res_gender = single_gender(res)
-        candidate_rooms = _sort_candidate_rooms(candidate_rooms, res.naver_biz_item_id, res_gender)
+        # 정렬용 headcount = surcharge.compute_guest_count 동일(party_size → male+female → 1).
+        # booking_count(방 개수) 폴백 제외(3방=3인 오판 방지). 아래 382줄 people_count(도미토리
+        # 용량체크)는 blast radius 회피 위해 무변경.
+        sort_headcount = (res.party_size
+                          or ((res.male_count or 0) + (res.female_count or 0))
+                          or 1)
+        candidate_rooms = _sort_candidate_rooms(
+            candidate_rooms, res.naver_biz_item_id, res_gender, people_count=sort_headcount)
 
         # Same-room preference: stay_group (연장) or single long-stay (연박)
         preferred_room_id = None
