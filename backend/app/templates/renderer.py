@@ -36,15 +36,11 @@ class TemplateRenderer:
 
         Ported from: stable-clasp-main/function_replaceMessage.js
         """
-        diag("template.render.enter", level="verbose", template_key=template_key)
-
         # Get template from database
-        template = self.db.query(MessageTemplate).filter_by(
-            template_key=template_key,
-            is_active=True
-        ).first()
+        template = self.get_template(template_key)
 
         if not template:
+            diag("template.render.enter", level="verbose", template_key=template_key)
             logger.error(f"Template '{template_key}' not found")
             diag(
                 "template.render.exit",
@@ -55,6 +51,20 @@ class TemplateRenderer:
                 found=False,
             )
             return f"[Template '{template_key}' not found]"
+
+        return self.render_content(template, variables)
+
+    def render_content(self, template: MessageTemplate, variables: Dict[str, Any]) -> str:
+        """
+        이미 로드된 MessageTemplate 객체를 렌더링 (DB 재조회 없음).
+
+        render() 와 동일한 치환/미치환/diag 경로를 공유한다. 호출자가 이미
+        get_template() 으로 로드한 객체를 넘기면 template 재조회를 피할 수 있다
+        (Tier1 egress fix 3: SMS 1건당 message_templates 2회 조회 → 1회).
+        diag 시퀀스(enter → [unreplaced] → exit)는 render() 의 found 경로와 완전히 동일.
+        """
+        template_key = template.template_key
+        diag("template.render.enter", level="verbose", template_key=template_key)
 
         # Start with template content
         result = template.content

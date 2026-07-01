@@ -2,7 +2,7 @@
 Shared Naver reservation sync logic.
 Used by both the API endpoint and the scheduler job.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
@@ -43,7 +43,13 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        # (Tier1 egress fix 1b) tzinfo 를 제거해 naive 로 반환.
+        # confirmed_at/cancelled_at 는 naive 컬럼이라 tz-aware 로 파싱하면 매 sync 마다
+        # aware != naive 로 dirty 오탐 → 확정예약마다 spurious UPDATE 가 발생했다.
+        # Postgres 는 naive 컬럼에 넣을 때 offset 을 버리고 자릿수만 저장하므로,
+        # .replace(tzinfo=None) 은 저장값(자릿수)을 그대로 유지하면서 오탐만 제거한다.
+        # (astimezone(utc) 로 바꾸면 9h 시프트되어 CancelledZone/정렬 등이 깨지므로 금지.)
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).replace(tzinfo=None)
     except (ValueError, AttributeError):
         return None
 
@@ -997,4 +1003,6 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
         except Exception as e:
             logger.warning(f"naver_sync sms field-change reconcile_all_chips failed: {e}")
 
-    existing.updated_at = datetime.now(timezone.utc)
+    # (Tier1 egress fix 1a) updated_at 무조건 갱신 제거 — models.py 의 onupdate=utc_now 가
+    # 실제 컬럼이 바뀔 때만 updated_at 을 갱신한다. 매 5분 no-op sync 마다 UPDATE 를
+    # 유발하던 원인이라 제거. updated_at 을 heartbeat/커서/정렬로 읽는 소비자는 없음(FE/BE 확인).

@@ -170,7 +170,10 @@ async def send_single_sms(
         )
         return {"success": False, "message_id": None, "error": f"방 정보 누락: {', '.join(missing_room_vars)}"}
 
-    message_content = renderer.render(template_key, context)
+    # (Tier1 egress fix 3) 위 ★3-1a 에서 get_template 으로 이미 로드한 _template_obj 를 재사용해
+    # message_templates 재조회(SMS 1건당 2회→1회) 제거. render_content 는 render 와 동일한
+    # 치환/미치환/diag 경로이며, is_active 필터는 get_template 시점에 이미 적용됨.
+    message_content = renderer.render_content(_template_obj, context)
 
     # 미치환 변수가 남아있으면 발송 차단
     unreplaced = find_unreplaced_vars(message_content)

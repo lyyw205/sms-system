@@ -572,9 +572,9 @@ def reconcile_stale_chips(db: Session, target_date: str, lookahead_days: int = 1
                     after=after,
                     delta=after - before,
                 )
-            res = db.query(Reservation).filter(Reservation.id == rid).first()
-            if res:
-                room_assignment.sync_denormalized_field(db, res)
+            # (Tier1 egress fix 6a) 죽은 sync_denormalized_field 호출 제거 — 해당 함수는
+            # docstring 상 DEPRECATED/미사용이고 Reservation.room_number/password 를 읽는
+            # 소비자가 없음(FE/BE 확인). 남아있던 Reservation 재조회 + 2 SELECT 도 함께 제거.
             db.commit()
         except Exception as e:
             db.rollback()

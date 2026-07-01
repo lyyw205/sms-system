@@ -3,7 +3,7 @@ FastAPI dependencies for multi-tenant support.
 """
 from typing import Optional
 from fastapi import Header, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 from app.db.database import get_db, session_for_tenant
 
 
@@ -27,7 +27,12 @@ async def get_current_tenant_id(
     if x_tenant_id is None:
         raise HTTPException(status_code=400, detail="X-Tenant-Id 헤더가 필요합니다")
 
-    tenant = db.query(Tenant).filter(
+    # (Tier1 egress fix 2) load_only: 이 함수는 tenant.id 만 반환하는데, 매 요청(≈109개
+    # 엔드포인트)마다 naver_cookie(≈1KB) 등 전체 컬럼을 로드하던 것을 id/is_active 로 제한.
+    # 쿠키/aligo/surcharge 컬럼이 필요한 ~16개 엔드포인트는 별도 로더 get_current_tenant() 사용(무수정).
+    tenant = db.query(Tenant).options(
+        load_only(Tenant.id, Tenant.is_active)
+    ).filter(
         Tenant.id == x_tenant_id,
         Tenant.is_active == True,
     ).first()

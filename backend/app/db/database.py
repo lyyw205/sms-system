@@ -18,7 +18,10 @@ else:
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
-        pool_recycle=300,
+        # (Tier1 egress fix 5a) 300s → 1800s. Supabase transaction pooler(6543)는 백엔드
+        # 커넥션을 자체 풀링하므로 앱측 300s 재활용은 과함(재접속/auth churn 유발). staleness 는
+        # pool_pre_ping 이 매 checkout 마다 방어하므로 recycle 을 늘려도 correctness 영향 없음.
+        pool_recycle=1800,
     )
 
 engine = create_engine(
