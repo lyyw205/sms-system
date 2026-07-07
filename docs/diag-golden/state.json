@@ -1,9 +1,9 @@
 {
   "_comment": "ooo-log-validation 스킬이 자동 갱신하는 체크포인트. 수동 수정 지양.",
-  "last_log_timestamp": "2026-05-14 08:40:05",
-  "last_commit_sha": "f0fb261",
+  "last_log_timestamp": "2026-07-07 15:22:40",
+  "last_commit_sha": "2a16d48",
   "last_coverage_scan_sha": "f0fb261",
-  "validated_cases_count": 12022,
+  "validated_cases_count": 45092,
   "pending_golden_updates": [
     {
       "event": "surcharge.reconcile_failed",
@@ -599,7 +599,7 @@
       "note": "8e96cbf 신규 — 12회차 첫 관측. 5/14 00:05/01:57 batch.enter 다수 + skipped_overcapacity res=5318"
     }
   },
-  "last_validation_run": "2026-05-14T08:50:00+09:00",
+  "last_validation_run": "2026-07-07T15:25:00+09:00",
   "notes": [
     "2026-04-24 두 번째 검증 실행. 새 에러 0건 (기존 3건만 — 2건은 이미 수정, 1건 race 는 작업 예정).",
     "baseline coverage scan 58건 일괄 suppress. 다음 스캔부터 증분으로만 잡음.",
@@ -669,6 +669,21 @@
     "auto_assign.failed 1건 (5/14 02:00 cron, target_date=5/15 객실 부족) — 의도된 운영 알림.",
     "신규 정답지 draft 2건: _draft/room-upgrade-promise-batch.yaml, _draft/room-upgrade-review-batch.yaml. surcharge.reconcile 와 동일 컨벤션 (.enter only, .exit 없음).",
     "신규 coverage gap 9건 — d3a2963/61bac18 라인 시프트 + 신규 엔드포인트. 사용자 승인하여 3개 엔드포인트에 diag 추가: onsite_female_invite.updated/deleted (61bac18), rooms.grades_updated (d3a2963). pending 등록 — 배포 후 첫 관측 시 정답지 작성.",
-    "room_upgrade_promise/review.batch — surcharge.reconcile 와 동일하게 .enter only / .exit 없음 컨벤션 (신규 회귀 아님)."
+    "room_upgrade_promise/review.batch — surcharge.reconcile 와 동일하게 .enter only / .exit 없음 컨벤션 (신규 회귀 아님).",
+    "⚠️ 갭: 2026-05-14 ~ 2026-06-12 구간 미검증 (복구 불가). 로그 보존이 7일(.gz backupCount=7)이라 해당 구간 원본 로테이션 삭제됨. 5/14 ~ 6/19 사이 검증이 실행되지 않아 누락된 기간. 다음부터 일일 실행 필요.",
+    "2026-06-20 13회차 검증 (헬스체크, 14:30 KST). 보존된 6/13~6/20 윈도우(특히 6/19 17:51 배포 a0a4166 이후 ~20h, postdeploy 48,233 이벤트)만 검증. INV-1~8 위반 0건. Watch list 5종 + chip.tenant_mismatch + cross_tenant 전부 0. 페어링 정상(request 3166/3166, filter 6159/6159, aligo SMS 95/95·MMS 48/48). send_single_sms enter 185 vs exit 175 = blocked_* 경로 .exit 누락 pending 과 일치(회귀 아님).",
+    "어제 배포(6/19, f0fb261..a0a4166 120커밋: activity 상품기능 Phase0~3-5 / section·party_type·stay_logic 명세서통합 / LB-04·05 check_out_date '' → None) 회귀 0건. 신규 activity 격리 `filter.activity_excluded` 6,159건 실가동, `mutator.skipped` 1,641건 전부 reason=pinned (never 0).",
+    "실에러 격리: status=500 8건 전부 [tid=2] res=7199 박시훈 room_info 수동발송 — 방 비밀번호 미설정으로 blocked_empty_room 차단인데 reservations_sms.py:195 가 success=False 를 500 으로 변환(기존 UX 결함, 6/19 미수정). 운영자 8회 재시도. 6/13~18·6/20 500=0. chip_store.record_failed 4건 = [tid=2] res=7211 정한비 phone='인스타' (데이터품질, auto→failed 영구보호 정상).",
+    "남성 hook(sched 15 hook_yesterday_guest) 미발송 ~17명 = send_condition(오늘 남/여비율 lte 2.0) 게이트 — 의도된 성비균형 발송조건. 6/15·16·17 에도 발생(배포전) = 회귀 아님. 여성 hook(sched 16)·sched 119 는 조건없어 정상발송.",
+    "🟡 신규 모니터링: gunicorn WORKER TIMEOUT 1회 (6/20 10:02:02, pid:8→12095). 10:00 연박감지+칩 reconcile 스윕 배치가 단일 워커 ~2분 점유 → 마스터 강제 재기동. in-flight HTTP 0(사용자 요청 유실 없음), reconcile 멱등 자가치유. activity-제외 필터 오버헤드 증가 가능성. 매일 재발 시 배치를 웹 워커 밖으로 분리 or timeout 상향 검토. (Watch W-006 후보)",
+    "2026-06-21 14회차 검증 (증분 재점검, 21:30 KST). 윈도우 6/20 14:07 ~ 6/21 21:15 (86,955 이벤트, request 5442/5442). 신규 커밋·재배포 없음(HEAD=a0a4166 동일). INV-1~8 위반 0. Watch list 6종 + mutator.skipped 262건 전부 reason=pinned (never 0).",
+    "✅ W-006 종결 후보: WORKER TIMEOUT 재발 0 — 6/21 10:00 배치 무사 통과. 6/20 10:02 1회뿐으로 일회성 확정. 다음 회차 0 확인 시 정식 종결.",
+    "① res 7199(13회차) 패턴 재발: [tid=2] res=7292 송유민 room_info 수동발송 500 3회 (6/21 13:38, has_room=False room 미배정). reservations_sms.py:195 가 blocked(success=False) 를 500 변환하는 기존 UX 결함 2회 연속 관측 — 4xx 전환 수정 우선순위 상향.",
+    "② 데이터품질 발송실패 7건 (전부 잘못된/없는 번호, 시스템 버그 아님): [tid=2] res=7255 오수민 phone='010000000' 플레이스홀더 → 5개 템플릿 전부 '받는이 설정불가' 실패(SMS 전부 미수신), res=7243 김성진 phone='vip', [tid=1] res=7078 나예은 번호없음. 전부 auto→failed 영구보호 정상.",
+    "무해: 400 5건 = 6/21 19:08 로그인 직후 X-Tenant-Id 누락 burst (GitHub #1 알려진 패턴, 자동회복). PAST_UNSENT 37건 중 ~35건 = date=6/21 last_night hook/review 의 익일(6/22) 발송분(분류기가 +1일 발화 미반영). 검증: 6/21 01:00 sched16 sent=6/7, 10:00 sched119 sent=6/7 (failed 1=res7255), 14:00 room_review sched 24/14/125 정상 → date=6/20 타겟 +1일 발송 확인.",
+    "체크포인트 정책: last_chip_check_date=2026-06-20 으로 설정(6/21 last_night 칩이 6/22 발화하므로 다음 회차가 6/21 재검사해 +1일 발송 누락 갭 방지). last_coverage_scan_sha 미갱신 유지(coverage_scan 미실행).",
+    "2026-07-02 타겟 점검 (b8fad43 배포 영향 확인). ⚠️ 전체 2-phase 일일검증 아님 — 배포 윈도우(7/01 15:39 컨테이너 기동 ~ 7/02 16:35, 57,824 이벤트 / request 3868)에만 초점. b8fad43 = _sort_candidate_rooms 에 capacity-fit tier(cap_rank/people_count) 추가 (트윈 3인실 우선배정). 배포된 컨테이너 소스에 반영 확인. INV-1~8 위반 0, auto_assign enter/exit 45=45 완전페어링(크래시 0), Python traceback/gunicorn WORKER TIMEOUT 0, 배정 무결성 가드 invariant.check 22회 전부 invalid_count=0. auto_assign.failed 19건 전부 객실부족 오버플로(candidates>assigned, created_by=sync/scheduler) — 정렬변경은 배정총량 불변이라 이 커밋과 무관, 기존 '의도된 운영 알림' 패턴.",
+    "⚠️ 갭: 직전 체크포인트(6/21 21:15) ~ 7/01 15:36 구간 미분석 상태로 사용자 지시에 따라 last_log_timestamp 를 7/02 16:35 로 강제 전진. 6/21 21:15~6/25 00:00 은 7일 보존(.gz backupCount=7) 초과로 복구 불가, 6/25~7/01 15:36 은 복구 가능하나 이번 타겟 점검에서 스킵. 커밋스캔 a0a4166..HEAD(739a34f egress Tier1 + b8fad43): diag() 이벤트 추가/삭제 0 (template.render.enter 재들여쓰기만, 의미변화 없음) → 기존 정답지 영향 없음. last_coverage_scan_sha 미갱신 유지(coverage_scan 미실행).",
+    "2026-07-07 15회차 검증 (Phase5 통합검증 겸 증분, 15:25 KST). 윈도우 7/02 16:35 ~ 7/07 15:22 (312,840 이벤트, request 20594/20594 완전페어링). INV-1~8 위반 0. ★activity 격리 견고: filter.activity_excluded 41,180 실가동 + mutator.skipped 2,352 전부 pinned(non-pinned 0) → 액티비티 상품기능(6/19 배포)이 기존 기능과 충돌 없음 재확인(Phase5 충돌감사 clean). 오늘 배포 2건 회귀 0·diag/golden 영향 0: f1894da(확정/취소일시 +9h TZ수정=프론트전용, confirmed_at/cancelled_at KST-naive 에 normalizeUtcString 제거), 2a16d48(쿠키 저장 검증<50자/=없음 거부 + 감사로그 type=settings_cookie, log_activity 경유 activity_log.created 로 계측=신규 golden 불필요). 쿠키 401 사고 소멸확인: [tid=2] stable job.sync_naver_reservations.tenant_failed 153건 = 7/6 12-14시('.')+7/7 03:35-14:14 KST('NAC' 10.6h, 5분마다 12/h), 14:14 KST unstable_cookie 복원 후 401=0(15시대 0). catch-up 정상 14:15 sync added=9(아웃티지중 유입 예약 흡수, 영구유실 0; 단 그 9건 즉시발송 SMS 최대 10.6h 지연가능 → 필요시 chip-check). naver_sync enter/exit delta 152=이 401들. send_single_sms delta 15=blocked_* .exit누락(회귀아님). W-004 building_save_partial 1건(07-06 15:39 DELETE /api/buildings/11 7회 부분실패=운영자 후속, activity무관). ✅W-006 정식종결(WORKER TIMEOUT 0). W-002 tenant_list_empty 0, W-003 auto_logout refresh_failed 2(정상baseline). ⚠️coverage_scan f0fb261..HEAD 39건 신규(backend_mutation_no_diag 26=auth.py 등 대부분 비대상 + frontend_untagged_api 13) — 계측부채 별도 트리아지 대기, last_coverage_scan_sha 미갱신 유지. ⚠️갭: 7/02 16:35 이전 정상, 7/02 16:35~7/03 00:00(~7.5h)만 gz 경계로 일부 누락."
   ]
 }
