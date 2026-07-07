@@ -2,7 +2,6 @@ import React from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { GripVertical } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { normalizeUtcString } from '../../../../lib/utils';
 import { isDraggableSection } from '../../../../lib/sectionSpec';
 import {
   PRESET_HIGHLIGHT_STYLES,
@@ -243,7 +242,8 @@ export function GuestRow({
         <div className="overflow-hidden px-1.5">
           {isCancelled && res.cancelled_at ? (
             <span className="text-caption text-[#F04452]">
-              {new Date(normalizeUtcString(res.cancelled_at)).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
+              {/* cancelled_at 는 KST 벽시계(naive) — normalizeUtcString(UTC 취급) 금지, +9h 시프트됨 */}
+              {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 취소
             </span>
           ) : (
             <InlineInput value={res.notes || ''} field="notes" resId={res.id} onSave={handleFieldSave} className={cellText} placeholder="" onActivate={cancelDeselect} singleClick />

@@ -26,7 +26,6 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { isDraggableSection } from '../../../../lib/sectionSpec';
-import { normalizeUtcString } from '../../../../lib/utils';
 import {
   PRESET_HIGHLIGHT_STYLES,
   isCustomHexColor,
@@ -335,7 +334,8 @@ export function MobileGuestRow({
             <div className="flex-1 min-w-0 overflow-hidden">
               {isCancelled && res.cancelled_at ? (
                 <span className="text-label text-[#F04452]">
-                  {new Date(normalizeUtcString(res.cancelled_at)).toLocaleTimeString('ko-KR', {
+                  {/* cancelled_at 는 KST 벽시계(naive) — normalizeUtcString(UTC 취급) 금지, +9h 시프트됨 */}
+                  {new Date(res.cancelled_at).toLocaleTimeString('ko-KR', {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,

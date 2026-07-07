@@ -16,7 +16,6 @@ import { reservationsAPI, type ReservationCreatePayload } from '@/services/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useTenantStore } from '@/stores/tenant-store';
-import { normalizeUtcString } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/components/ui/table';
@@ -101,9 +100,10 @@ function fmtPrice(val: number | null | undefined): string {
 
 function fmtDatetime(val: string | null | undefined): string {
   if (!val) return '-';
-  // Backend sends UTC-naive ISO strings — normalize so dayjs parses as UTC
-  // and renders in the user's local (KST) zone.
-  return dayjs(normalizeUtcString(val)).format('MM.DD HH:mm');
+  // confirmed_at/cancelled_at 는 네이버발 KST 벽시계(naive) 값이다 — UTC 로 정규화하면
+  // +9h 시프트되어 미래 시각으로 표시된다(예: 11:16 → 20:16). 저장된 자릿수를
+  // 그대로 로컬(KST)로 렌더한다. cf. created_at 등 utc_now 필드는 normalizeUtcString 사용.
+  return dayjs(val).format('MM.DD HH:mm');
 }
 
 function StatusBadge({ status }: { status: string }) {
