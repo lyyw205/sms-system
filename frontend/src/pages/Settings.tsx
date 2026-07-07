@@ -83,7 +83,13 @@ export default function Settings() {
     setSaving(true);
     try {
       const res = await settingsAPI.updateNaverCookie(cookieInput.trim());
+      if (res.data.success === false) {
+        // 형식 검증 거부 등 — 성공으로 위장하지 않고, 입력값도 유지
+        toast.error(res.data.message);
+        return;
+      }
       toast.success(res.data.message);
+      if (res.data.warning) toast.warning(res.data.warning);
       setCookieInput('');
       await fetchStatus(false);
     } catch {
@@ -114,6 +120,10 @@ export default function Settings() {
       if (unstableBusinessId.trim()) data.business_id = unstableBusinessId.trim();
       if (unstableCookieInput.trim()) data.cookie = unstableCookieInput.trim();
       const res = await settingsAPI.updateUnstableSettings(data);
+      if (res.data.success === false) {
+        toast.error(res.data.message);
+        return;
+      }
       toast.success(res.data.message);
       if (res.data.warning) toast.warning(res.data.warning);
       setUnstableCookieInput('');
