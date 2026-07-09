@@ -96,6 +96,27 @@ def _remap_active_field(data: dict) -> dict:
     return data
 
 
+def _diff_fields(before: dict, after: dict) -> dict:
+    """before/after 중 실제로 값이 다른 필드만 {field: {"before":, "after":}} 로 반환.
+
+    템플릿/스케줄 수정 diag 이벤트가 "요청에 담긴 필드명"만 남기고 실제 값 변경
+    여부는 남기지 않던 문제(폼 전체 재제출 시 안 바뀐 필드까지 changed로 찍힘)를
+    고치기 위한 값 비교 diff.
+    """
+    from datetime import date, datetime, time
+
+    def _safe(v):
+        if isinstance(v, (datetime, date, time)):
+            return v.isoformat()
+        return v
+
+    return {
+        field: {"before": _safe(before.get(field)), "after": _safe(after[field])}
+        for field in after
+        if _safe(before.get(field)) != _safe(after[field])
+    }
+
+
 async def get_tenant_scoped_db(
     tenant_id: int = Depends(get_current_tenant_id),
 ):

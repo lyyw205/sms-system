@@ -8,7 +8,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 
-from app.api.deps import get_tenant_scoped_db, get_current_tenant, _remap_active_field
+from app.api.deps import get_tenant_scoped_db, get_current_tenant, _remap_active_field, _diff_fields
 from app.db.models import TemplateSchedule, MessageTemplate, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.scheduler.template_scheduler import TemplateScheduleExecutor
@@ -373,6 +373,19 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
         schedule_id=db_schedule.id,
         template_id=db_schedule.template_id,
         name=db_schedule.schedule_name,
+        created_by=current_user.username,
+        fields=json.dumps({
+            "schedule_type": db_schedule.schedule_type,
+            "hour": db_schedule.hour,
+            "minute": db_schedule.minute,
+            "interval_minutes": db_schedule.interval_minutes,
+            "active_start_hour": db_schedule.active_start_hour,
+            "active_end_hour": db_schedule.active_end_hour,
+            "filters": db_schedule.filters,
+            "schedule_category": db_schedule.schedule_category,
+            "custom_type": db_schedule.custom_type,
+            "active": db_schedule.is_active,
+        }, ensure_ascii=False, separators=(",", ":")),
     )
 
     # Auto-generate chips for matching reservations
@@ -452,6 +465,7 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
         else:
             update_data["expires_at"] = None
     # exclude_sent: Pydantic과 ORM 속성명이 동일하므로 리매핑 불필요
+    before_values = {field: getattr(db_schedule, field) for field in update_data}
     for field, value in update_data.items():
         setattr(db_schedule, field, value)
 
@@ -468,11 +482,13 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     db.commit()
     db.refresh(db_schedule)
 
+    changes = _diff_fields(before_values, update_data)
     diag(
         "schedule.updated",
         level="critical",
         schedule_id=schedule_id,
-        changed=list(update_data.keys()),
+        created_by=current_user.username,
+        changes=json.dumps(changes, ensure_ascii=False, separators=(",", ":")),
     )
     if "is_active" in update_data:
         diag(
@@ -500,6 +516,9 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
     if not schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
 
+    deleted_name = schedule.schedule_name
+    deleted_template_id = schedule.template_id
+
     # Remove from scheduler
     try:
         schedule_manager = ScheduleManager(scheduler)
@@ -517,7 +536,14 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
 
     db.commit()
 
-    diag("schedule.deleted", level="critical", schedule_id=schedule_id)
+    diag(
+        "schedule.deleted",
+        level="critical",
+        schedule_id=schedule_id,
+        name=deleted_name,
+        template_id=deleted_template_id,
+        created_by=current_user.username,
+    )
 
     return {"success": True, "message": "스케줄이 삭제되었습니다"}
 

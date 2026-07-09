@@ -1,13 +1,14 @@
 """
 Message Templates API
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
 
-from app.api.deps import get_tenant_scoped_db, _remap_active_field
+from app.api.deps import get_tenant_scoped_db, _remap_active_field, _diff_fields
 from app.diag_logger import diag
 from app.db.models import MessageTemplate, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
@@ -294,7 +295,25 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
     db.commit()
     db.refresh(db_template)
 
-    diag("template.created", level="critical", template_id=db_template.id, key=db_template.template_key, name=db_template.name)
+    diag(
+        "template.created",
+        level="critical",
+        template_id=db_template.id,
+        key=db_template.template_key,
+        name=db_template.name,
+        created_by=current_user.username,
+        fields=json.dumps({
+            "content": db_template.content,
+            "category": db_template.category,
+            "active": db_template.is_active,
+            "participant_buffer": db_template.participant_buffer,
+            "male_buffer": db_template.male_buffer,
+            "female_buffer": db_template.female_buffer,
+            "gender_ratio_buffers": db_template.gender_ratio_buffers,
+            "round_unit": db_template.round_unit,
+            "round_mode": db_template.round_mode,
+        }, ensure_ascii=False, separators=(",", ":")),
+    )
 
     return {
         "id": db_template.id,
@@ -336,6 +355,7 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     update_data = template.dict(exclude_unset=True)
     # Remap Pydantic 'active' field to ORM 'is_active' column
     _remap_active_field(update_data)
+    before_values = {field: getattr(db_template, field) for field in update_data}
     for field, value in update_data.items():
         setattr(db_template, field, value)
 
@@ -349,9 +369,15 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     db.commit()
     db.refresh(db_template)
 
-    diag("template.updated", level="critical", template_id=db_template.id, changed_fields=list(update_data.keys()))
-    if "content" in update_data:
-        diag("template.content_changed", level="critical", template_id=db_template.id, key=db_template.template_key)
+    changes = _diff_fields(before_values, update_data)
+    diag(
+        "template.updated",
+        level="critical",
+        template_id=db_template.id,
+        key=db_template.template_key,
+        created_by=current_user.username,
+        changes=json.dumps(changes, ensure_ascii=False, separators=(",", ":")),
+    )
 
     return {
         "id": db_template.id,
@@ -438,7 +464,14 @@ def delete_template(template_id: int, db: Session = Depends(get_tenant_scoped_db
             detail=f"이 템플릿을 사용하는 스케줄({', '.join(parts)})을 먼저 삭제하세요",
         )
 
-    diag("template.deleted", level="critical", template_id=template_id)
+    diag(
+        "template.deleted",
+        level="critical",
+        template_id=template_id,
+        key=template.template_key,
+        name=template.name,
+        created_by=current_user.username,
+    )
     db.delete(template)
     db.commit()
 
