@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, RefreshCw, Trash2 } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { settingsAPI } from '@/services/api';
 import { useTenantStore } from '@/stores/tenant-store';
 import { Card } from '@/components/ui/card';
 import { Alert } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -23,8 +22,6 @@ export default function Settings() {
   const [status, setStatus] = useState<NaverStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [cookieInput, setCookieInput] = useState('');
   const { tenants, currentTenantId } = useTenantStore();
   const currentTenant = tenants.find(t => String(t.id) === currentTenantId);
   const hasUnstable = currentTenant?.has_unstable ?? false;
@@ -36,7 +33,6 @@ export default function Settings() {
   const [unstableSaving, setUnstableSaving] = useState(false);
   const [unstableSyncing, setUnstableSyncing] = useState(false);
   const [unstableBusinessId, setUnstableBusinessId] = useState('');
-  const [unstableCookieInput, setUnstableCookieInput] = useState('');
 
 
   // silent=true: 스피너 표시 없음 (mount 의 Promise.all 에서 사용 — global loading 으로 처리)
@@ -75,58 +71,24 @@ export default function Settings() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleSaveCookie = async () => {
-    if (!cookieInput.trim()) {
-      toast.error('쿠키를 입력해주세요');
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await settingsAPI.updateNaverCookie(cookieInput.trim());
-      if (res.data.success === false) {
-        // 형식 검증 거부 등 — 성공으로 위장하지 않고, 입력값도 유지
-        toast.error(res.data.message);
-        return;
-      }
-      toast.success(res.data.message);
-      if (res.data.warning) toast.warning(res.data.warning);
-      setCookieInput('');
-      await fetchStatus(false);
-    } catch {
-      toast.error('쿠키 저장 실패');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClearCookie = async () => {
-    try {
-      await settingsAPI.clearNaverCookie();
-      toast.success('.env 쿠키로 복원되었습니다');
-      await fetchStatus(false);
-    } catch {
-      toast.error('초기화 실패');
-    }
-  };
+  // 쿠키는 UI 에서 입력하지 않는다 (반복 오입력 사고로 입력 UI 제거).
+  // 네이버/언스테이블 쿠키는 DB 직접 UPDATE 또는 담당자 요청으로만 주입한다.
+  // 관련 사고 이력·정책: docs / 쿠키 오입력 사고 메모.
 
   const handleSaveUnstable = async () => {
-    if (!unstableBusinessId.trim() && !unstableCookieInput.trim()) {
-      toast.error('Business ID 또는 쿠키를 입력해주세요');
+    if (!unstableBusinessId.trim()) {
+      toast.error('Business ID를 입력해주세요');
       return;
     }
     setUnstableSaving(true);
     try {
-      const data: { business_id?: string; cookie?: string } = {};
-      if (unstableBusinessId.trim()) data.business_id = unstableBusinessId.trim();
-      if (unstableCookieInput.trim()) data.cookie = unstableCookieInput.trim();
-      const res = await settingsAPI.updateUnstableSettings(data);
+      const res = await settingsAPI.updateUnstableSettings({ business_id: unstableBusinessId.trim() });
       if (res.data.success === false) {
         toast.error(res.data.message);
         return;
       }
       toast.success(res.data.message);
       if (res.data.warning) toast.warning(res.data.warning);
-      setUnstableCookieInput('');
       await fetchUnstableStatus();
     } catch {
       toast.error('언스테이블 설정 저장 실패');
@@ -211,43 +173,9 @@ export default function Settings() {
 
         {status?.is_valid === false && (
           <Alert color="failure" className="mt-4">
-            쿠키가 만료되었습니다. 새 쿠키를 입력해주세요.
+            쿠키가 만료되었습니다. 담당자에게 쿠키 갱신을 요청하세요. (쿠키는 DB에서 직접 관리합니다)
           </Alert>
         )}
-
-        {status?.source === 'runtime' && (
-          <div className="mt-3">
-            <Button size="xs" color="light" onClick={handleClearCookie}>
-              <Trash2 size={14} className="mr-1" />
-              런타임 쿠키 초기화 (.env로 복원)
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* Cookie Input */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          쿠키 직접 입력
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          네이버 스마트플레이스에서 개발자도구(F12) &rarr; Network &rarr; 요청 선택 &rarr; Headers &rarr; Cookie 값을 복사해서 붙여넣으세요.
-        </p>
-
-        <Textarea
-          className="mt-3 font-mono text-xs"
-          rows={4}
-          placeholder="NAC=...; NNB=...; NID_AUT=...; NID_SES=...; ..."
-          value={cookieInput}
-          onChange={(e) => setCookieInput(e.target.value)}
-        />
-
-        <div className="mt-3 flex gap-2">
-          <Button onClick={handleSaveCookie} disabled={saving || !cookieInput.trim()}>
-            {saving ? <Spinner size="sm" className="mr-2" /> : null}
-            저장 및 테스트
-          </Button>
-        </div>
       </Card>
 
 
@@ -293,18 +221,18 @@ export default function Settings() {
 
         {unstableStatus?.is_valid === false && (
           <Alert color="failure" className="mt-4">
-            쿠키가 만료되었습니다. 새 쿠키를 입력해주세요.
+            쿠키가 만료되었습니다. 담당자에게 쿠키 갱신을 요청하세요. (쿠키는 DB에서 직접 관리합니다)
           </Alert>
         )}
       </Card>}
 
-      {/* Unstable Settings Input */}
+      {/* Unstable Settings Input (Business ID only — 쿠키는 DB 직접 관리) */}
       {hasUnstable && <Card>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           언스테이블 설정
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          언스테이블 네이버 스마트플레이스의 Business ID와 쿠키를 입력하세요.
+          언스테이블 네이버 스마트플레이스의 Business ID를 입력하세요. 쿠키는 DB에서 직접 관리합니다.
         </p>
 
         <div className="mt-3 space-y-3">
@@ -318,20 +246,10 @@ export default function Settings() {
               onChange={(e) => setUnstableBusinessId(e.target.value)}
             />
           </div>
-          <div>
-            <label className="text-caption font-medium text-gray-700 dark:text-gray-300">쿠키</label>
-            <Textarea
-              className="mt-1 font-mono text-xs"
-              rows={4}
-              placeholder="NAC=...; NNB=...; NID_AUT=...; NID_SES=...; ..."
-              value={unstableCookieInput}
-              onChange={(e) => setUnstableCookieInput(e.target.value)}
-            />
-          </div>
         </div>
 
         <div className="mt-3 flex gap-2">
-          <Button onClick={handleSaveUnstable} disabled={unstableSaving || (!unstableBusinessId.trim() && !unstableCookieInput.trim())}>
+          <Button onClick={handleSaveUnstable} disabled={unstableSaving || !unstableBusinessId.trim()}>
             {unstableSaving ? <Spinner size="sm" className="mr-2" /> : null}
             저장 및 테스트
           </Button>
