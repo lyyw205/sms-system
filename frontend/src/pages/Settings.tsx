@@ -27,12 +27,9 @@ export default function Settings() {
   const hasUnstable = currentTenant?.has_unstable ?? false;
   const tenantLabel = currentTenant?.name || currentTenant?.slug || '네이버';
 
-  // Unstable state
+  // Unstable state (읽기전용 상태 표시만 유지 — 입력 UI 없음)
   const [unstableStatus, setUnstableStatus] = useState<NaverStatus | null>(null);
   const [unstableChecking, setUnstableChecking] = useState(false);
-  const [unstableSaving, setUnstableSaving] = useState(false);
-  const [unstableSyncing, setUnstableSyncing] = useState(false);
-  const [unstableBusinessId, setUnstableBusinessId] = useState('');
 
 
   // silent=true: 스피너 표시 없음 (mount 의 Promise.all 에서 사용 — global loading 으로 처리)
@@ -54,9 +51,6 @@ export default function Settings() {
     try {
       const res = await settingsAPI.getUnstableStatus();
       setUnstableStatus(res.data);
-      if (res.data.business_id && !unstableBusinessId) {
-        setUnstableBusinessId(res.data.business_id);
-      }
     } catch {
       // unstable 미설정 시 무시
     } finally {
@@ -71,48 +65,9 @@ export default function Settings() {
       .finally(() => setLoading(false));
   }, []);
 
-  // 쿠키는 UI 에서 입력하지 않는다 (반복 오입력 사고로 입력 UI 제거).
-  // 네이버/언스테이블 쿠키는 DB 직접 UPDATE 또는 담당자 요청으로만 주입한다.
-  // 관련 사고 이력·정책: docs / 쿠키 오입력 사고 메모.
-
-  const handleSaveUnstable = async () => {
-    if (!unstableBusinessId.trim()) {
-      toast.error('Business ID를 입력해주세요');
-      return;
-    }
-    setUnstableSaving(true);
-    try {
-      const res = await settingsAPI.updateUnstableSettings({ business_id: unstableBusinessId.trim() });
-      if (res.data.success === false) {
-        toast.error(res.data.message);
-        return;
-      }
-      toast.success(res.data.message);
-      if (res.data.warning) toast.warning(res.data.warning);
-      await fetchUnstableStatus();
-    } catch {
-      toast.error('언스테이블 설정 저장 실패');
-    } finally {
-      setUnstableSaving(false);
-    }
-  };
-
-  const handleSyncUnstable = async () => {
-    setUnstableSyncing(true);
-    try {
-      const res = await settingsAPI.syncUnstable();
-      if (res.data.success) {
-        toast.success(res.data.message);
-      } else {
-        toast.error(res.data.message);
-      }
-    } catch {
-      toast.error('언스테이블 동기화 실패');
-    } finally {
-      setUnstableSyncing(false);
-    }
-  };
-
+  // 쿠키·Business ID 등 네이버 연동 설정은 UI 에서 입력하지 않는다 (반복 오입력 사고로 입력 UI 제거).
+  // 네이버/언스테이블 쿠키·설정은 DB 직접 UPDATE 또는 담당자 요청으로만 주입한다.
+  // 이 페이지는 읽기전용 연결 상태만 보여준다.
 
 
   if (loading) {
@@ -179,7 +134,7 @@ export default function Settings() {
       </Card>
 
 
-      {/* Unstable Naver Connection Status */}
+      {/* Unstable Naver Connection Status (읽기전용) */}
       {hasUnstable && <Card>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -224,42 +179,6 @@ export default function Settings() {
             쿠키가 만료되었습니다. 담당자에게 쿠키 갱신을 요청하세요. (쿠키는 DB에서 직접 관리합니다)
           </Alert>
         )}
-      </Card>}
-
-      {/* Unstable Settings Input (Business ID only — 쿠키는 DB 직접 관리) */}
-      {hasUnstable && <Card>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          언스테이블 설정
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          언스테이블 네이버 스마트플레이스의 Business ID를 입력하세요. 쿠키는 DB에서 직접 관리합니다.
-        </p>
-
-        <div className="mt-3 space-y-3">
-          <div>
-            <label className="text-caption font-medium text-gray-700 dark:text-gray-300">Business ID</label>
-            <input
-              type="text"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-              placeholder="1000256"
-              value={unstableBusinessId}
-              onChange={(e) => setUnstableBusinessId(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          <Button onClick={handleSaveUnstable} disabled={unstableSaving || !unstableBusinessId.trim()}>
-            {unstableSaving ? <Spinner size="sm" className="mr-2" /> : null}
-            저장 및 테스트
-          </Button>
-          {unstableStatus?.is_valid && (
-            <Button color="light" onClick={handleSyncUnstable} disabled={unstableSyncing}>
-              {unstableSyncing ? <Spinner size="sm" className="mr-2" /> : <RefreshCw size={14} className="mr-1.5" />}
-              수동 동기화
-            </Button>
-          )}
-        </div>
       </Card>}
     </div>
   );
