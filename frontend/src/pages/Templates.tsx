@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
-  Lock,
 } from 'lucide-react';
 import {
   DndContext,
@@ -1094,15 +1093,7 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
-                        {t.locked ? (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-caption text-gray-500 dark:bg-gray-700 dark:text-gray-300"
-                            title="잠긴 템플릿입니다. 웹에서 수정·삭제할 수 없습니다."
-                          >
-                            <Lock className="h-3.5 w-3.5" />
-                            잠김
-                          </span>
-                        ) : (
+                        {!t.locked && (
                           <>
                             <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
                               <Pencil className="h-3.5 w-3.5" />
@@ -1232,15 +1223,7 @@ const Templates: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {s.locked ? (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-caption text-gray-500 dark:bg-gray-700 dark:text-gray-300"
-                              title="잠긴 스케줄입니다. 웹에서 수정·삭제할 수 없습니다."
-                            >
-                              <Lock className="h-3.5 w-3.5" />
-                              잠김
-                            </span>
-                          ) : (
+                          {!s.locked && (
                             <Button size="xs" color="light" onClick={() => openEditSchedule(s)} title="수정">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
