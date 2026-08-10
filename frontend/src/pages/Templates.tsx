@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Lock,
 } from 'lucide-react';
 import {
   DndContext,
@@ -65,6 +66,7 @@ interface Template {
   variables: string | null;
   category: string | null;
   active: boolean;
+  locked: boolean;
   created_at: string;
   updated_at: string;
   schedule_count: number;
@@ -96,6 +98,7 @@ interface TemplateSchedule {
   stay_filter: string | null;
   exclude_sent: boolean;
   active: boolean;
+  locked: boolean;
   created_at: string;
   updated_at: string;
   last_run: string | null;
@@ -1091,12 +1094,24 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
-                        <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" color="failure" onClick={() => setDeleteTemplateTarget(t)} title="삭제">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {t.locked ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-caption text-gray-500 dark:bg-gray-700 dark:text-gray-300"
+                            title="잠긴 템플릿입니다. 웹에서 수정·삭제할 수 없습니다."
+                          >
+                            <Lock className="h-3.5 w-3.5" />
+                            잠김
+                          </span>
+                        ) : (
+                          <>
+                            <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="xs" color="failure" onClick={() => setDeleteTemplateTarget(t)} title="삭제">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                     </>)}
@@ -1217,18 +1232,30 @@ const Templates: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Button size="xs" color="light" onClick={() => openEditSchedule(s)} title="수정">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
+                          {s.locked ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-caption text-gray-500 dark:bg-gray-700 dark:text-gray-300"
+                              title="잠긴 스케줄입니다. 웹에서 수정·삭제할 수 없습니다."
+                            >
+                              <Lock className="h-3.5 w-3.5" />
+                              잠김
+                            </span>
+                          ) : (
+                            <Button size="xs" color="light" onClick={() => openEditSchedule(s)} title="수정">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button size="xs" color="light" onClick={() => handleRunSchedule(s.id)} title="즉시 실행">
                             <Play className="h-3.5 w-3.5" />
                           </Button>
                           <Button size="xs" color="light" onClick={() => handlePreviewTargets(s.id)} title="대상 미리보기">
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="xs" color="failure" onClick={() => setDeleteScheduleTarget(s)} title="삭제">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {!s.locked && (
+                            <Button size="xs" color="failure" onClick={() => setDeleteScheduleTarget(s)} title="삭제">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

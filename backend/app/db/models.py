@@ -149,6 +149,8 @@ class MessageTemplate(TenantMixin, Base):
     round_unit = Column(Integer, default=10)             # 반올림 단위 (0=미사용, 10=10명 단위)
     round_mode = Column(String, default='ceil')          # 반올림 모드: ceil(올림), round(반올림), floor(내림)
     sort_order = Column(Integer, default=0, nullable=False, index=True)  # 사용자 지정 정렬 순서 (asc)
+    # True 면 웹 API(PUT/DELETE)로 수정·삭제 불가. 해제는 DB 직접 변경으로만.
+    is_locked = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -364,6 +366,8 @@ class TemplateSchedule(TenantMixin, Base):
 
     # Activation
     is_active = Column(Boolean, default=True)
+    # True 면 웹 API(PUT/DELETE)로 수정·삭제 불가. 해제는 DB 직접 변경으로만.
+    is_locked = Column(Boolean, default=False, nullable=False)
 
     # Metadata
     created_at = Column(DateTime, default=utc_now)

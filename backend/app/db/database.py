@@ -187,6 +187,12 @@ def init_db():
             if "active" in cols and "is_active" not in cols:
                 conn.execute(text("ALTER TABLE message_templates RENAME COLUMN active TO is_active"))
                 print("AUTO-MIGRATE: Renamed message_templates.active to is_active")
+            if "is_locked" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE message_templates "
+                    "ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                print("AUTO-MIGRATE: Added is_locked column to message_templates table")
             if "sort_order" not in cols:
                 conn.execute(text("ALTER TABLE message_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"))
                 # 기존 행은 현재 화면 순서(created_at desc) 유지: 최신이 가장 작은 sort_order
@@ -206,6 +212,12 @@ def init_db():
             if "active" in cols and "is_active" not in cols:
                 conn.execute(text("ALTER TABLE template_schedules RENAME COLUMN active TO is_active"))
                 print("AUTO-MIGRATE: Renamed template_schedules.active to is_active")
+            if "is_locked" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE template_schedules "
+                    "ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                print("AUTO-MIGRATE: Added is_locked column to template_schedules table")
 
         # documents.indexed → is_indexed
         if "documents" in inspector.get_table_names():

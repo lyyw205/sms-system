@@ -16,6 +16,11 @@ from app.scheduler.schedule_manager import ScheduleManager
 from app.scheduler.jobs import scheduler
 from app.api.shared_schemas import ActionResponse
 from app.diag_logger import diag
+from app.services.template_guard import (
+    assert_schedule_unlocked,
+    log_template_activity,
+    snapshot_schedule,
+)
 
 router = APIRouter(prefix="/api/template-schedules", tags=["template-schedules"])
 
@@ -110,6 +115,7 @@ def _schedule_to_response(schedule: TemplateSchedule) -> dict:
         "target_mode": schedule.target_mode,
         "exclude_sent": schedule.exclude_sent,
         "active": schedule.is_active,
+        "locked": bool(schedule.is_locked),
         "date_target": schedule.date_target,
         "stay_filter": schedule.stay_filter,
         "send_condition_date": schedule.send_condition_date,
@@ -208,6 +214,7 @@ class TemplateScheduleResponse(BaseModel):
     target_mode: Optional[str] = None
     exclude_sent: bool
     active: bool
+    locked: bool = False
     date_target: Optional[str] = None
     stay_filter: Optional[str] = None
     # Send condition fields
@@ -387,6 +394,14 @@ def create_schedule(schedule: TemplateScheduleCreate, db: Session = Depends(get_
             "active": db_schedule.is_active,
         }, ensure_ascii=False, separators=(",", ":")),
     )
+    log_template_activity(
+        db,
+        action="created",
+        kind="스케줄",
+        name=db_schedule.schedule_name,
+        created_by=current_user.username,
+        snapshot=snapshot_schedule(db_schedule),
+    )
 
     # Auto-generate chips for matching reservations
     if db_schedule.is_active:
@@ -413,6 +428,9 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
 
     if not db_schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
+
+    # 잠금 가드 — 잠긴 스케줄은 웹에서 수정 불가 (해제는 DB 직접 변경만)
+    assert_schedule_unlocked(db_schedule)
 
     # Event schedule: hours_since_booking 은 선택 (NULL = 확정 시점 무관)
     effective_category = schedule.schedule_category if schedule.schedule_category is not None else db_schedule.schedule_category
@@ -497,6 +515,14 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
             schedule_id=schedule_id,
             is_active=update_data["is_active"],
         )
+    log_template_activity(
+        db,
+        action="updated",
+        kind="스케줄",
+        name=db_schedule.schedule_name,
+        created_by=current_user.username,
+        changes=changes,
+    )
 
     # Update scheduler
     try:
@@ -516,6 +542,9 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
     if not schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
 
+    # 잠금 가드 — 잠긴 스케줄은 웹에서 삭제 불가 (해제는 DB 직접 변경만)
+    assert_schedule_unlocked(schedule)
+
     deleted_name = schedule.schedule_name
     deleted_template_id = schedule.template_id
 
@@ -525,6 +554,16 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_tenant_scoped_db
         schedule_manager.remove_schedule_job(schedule_id)
     except Exception as e:
         print(f"Warning: Failed to remove schedule from APScheduler: {e}")
+
+    # 삭제 전 설정 전문을 ActivityLog 에 영구 보존 (diag 는 7일치만 남음)
+    log_template_activity(
+        db,
+        action="deleted",
+        kind="스케줄",
+        name=deleted_name,
+        created_by=current_user.username,
+        snapshot=snapshot_schedule(schedule),
+    )
 
     # Delete chips owned by this schedule (other schedules' chips are preserved).
     # chip_store 위임 (PR10 이주) — 기본 가드 (sent_at + manual/excluded/failed).

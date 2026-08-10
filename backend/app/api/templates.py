@@ -14,6 +14,11 @@ from app.db.models import MessageTemplate, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.templates.renderer import TemplateRenderer
 from app.api.shared_schemas import ActionResponse
+from app.services.template_guard import (
+    assert_template_unlocked,
+    log_template_activity,
+    snapshot_template,
+)
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 router_misc = APIRouter()
@@ -89,6 +94,7 @@ class TemplateResponse(BaseModel):
     variables: Optional[str]
     category: Optional[str]
     active: bool
+    locked: bool = False
     created_at: datetime
     updated_at: datetime
     schedule_count: int = 0
@@ -142,6 +148,7 @@ def get_templates(
             "variables": template.variables,
             "category": template.category,
             "active": template.is_active,
+            "locked": bool(template.is_locked),
             "created_at": template.created_at,
             "updated_at": template.updated_at,
             "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0,
@@ -245,6 +252,7 @@ def get_template(template_id: int, db: Session = Depends(get_tenant_scoped_db), 
         "variables": template.variables,
         "category": template.category,
         "active": template.is_active,
+        "locked": bool(template.is_locked),
         "created_at": template.created_at,
         "updated_at": template.updated_at,
         "schedule_count": len(template.schedules) if hasattr(template, 'schedules') else 0,
@@ -314,6 +322,14 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
             "round_mode": db_template.round_mode,
         }, ensure_ascii=False, separators=(",", ":")),
     )
+    log_template_activity(
+        db,
+        action="created",
+        kind="템플릿",
+        name=db_template.name,
+        created_by=current_user.username,
+        snapshot=snapshot_template(db_template),
+    )
 
     return {
         "id": db_template.id,
@@ -323,6 +339,7 @@ def create_template(template: TemplateCreate, db: Session = Depends(get_tenant_s
         "variables": db_template.variables,
         "category": db_template.category,
         "active": db_template.is_active,
+        "locked": bool(db_template.is_locked),
         "created_at": db_template.created_at,
         "updated_at": db_template.updated_at,
         "schedule_count": 0,
@@ -344,6 +361,9 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
 
     if not db_template:
         raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
+
+    # 잠금 가드 — 잠긴 템플릿은 웹에서 수정 불가 (해제는 DB 직접 변경만)
+    assert_template_unlocked(db_template)
 
     # Check if new key conflicts
     if template.template_key and template.template_key != db_template.template_key:
@@ -378,6 +398,14 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         created_by=current_user.username,
         changes=json.dumps(changes, ensure_ascii=False, separators=(",", ":")),
     )
+    log_template_activity(
+        db,
+        action="updated",
+        kind="템플릿",
+        name=db_template.name,
+        created_by=current_user.username,
+        changes=changes,
+    )
 
     return {
         "id": db_template.id,
@@ -387,6 +415,7 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         "variables": db_template.variables,
         "category": db_template.category,
         "active": db_template.is_active,
+        "locked": bool(db_template.is_locked),
         "created_at": db_template.created_at,
         "updated_at": db_template.updated_at,
         "schedule_count": len(db_template.schedules) if hasattr(db_template, 'schedules') else 0,
@@ -448,6 +477,9 @@ def delete_template(template_id: int, db: Session = Depends(get_tenant_scoped_db
     if not template:
         raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
 
+    # 잠금 가드 — 잠긴 템플릿은 웹에서 삭제 불가 (해제는 DB 직접 변경만)
+    assert_template_unlocked(template)
+
     # template_schedules.template_id 가 NOT NULL 이라 SET NULL cascade 가 NotNullViolation 으로 터짐.
     # 활성/비활성 무관하게 묶인 스케줄이 있으면 차단해서 사용자에게 명시적으로 알린다.
     if hasattr(template, 'schedules') and template.schedules:
@@ -471,6 +503,16 @@ def delete_template(template_id: int, db: Session = Depends(get_tenant_scoped_db
         key=template.template_key,
         name=template.name,
         created_by=current_user.username,
+    )
+    # 삭제 전 본문·설정 전문을 ActivityLog 에 영구 보존 — diag 는 7일치만 남아
+    # 2026-06 소실 건이 추적 불가였다. 이제 여기서 복구 가능.
+    log_template_activity(
+        db,
+        action="deleted",
+        kind="템플릿",
+        name=template.name,
+        created_by=current_user.username,
+        snapshot=snapshot_template(template),
     )
     db.delete(template)
     db.commit()
