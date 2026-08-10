@@ -13,6 +13,7 @@ from app.db.models import ActivityLog, MessageTemplate, TemplateSchedule
 from app.services.template_guard import (
     assert_schedule_unlocked,
     assert_template_unlocked,
+    assert_update_allowed,
     log_template_activity,
     snapshot_schedule,
     snapshot_template,
@@ -65,6 +66,48 @@ class TestLockGuard:
         db.add(t)
         db.flush()
         assert not t.is_locked
+
+
+class TestActivationException:
+    """잠겨 있어도 발송 on/off 는 가능해야 한다 — 급할 때 못 멈추면 오히려 위험."""
+
+    def test_locked_allows_activation_toggle(self, db):
+        t = _make_template(db, locked=True)
+        assert assert_update_allowed(t, {"is_active": False}, "템플릿") is None
+
+    def test_locked_blocks_content_change(self, db):
+        t = _make_template(db, locked=True)
+        with pytest.raises(HTTPException) as e:
+            assert_update_allowed(t, {"content": "바뀐 본문"}, "템플릿")
+        assert e.value.status_code == 403
+
+    def test_locked_blocks_activation_bundled_with_other_field(self, db):
+        """is_active 를 끼워 넣어 다른 필드를 통과시키는 우회를 막는다."""
+        t = _make_template(db, locked=True)
+        with pytest.raises(HTTPException) as e:
+            assert_update_allowed(t, {"is_active": False, "content": "몰래 수정"}, "템플릿")
+        assert e.value.status_code == 403
+
+    def test_locked_schedule_allows_activation_toggle(self, db):
+        t = _make_template(db)
+        s = _make_schedule(db, t.id, locked=True)
+        assert assert_update_allowed(s, {"is_active": True}, "스케줄") is None
+
+    def test_locked_schedule_blocks_timing_change(self, db):
+        t = _make_template(db)
+        s = _make_schedule(db, t.id, locked=True)
+        with pytest.raises(HTTPException) as e:
+            assert_update_allowed(s, {"hour": 3}, "스케줄")
+        assert e.value.status_code == 403
+
+    def test_unlocked_allows_anything(self, db):
+        t = _make_template(db, locked=False)
+        assert assert_update_allowed(t, {"content": "x", "name": "y"}, "템플릿") is None
+
+    def test_empty_update_passes(self, db):
+        """변경 필드가 없는 요청은 아무것도 바꾸지 않으므로 통과."""
+        t = _make_template(db, locked=True)
+        assert assert_update_allowed(t, {}, "템플릿") is None
 
 
 class TestDeleteSnapshot:

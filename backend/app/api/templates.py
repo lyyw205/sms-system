@@ -16,6 +16,7 @@ from app.templates.renderer import TemplateRenderer
 from app.api.shared_schemas import ActionResponse
 from app.services.template_guard import (
     assert_template_unlocked,
+    assert_update_allowed,
     log_template_activity,
     snapshot_template,
 )
@@ -362,8 +363,13 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     if not db_template:
         raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
 
-    # 잠금 가드 — 잠긴 템플릿은 웹에서 수정 불가 (해제는 DB 직접 변경만)
-    assert_template_unlocked(db_template)
+    # Update fields
+    update_data = template.dict(exclude_unset=True)
+    # Remap Pydantic 'active' field to ORM 'is_active' column
+    _remap_active_field(update_data)
+
+    # 잠금 가드 — 잠긴 템플릿은 활성/비활성 토글만 허용, 나머지 필드는 403
+    assert_update_allowed(db_template, update_data, "템플릿")
 
     # Check if new key conflicts
     if template.template_key and template.template_key != db_template.template_key:
@@ -371,10 +377,6 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
         if existing:
             raise HTTPException(status_code=400, detail=f"키 '{template.template_key}'의 템플릿이 이미 존재합니다")
 
-    # Update fields
-    update_data = template.dict(exclude_unset=True)
-    # Remap Pydantic 'active' field to ORM 'is_active' column
-    _remap_active_field(update_data)
     before_values = {field: getattr(db_template, field) for field in update_data}
     for field, value in update_data.items():
         setattr(db_template, field, value)

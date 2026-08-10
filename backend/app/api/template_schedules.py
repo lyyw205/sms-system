@@ -18,6 +18,7 @@ from app.api.shared_schemas import ActionResponse
 from app.diag_logger import diag
 from app.services.template_guard import (
     assert_schedule_unlocked,
+    assert_update_allowed,
     log_template_activity,
     snapshot_schedule,
 )
@@ -429,14 +430,17 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     if not db_schedule:
         raise HTTPException(status_code=404, detail="스케줄을 찾을 수 없습니다")
 
-    # 잠금 가드 — 잠긴 스케줄은 웹에서 수정 불가 (해제는 DB 직접 변경만)
-    assert_schedule_unlocked(db_schedule)
-
     # Event schedule: hours_since_booking 은 선택 (NULL = 확정 시점 무관)
     effective_category = schedule.schedule_category if schedule.schedule_category is not None else db_schedule.schedule_category
 
     # Update fields
     update_data = schedule.dict(exclude_unset=True)
+    # Remap Pydantic 'active' field to ORM 'is_active' column
+    # (잠금 가드가 ORM 필드명 기준으로 판정하므로 검증보다 먼저 수행)
+    _remap_active_field(update_data)
+
+    # 잠금 가드 — 잠긴 스케줄은 활성/비활성 토글만 허용, 나머지 필드는 403
+    assert_update_allowed(db_schedule, update_data, "스케줄")
 
     # custom_schedule / filter 검증: 요청에 해당 필드가 포함된 경우만 검증
     # (exclude_unset 가드 — 기존 DB 에 잘못된 값이 있어도 관련 필드 수정 안 하는 경우는 락 안 걸림)
@@ -459,8 +463,6 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     # Serialize filters list to JSON string for DB storage
     if "filters" in update_data and update_data["filters"] is not None:
         update_data["filters"] = json.dumps(update_data["filters"], ensure_ascii=False)
-    # Remap Pydantic 'active' field to ORM 'is_active' column
-    _remap_active_field(update_data)
     # stay option guard: filters 가 변경됐고 room 배정 없으면 stay_filter null화
     # 단, event 카테고리는 객실 배정 무관 (신규 예약자 대상) 이라 schedule.stay_filter
     # 컬럼을 단독 필드로 사용. UI 가 stay_filter 직접 PATCH.

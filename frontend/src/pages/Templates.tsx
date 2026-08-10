@@ -665,6 +665,29 @@ const Templates: React.FC = () => {
   });
   const savingTemplate = saveTemplateMutation.isPending;
 
+  // 잠긴 항목의 모달은 열되 입력만 잠근다 — 내용 확인은 되어야 하므로.
+  const tReadOnly = !!editingTemplate?.locked;
+  const sReadOnly = !!editingSchedule?.locked;
+
+  // 잠긴 항목도 활성/비활성만은 바꿀 수 있다 (서버 가드에서 is_active 만 예외 허용).
+  const toggleTemplateActiveMutation = useMutation({
+    mutationFn: ({ id, active }: { id: number; active: boolean }) => templatesAPI.update(id, { active }),
+    onSuccess: (_res, vars) => {
+      toast.success(vars.active ? '템플릿을 활성화했습니다' : '템플릿을 비활성화했습니다');
+      invalidateTemplates();
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail ?? '상태 변경 실패'),
+  });
+
+  const toggleScheduleActiveMutation = useMutation({
+    mutationFn: ({ id, active }: { id: number; active: boolean }) => templateSchedulesAPI.update(id, { active }),
+    onSuccess: (_res, vars) => {
+      toast.success(vars.active ? '발송을 켰습니다' : '발송을 멈췄습니다');
+      qc.invalidateQueries({ queryKey: queryKeys.templateSchedules.list() });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail ?? '상태 변경 실패'),
+  });
+
   const deleteTemplateMutation = useMutation({
     mutationFn: (id: number) => templatesAPI.delete(id),
     onSuccess: () => {
@@ -1080,9 +1103,15 @@ const Templates: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className={`text-body font-medium ${t.active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
-                        {t.active ? '활성' : '비활성'}
-                      </span>
+                      <div className="flex items-center justify-center">
+                        <ToggleSwitch
+                          id={`t-active-${t.id}`}
+                          checked={t.active}
+                          disabled={toggleTemplateActiveMutation.isPending}
+                          onChange={(v) => toggleTemplateActiveMutation.mutate({ id: t.id, active: v })}
+                          label=""
+                        />
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       {t.schedule_count > 0 ? (
@@ -1093,15 +1122,18 @@ const Templates: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
+                        <Button
+                          size="xs"
+                          color="light"
+                          onClick={() => openEditTemplate(t)}
+                          title={t.locked ? '내용 보기 (읽기 전용)' : '수정'}
+                        >
+                          {t.locked ? <Eye className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                        </Button>
                         {!t.locked && (
-                          <>
-                            <Button size="xs" color="light" onClick={() => openEditTemplate(t)} title="수정">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="xs" color="failure" onClick={() => setDeleteTemplateTarget(t)} title="삭제">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
+                          <Button size="xs" color="failure" onClick={() => setDeleteTemplateTarget(t)} title="삭제">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         )}
                       </div>
                     </TableCell>
@@ -1217,17 +1249,26 @@ const Templates: React.FC = () => {
                         <Badge color={isNextRunSoon ? 'warning' : 'gray'} size="sm">{nextRun}</Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={`text-body font-medium ${s.active ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
-                          {s.active ? '활성' : '비활성'}
-                        </span>
+                        <div className="flex items-center justify-center">
+                          <ToggleSwitch
+                            id={`s-active-${s.id}`}
+                            checked={s.active}
+                            disabled={toggleScheduleActiveMutation.isPending}
+                            onChange={(v) => toggleScheduleActiveMutation.mutate({ id: s.id, active: v })}
+                            label=""
+                          />
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {!s.locked && (
-                            <Button size="xs" color="light" onClick={() => openEditSchedule(s)} title="수정">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
+                          <Button
+                            size="xs"
+                            color="light"
+                            onClick={() => openEditSchedule(s)}
+                            title={s.locked ? '설정 보기 (읽기 전용)' : '수정'}
+                          >
+                            {s.locked ? <Eye className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                          </Button>
                           <Button size="xs" color="light" onClick={() => handleRunSchedule(s.id)} title="즉시 실행">
                             <Play className="h-3.5 w-3.5" />
                           </Button>
@@ -1259,19 +1300,28 @@ const Templates: React.FC = () => {
     <Modal show={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} size="5xl">
       <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800 [&>h3]:flex-1">
         <div className="flex items-center justify-between w-full pr-4">
-          <span>{editingTemplate ? '템플릿 수정' : '새 템플릿 만들기'}</span>
+          <span>
+            {editingTemplate ? (tReadOnly ? '템플릿 보기' : '템플릿 수정') : '새 템플릿 만들기'}
+            {tReadOnly && (
+              <span className="ml-2 text-caption font-normal text-[#8B95A1] dark:text-gray-500">
+                읽기 전용 — 활성/비활성은 목록에서 바꿀 수 있습니다
+              </span>
+            )}
+          </span>
           {editingTemplate && (
             <div className="flex items-center gap-2">
               <span className={`text-caption font-medium ${tActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                 {tActive ? '활성' : '비활성'}
               </span>
-              <ToggleSwitch id="t-active-header" checked={tActive} onChange={setTActive} label="" />
+              <ToggleSwitch id="t-active-header" checked={tActive} onChange={setTActive} label="" disabled={tReadOnly} />
             </div>
           )}
         </div>
       </ModalHeader>
 
       <ModalBody className="!p-0">
+        {/* 읽기 전용일 때 fieldset 으로 내부 입력을 일괄 비활성화 (푸터는 바깥이라 영향 없음) */}
+        <fieldset disabled={tReadOnly} className="m-0 min-w-0 border-0 p-0">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 p-6 h-[75dvh]">
           {/* Left column: settings */}
           <div className="space-y-5 overflow-y-auto pr-2">
@@ -1607,13 +1657,16 @@ const Templates: React.FC = () => {
 
           </div>
         </div>
+        </fieldset>
       </ModalBody>
 
       <ModalFooter>
-        <Button color="light" onClick={() => setTemplateDialogOpen(false)}>취소</Button>
-        <Button color="blue" onClick={handleSaveTemplate} disabled={savingTemplate}>
-          {savingTemplate ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
-        </Button>
+        <Button color="light" onClick={() => setTemplateDialogOpen(false)}>{tReadOnly ? '닫기' : '취소'}</Button>
+        {!tReadOnly && (
+          <Button color="blue" onClick={handleSaveTemplate} disabled={savingTemplate}>
+            {savingTemplate ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
+          </Button>
+        )}
       </ModalFooter>
     </Modal>
   );
@@ -1626,19 +1679,28 @@ const Templates: React.FC = () => {
     <Modal show={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} size="3xl">
       <ModalHeader className="border-b border-[#F2F4F6] dark:border-gray-800 [&>h3]:flex-1">
         <div className="flex items-center justify-between w-full pr-4">
-          <span>{editingSchedule ? '스케줄 수정' : '새 발송 스케줄 만들기'}</span>
+          <span>
+            {editingSchedule ? (sReadOnly ? '스케줄 보기' : '스케줄 수정') : '새 발송 스케줄 만들기'}
+            {sReadOnly && (
+              <span className="ml-2 text-caption font-normal text-[#8B95A1] dark:text-gray-500">
+                읽기 전용 — 활성/비활성은 목록에서 바꿀 수 있습니다
+              </span>
+            )}
+          </span>
           {editingSchedule && (
             <div className="flex items-center gap-2">
               <span className={`text-caption font-medium ${sActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                 {sActive ? '활성' : '비활성'}
               </span>
-              <ToggleSwitch id="s-active-header" checked={sActive} onChange={setSActive} label="" />
+              <ToggleSwitch id="s-active-header" checked={sActive} onChange={setSActive} label="" disabled={sReadOnly} />
             </div>
           )}
         </div>
       </ModalHeader>
 
       <ModalBody>
+        {/* 읽기 전용일 때 fieldset 으로 내부 입력을 일괄 비활성화 (푸터는 바깥이라 영향 없음) */}
+        <fieldset disabled={sReadOnly} className="m-0 min-w-0 border-0 p-0">
         <div className="space-y-5">
           {/* Schedule name */}
           <div className="space-y-2">
@@ -2281,6 +2343,7 @@ const Templates: React.FC = () => {
           <div className="border-t border-[#E5E8EB] dark:border-gray-700" />
 
         </div>
+        </fieldset>
       </ModalBody>
 
       <ModalFooter className="border-t border-[#F2F4F6] dark:border-gray-800">
@@ -2380,10 +2443,12 @@ const Templates: React.FC = () => {
             );
           })()}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Button color="light" size="sm" onClick={() => setScheduleDialogOpen(false)}>취소</Button>
-            <Button color="blue" size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
-              {savingSchedule ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
-            </Button>
+            <Button color="light" size="sm" onClick={() => setScheduleDialogOpen(false)}>{sReadOnly ? '닫기' : '취소'}</Button>
+            {!sReadOnly && (
+              <Button color="blue" size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
+                {savingSchedule ? <><Spinner size="sm" className="mr-2" />저장 중...</> : '저장'}
+              </Button>
+            )}
           </div>
         </div>
       </ModalFooter>

@@ -2,9 +2,14 @@
 
 두 가지 책임:
 
-1. **잠금 가드** (`assert_template_unlocked` / `assert_schedule_unlocked`)
-   `is_locked=True` 인 템플릿·스케줄은 웹 API(PUT/DELETE)로 수정·삭제할 수 없다.
+1. **잠금 가드**
+   `is_locked=True` 인 템플릿·스케줄은 웹 API 로 삭제할 수 없고, 수정도 막힌다.
+   단 **활성/비활성 토글(`is_active`)만은 예외로 허용**한다 — 발송 on/off 는
+   문구 보호와 성격이 다른 운영 행위라, 급할 때 즉시 멈출 수 없으면 오히려 위험하다.
    해제는 DB 직접 변경으로만 가능하다 — UI 에 해제 경로를 두지 않는 것이 설계 의도.
+
+   - `assert_update_allowed(obj, update_data, kind)`: PUT 경로 (활성 토글 예외 적용)
+   - `assert_template_unlocked` / `assert_schedule_unlocked`: DELETE 경로 (전면 차단)
 
 2. **영구 감사 + 삭제 스냅샷** (`log_template_activity`)
    기존에 CRUD 추적은 `diag()` 에만 있었고 diag 로그는 7일치만 보존된다
@@ -30,16 +35,39 @@ _LOCKED_MSG = (
 )
 
 
+# 잠겨 있어도 허용하는 필드. 발송 on/off 는 "문구 보호" 와 성격이 다른 운영 행위라
+# (급할 때 즉시 멈출 수 있어야 함) 잠금에서 예외로 뺀다. 나머지 필드는 전부 차단.
+_ACTIVATION_ONLY = {"is_active"}
+
+
 def assert_template_unlocked(template: MessageTemplate) -> None:
-    """잠긴 템플릿이면 403. 호출자는 수정/삭제 직전에 부른다."""
+    """잠긴 템플릿이면 403. 삭제 등 필드 정보가 없는 경로에서 쓴다."""
     if getattr(template, "is_locked", False):
         raise HTTPException(status_code=403, detail=_LOCKED_MSG.format(kind="템플릿"))
 
 
 def assert_schedule_unlocked(schedule: TemplateSchedule) -> None:
-    """잠긴 스케줄이면 403. 호출자는 수정/삭제 직전에 부른다."""
+    """잠긴 스케줄이면 403. 삭제 등 필드 정보가 없는 경로에서 쓴다."""
     if getattr(schedule, "is_locked", False):
         raise HTTPException(status_code=403, detail=_LOCKED_MSG.format(kind="스케줄"))
+
+
+def assert_update_allowed(obj, update_data: dict, kind: str) -> None:
+    """수정 요청 가드 — 잠겼어도 활성/비활성 토글만은 통과시킨다.
+
+    update_data 는 `_remap_active_field` 를 거친 뒤(ORM 필드명 기준)여야 한다.
+    빈 요청(변경 필드 없음)은 아무것도 바꾸지 않으므로 통과.
+    """
+    if not getattr(obj, "is_locked", False):
+        return
+    if set(update_data) - _ACTIVATION_ONLY:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"잠긴 {kind}입니다. 반복 오삭제 방지를 위해 활성/비활성 외에는 "
+                "웹에서 수정할 수 없습니다. 변경이 필요하면 관리자에게 요청하세요."
+            ),
+        )
 
 
 _TEMPLATE_SNAPSHOT_FIELDS = (
