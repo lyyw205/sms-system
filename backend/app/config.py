@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Sentry (운영 에러 모니터링, 비워두면 비활성)
     SENTRY_DSN: str = ""
 
+    # 디스코드 웹훅 — 템플릿/스케줄 변경 실시간 알림. 빈 값이면 알림 비활성(no-op).
+    DISCORD_WEBHOOK_URL: str = ""
+
     # CORS
     CORS_ORIGINS: str = "*"
 

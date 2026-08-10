@@ -153,3 +153,29 @@ def log_template_activity(
         db.commit()
     except Exception:  # pragma: no cover — 감사 실패가 본 작업을 막지 않는다
         db.rollback()
+
+    # 실시간 통지 — 기록(ActivityLog)은 "나중에 찾기", 이건 "지금 알아채기" 용도.
+    # fire-and-forget 이라 실패해도 본 작업에 영향 없음.
+    _notify_discord(db, action=action, kind=kind, name=name,
+                    created_by=created_by, changes=changes)
+
+
+def _notify_discord(db, *, action: str, kind: str, name: str,
+                    created_by: str, changes: Optional[dict]) -> None:
+    try:
+        from app.db.models import Tenant
+        from app.db.tenant_context import get_session_tenant_id
+        from app.services.discord_notify import notify_template_change
+
+        slug = None
+        tid = get_session_tenant_id(db)
+        if tid:
+            tenant = db.query(Tenant).filter(Tenant.id == tid).first()
+            slug = tenant.slug if tenant else None
+
+        notify_template_change(
+            action=action, kind=kind, name=name, created_by=created_by,
+            tenant_slug=slug, changes=changes,
+        )
+    except Exception:  # pragma: no cover
+        pass
