@@ -121,3 +121,62 @@ def notify_template_change(
         threading.Thread(target=_post, args=(url, payload), daemon=True).start()
     except Exception as e:  # pragma: no cover
         logger.warning("discord_notify: skipped (%s)", e)
+
+
+def notify_template_drift(*, tenant_slug: str, drift: dict) -> None:
+    """스냅샷 대조로 잡힌 변동을 통지 (fire-and-forget).
+
+    이 알림이 뜬다는 건 **웹을 거치지 않은 변경**이 있었다는 뜻이다
+    (웹 변경은 이미 실시간 알림이 나갔을 것이므로). DB 직접 변경·수동 SQL 등.
+    """
+    try:
+        from app.config import settings
+
+        url = getattr(settings, "DISCORD_WEBHOOK_URL", "") or ""
+        if not url:
+            return
+
+        added, removed, changed = drift.get("added", []), drift.get("removed", []), drift.get("changed", [])
+        fields = []
+
+        if removed:
+            fields.append({
+                "name": f"🗑️ 사라짐 ({len(removed)})",
+                "value": "\n".join(f"• {r['kind']} **{r.get('name') or r['id']}**" for r in removed[:10])[:1024],
+                "inline": False,
+            })
+        if added:
+            fields.append({
+                "name": f"🆕 새로 생김 ({len(added)})",
+                "value": "\n".join(f"• {a['kind']} **{a.get('name') or a['id']}**" for a in added[:10])[:1024],
+                "inline": False,
+            })
+        if changed:
+            lines = []
+            for c in changed[:6]:
+                names = ", ".join(list(c.get("fields", {}))[:5])
+                lines.append(f"• {c['kind']} **{c.get('name') or c['id']}** — {names}")
+            fields.append({
+                "name": f"✏️ 바뀜 ({len(changed)})",
+                "value": "\n".join(lines)[:1024],
+                "inline": False,
+            })
+
+        fields.append({
+            "name": "안내",
+            "value": ("웹에서 한 변경은 즉시 알림이 따로 갑니다. 이 알림은 **웹을 거치지 않은 변경**"
+                      "(DB 직접 수정 등)일 가능성이 높습니다. 사라진 항목은 활동 로그의 "
+                      "`template_drift` 기록에 직전 전문이 남아 있어 복구할 수 있습니다."),
+            "inline": False,
+        })
+
+        payload = {
+            "embeds": [{
+                "title": f"🔍 템플릿/스케줄 변동 감지 · {tenant_slug}",
+                "color": 0xFAA61A if not removed else 0xED4245,
+                "fields": fields,
+            }]
+        }
+        threading.Thread(target=_post, args=(url, payload), daemon=True).start()
+    except Exception as e:  # pragma: no cover
+        logger.warning("discord_notify: drift skipped (%s)", e)

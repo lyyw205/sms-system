@@ -398,6 +398,22 @@ class TemplateSchedule(TenantMixin, Base):
     template = relationship("MessageTemplate", backref="schedules")
 
 
+class TemplateBaseline(TenantMixin, Base):
+    """템플릿/스케줄 변동 감지용 기준 스냅샷 — 테넌트당 1행.
+
+    API 훅은 웹 경로만 잡는다. 전면 잠금 이후 실질 변경 경로인 DB 직접 변경을
+    잡으려면 결과 상태를 주기적으로 대조해야 한다 (`services/template_drift.py`).
+    snapshot 에 본문 전문이 들어가므로 연속 백업 역할도 겸한다.
+    """
+
+    __tablename__ = "template_baselines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fingerprint = Column(String(64), nullable=False)   # snapshot 의 sha256
+    snapshot = Column(Text, nullable=False)            # JSON 전문
+    captured_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 class ActivityLog(TenantMixin, Base):
     """시스템 활동 로그 — 주요 변경사항 기록"""
 

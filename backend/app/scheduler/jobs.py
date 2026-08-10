@@ -426,6 +426,52 @@ def split_orphan_sweep_job():
     _for_each_tenant(_sweep)
 
 
+async def template_drift_check_job():
+    """템플릿/스케줄 변동 감지 — 하루 1회 전체 스냅샷 대조.
+
+    API 훅(template_guard)은 웹 경로만 잡는다. 전면 잠금 이후 stable 의 실질
+    변경 경로는 DB 직접 변경이고 그건 API 를 타지 않으므로, 결과 상태를 직접
+    대조하는 이 잡이 유일한 감시 수단이다.
+
+    첫 실행은 베이스라인만 만들고 알리지 않는다.
+    """
+    logger.info("Running template drift check (all tenants)")
+    diag("job.template_drift_check.enter", level="verbose")
+
+    from app.services.template_drift import check_drift
+    from app.services.discord_notify import notify_template_drift
+    from app.services.activity_logger import log_activity
+
+    def _check(db, tenant):
+        drift = check_drift(db, tenant.id, tenant_slug=tenant.slug)
+        if not drift:
+            logger.info(f"[{tenant.slug}] template drift: none")
+            return
+
+        counts = {k: len(v) for k, v in drift.items()}
+        logger.warning(f"[{tenant.slug}] template drift detected: {counts}")
+        diag(
+            "job.template_drift_check.detected",
+            level="critical",
+            tenant=tenant.slug,
+            added=counts["added"],
+            removed=counts["removed"],
+            changed=counts["changed"],
+        )
+        # 삭제분은 직전 스냅샷 전문을 함께 남긴다 — DB 직접 삭제도 여기서 복구 가능
+        log_activity(
+            db,
+            type="template_drift",
+            title=f"템플릿/스케줄 변동 감지 (추가 {counts['added']} / 삭제 {counts['removed']} / 변경 {counts['changed']})",
+            detail=drift,
+            status="partial",
+            target_count=sum(counts.values()),
+            created_by="scheduler",
+        )
+        notify_template_drift(tenant_slug=tenant.slug, drift=drift)
+
+    _for_each_tenant(_check)
+
 def setup_scheduler():
     """
     Setup all scheduled jobs
@@ -571,6 +617,18 @@ def setup_scheduler():
         replace_existing=True,
         coalesce=True,
         misfire_grace_time=300,
+        max_instances=1,
+    )
+
+    # 템플릿/스케줄 변동 감지 — 매일 09:00 KST (DB 직접 변경까지 잡는 유일한 경로)
+    scheduler.add_job(
+        template_drift_check_job,
+        trigger=CronTrigger(hour=9, minute=0, timezone='Asia/Seoul'),
+        id='template_drift_check',
+        name='템플릿/스케줄 변동 감지 (매일 09:00)',
+        replace_existing=True,
+        coalesce=True,
+        misfire_grace_time=3600,   # 하루 1회 — 1시간까지 늦은 fire 허용
         max_instances=1,
     )
 
