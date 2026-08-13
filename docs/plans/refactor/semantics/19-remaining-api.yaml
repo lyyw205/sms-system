@@ -1,0 +1,268 @@
+# 나머지 API — 예약 부속(응답 직렬화·칩 조작·방배정) · 파티운영 · 리포팅 · 이벤트문자 · 관리.
+
+- module: api/reservations_shared.py
+  fns:
+    _compute_surcharge_text:
+      역할: "추가요금 칩에 표시할 금액 문구를 계산한다"
+      등급: D
+      주의: "추가요금 템플릿 키일 때만 계산한다"
+    _to_response:
+      역할: "예약을 화면용 형태로 변환한다. **칩 표시 규칙이 여기 전부 들어있다**"
+      등급: D
+      핵심: true
+      주의: |
+        ★ 칩을 무엇을 보여줄지 정하는 규칙이 4겹이다.
+        ① '발송 제외' 표시된 칩은 아예 뺀다
+        ② ★ **연박그룹 형제의 발송완료 칩을 끌어온다** — 별도 예약 2건이 연박으로 묶였을 때,
+           어제 보낸 칩이 오늘 행에도 보여야 화면이 '✓발송완료' 로 표시된다
+        ③ 조회 날짜 기준 필터 3갈래:
+           · 그날 칩은 그대로
+           · **과거 + 발송완료 + 매일칩 아님** → 보여준다 (어제 보낸 객실안내)
+           · **미래 + 미발송 + 매일칩 아님** → 보여준다 (내일 보낼 후킹문자)
+           매일 나가는 칩은 그날만 — 연박자 화면에 같은 칩이 여러 개 뜨는 걸 막는다
+        ★ 연박그룹의 **총 박수와 이 행까지의 누적 박수**를 계산해 넘긴다. 한 행에 여러 날인
+        예약(경로 A)은 그룹이 없어서 프론트가 날짜 차이로 계산하고, 1박씩 쪼개져 묶인
+        예약(경로 B)만 백엔드가 계산한다 — **두 경로의 계산 주체가 다르다**
+    ReservationCreate / ReservationUpdate / ReservationResponse:
+      역할: "예약 입출력 스키마"
+      등급: I
+
+- module: api/reservations_sms.py
+  fns:
+    _guard_activity_room_template:
+      역할: "액티비티 예약에 객실 정보 문자를 붙이지 못하게 막는다"
+      등급: G
+      핵심: true
+      주의: "★ 템플릿 **본문에 객실 변수가 실제로 들어있는지** 검사한다. 템플릿 이름이 아니라 내용 기준이라 새 템플릿이 생겨도 자동으로 걸린다"
+    assign_sms_template:
+      역할: "운영자가 문자 칩을 수동으로 붙인다"
+      등급: D
+    unassign_sms_template:
+      역할: "운영자가 문자 칩을 뗀다"
+      등급: G
+      핵심: true
+      주의: "★ **삭제하지 않고 '발송 제외' 로 표시**한다. 지우면 자동 정합이 다시 만들어버리기 때문. 발송 기록도 함께 비운다"
+    toggle_sms_sent:
+      역할: "칩의 발송 상태를 토글한다. 미발송이면 실제로 문자를 보내거나(기본) 보낸 척만 한다"
+      등급: D
+      핵심: true
+      주의: |
+        · 칩이 없으면 **만들어서** 진행한다 — 화면엔 보이는데 DB에 없는 타이밍 문제 대응
+        · 이미 발송됨 → 발송 취소(기록 비움)
+        · `skip_send` → 실제 발송 없이 완료 표시만
+        · 그 외 → 실제 발송. 전화번호 없으면 400, 발송 실패도 400
+        · 템플릿의 버퍼 설정을 찾아 인원 계산에 넘긴다
+    send_sms_by_tag:
+      역할: "특정 템플릿·날짜의 미발송 칩 보유자에게 일괄 발송"
+      등급: I
+
+- module: api/reservations_room.py
+  fns:
+    assign_room:
+      역할: "운영자가 예약에 방을 배정한다 (드래그·모달)"
+      등급: D
+      핵심: true
+      주의: "배정 후 라이프사이클 후처리를 부르고, 밀려난 예약이 있으면 응답에 담아 화면 경고로 띄운다"
+    update_daily_info:
+      역할: "날짜별 정보(파티차수·메모·언스참여)를 저장한다"
+      등급: D
+      주의: "파티차수가 바뀌면 그날 파티 MMS 칩이 달라지므로 칩을 재계산해야 한다"
+
+- module: api/party_checkin.py
+  fns:
+    get_party_checkin_list:
+      역할: "그 날짜 파티 참여자 명단 (가나다순). 스테이블/언스테이블 두 갈래"
+      등급: D
+      핵심: true
+      주의: |
+        · 언스테이블 명단 = 구역이 언스테이블 **또는** 그날 언스 참여로 표시된 사람
+        · 스테이블 명단 = 파티차수가 참여값이면서 **언스테이블이 아니고 언스 참여 표시도 없는** 사람
+          → 두 명단은 서로 배타적이다
+        · ★ **이중 계상 방지** — 같은 전화번호로 객실 행과 액티비티 행이 둘 다 명단에 있으면
+          액티비티 행의 인원은 합산하지 않는다. 액티비티 단독 참여만 합산
+    toggle_party_checkin:
+      역할: "파티 체크인 켜기/끄기"
+      등급: D
+      주의: "켜면 기록 생성, 끄면 삭제"
+
+- module: api/cleancrew.py
+  fns:
+    list_today_stayover_rooms:
+      역할: "오늘 청소를 건너뛸 방 목록 — 어제부터 계속 묵는 손님이 있는 방"
+      등급: D
+      핵심: true
+      주의: |
+        · 판정: 같은 방에서 어제도 오늘도 **같은 손님**이 점유 중. '같은 손님' 이 두 갈래 —
+          같은 예약이거나, 같은 연박묶음
+        · ★ **연박묶음 id 가 비어있는 것끼리는 매칭되지 않게** 가드가 있다. 없으면 NULL == NULL 로
+          엉뚱한 사람이 이어진 걸로 잡힌다
+        · ★ 어제 매칭을 **EXISTS 상관 서브쿼리**로 한다. JOIN 으로 하면 도미토리에서 행이
+          불어나 인원 합계가 중복 집계된다
+        · 취소 예약은 양쪽 다 제외
+        · 도미토리는 (연박 인원/최대 인원) 표기, 개실은 인원 표기 없음
+      주의2: "CLEANCREW 역할 전용 (SUPERADMIN 도 디버깅 접근 가능)"
+
+- module: api/dashboard.py
+  fns:
+    get_dashboard_stats:
+      역할: "대시보드 통계 — 오늘 예약 수·최근 예약·오늘 발송 수·7일 성비"
+      등급: D
+      핵심: true
+      주의: |
+        · ★ **`func.count()` 대신 `func.count(Reservation.id)`** 로 써야 자동 테넌트 필터가
+          걸린다. 전자는 어느 모델인지 해석이 안 돼 필터가 안 붙는다. 명시 필터도 함께 건다
+        · 분할 형제는 통계에서 제외 (같은 손님 중복 노출 방지)
+        · 액티비티는 '오늘 예약' 지표와 최근 목록에서 제외
+        · 성비는 오늘부터 7일치를 날짜별로 집계 (액티비티 격리 적용)
+    get_today_schedules:
+      역할: "오늘 발송 예정·완료된 스케줄 현황"
+      등급: D
+
+- module: api/sales_report.py
+  fns:
+    get_sales_report:
+      역할: "기간별 매출 리포트 — 진행자별 경매·포차·언스 매출, 리뷰수, 여자초대수, 파티 참여인원"
+      등급: D
+      핵심: true
+      주의: |
+        · 매출 3종(경매·포차·언스)이 전부 **일일 진행자 레코드에 귀속**된다
+        · 여자초대수는 **진행자에게 직접 귀속** (날짜가 아니라)
+        · 파티 참여 인원은 **체크인 여부와 무관하게** 파티 예약자 전원의 남+여 합계
+        · 기간 겹침 조건이 두 갈래 — 체크아웃이 시작일보다 뒤거나, 체크아웃이 없으면서
+          체크인이 기간 안
+    _round_to / _fmt_won:
+      역할: "금액 반올림·표기 헬퍼"
+      등급: I
+
+- module: api/event_sms.py
+  fns:
+    search_reservations:
+      역할: "조건에 맞는 고객을 찾아 **전화번호로 중복 제거**한 목록을 준다 (마케팅 문자 대상 선정)"
+      등급: D
+      핵심: true
+      주의: |
+        · 액티비티는 방문자 명단에서 제외
+        · 성별 필터가 **표시 문자열 OR 인원수 기반** 이중 판정 — '여2' 같은 합성 표기를 놓치지 않게
+        · 연령대 제외, '초대' 메모 제외 옵션
+        · 같은 전화번호는 하나로 합치되 **총 박수와 예약 건수를 합산**한다
+    send_event_sms:
+      역할: "선택한 번호들에게 마케팅 문자를 일괄 발송"
+      등급: D
+
+- module: api/scheduler.py
+  fns:
+    get_scheduler_status:
+      역할: "스케줄러 가동 상태"
+      등급: I
+    get_jobs:
+      역할: "등록된 잡 목록 + 다음 실행 시각"
+      등급: I
+    get_job:
+      역할: "잡 단건 조회"
+      등급: N
+    pause_job / resume_job:
+      역할: "잡 일시정지·재개"
+      등급: I
+    run_job_manual:
+      역할: "잡을 즉시 수동 실행"
+      등급: I
+    shutdown_scheduler:
+      역할: "스케줄러 정지 (SUPERADMIN 전용)"
+      등급: G
+
+- module: api/buildings.py
+  fns:
+    get_buildings / get_building / create_building / update_building / delete_building:
+      역할: "건물 CRUD"
+      등급: I
+
+- module: api/activity_logs.py
+  fns:
+    get_activity_logs:
+      역할: "활동 로그 조회 (필터·페이지네이션)"
+      등급: I
+    get_activity_stats:
+      역할: "활동 로그 통계"
+      등급: I
+
+- module: api/events.py
+  fns:
+    _validate_token_and_tenant:
+      역할: "SSE 접속 시 쿼리 파라미터 토큰을 검증하고 테넌트 접근 권한을 확인"
+      등급: G
+      핵심: true
+      주의: "★ SSE 는 헤더를 못 붙여서 **토큰을 쿼리로 받는다**. 그래서 일반 인증 의존성 대신 여기서 직접 검증한다 — 우회 경로가 아니라 불가피한 대안"
+    event_stream:
+      역할: "실시간 이벤트 스트림 (화면 자동 갱신)"
+      등급: I
+
+- module: api/tenants.py
+  fns:
+    get_tenants:
+      역할: "접근 가능한 테넌트 목록"
+      등급: I
+
+- module: api/daily_host.py
+  fns:
+    get_daily_host / upsert_daily_host:
+      역할: "일일 진행자와 매출 3종(경매·포차·언스) 조회·저장"
+      등급: D
+- module: api/party_hosts.py
+  fns:
+    list_party_hosts / create_party_host / delete_party_host:
+      역할: "파티 진행자 명단 관리"
+      등급: I
+- module: api/daily_review.py
+  fns:
+    get_daily_review / upsert_daily_review:
+      역할: "일일 리뷰 수 조회·저장"
+      등급: I
+- module: api/onsite_female_invite.py
+  fns:
+    list_invites / add_invite / update_invite / delete_invite:
+      역할: "현장 여성 초대 기록 관리 (진행자별 귀속)"
+      등급: D
+
+- module: factory.py
+  fns:
+    get_sms_provider_for_tenant:
+      역할: "테넌트 설정으로 문자 발신기를 만든다"
+      등급: G
+      주의: "★ 테스트모드가 꺼져 있는데 알리고 키가 비면 **경고 로그**를 남긴다 (발송이 실패할 것이므로). Mock 은 없고 항상 실제 발신기"
+    get_reservation_provider_for_tenant:
+      역할: "테넌트 설정으로 네이버 접속기를 만든다"
+      등급: I
+      주의: "쿠키가 비면 사실상 동작하지 않는다 (조회가 전부 실패)"
+
+- module: rate_limit.py
+  fns:
+    _get_real_ip:
+      역할: "프록시 뒤에서도 진짜 클라이언트 IP 를 알아낸다 (호출 제한 기준)"
+      등급: G
+      주의: "이게 틀리면 모든 사용자가 같은 IP 로 묶여 서로의 제한에 걸린다"
+
+- module: db/seed.py
+  fns:
+    seed_data / main:
+      역할: "초기 데이터 시딩 (관리자·직원 계정)"
+      등급: I
+
+- module: db/models.py
+  fns:
+    utc_now:
+      역할: "UTC 현재시각 (생성/수정 시각 기본값)"
+      등급: I
+    MessageTemplate.get_buffer_vars:
+      역할: "템플릿의 인원 버퍼 설정을 변수 계산용 dict 로 만든다"
+      등급: D
+      핵심: true
+      주의: "★ 여기서 나온 `_` 접두사 키들이 버퍼 계산의 입력이고, 최종 변수 병합에서는 제외된다"
+    TenantMixin.tenant_id:
+      역할: "테넌트 격리용 공통 컬럼"
+      등급: G
+
+- module: auth/schemas.py
+  fns:
+    LoginRequest / UserCreate / UserUpdate 등:
+      역할: "인증 입출력 스키마"
+      등급: I

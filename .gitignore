@@ -57,3 +57,14 @@ temp/
 
 # Claude Code session lock files
 .claude/*.lock
+
+# codehouse (외부 도구 로컬 상태)
+.codehouse/
+
+# 전수조사 생성물 — scripts/spec/regen.sh 로 재생성 (원본은 semantics/ · 10-domain-axes.yaml)
+docs/plans/refactor/functions/
+docs/plans/refactor/함수명세/
+docs/plans/refactor/변수명세/
+docs/plans/refactor/코어도출/
+docs/plans/refactor/variables/*.yaml
+!docs/plans/refactor/variables/10-domain-axes.yaml

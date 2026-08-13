@@ -1,0 +1,599 @@
+{
+  "activity_log.created": [
+    "services.activity_logger"
+  ],
+  "aligo.send_mms.enter": [
+    "real.sms"
+  ],
+  "aligo.send_mms.exit": [
+    "real.sms"
+  ],
+  "aligo.send_sms.enter": [
+    "real.sms"
+  ],
+  "aligo.send_sms.exit": [
+    "real.sms"
+  ],
+  "assign_room.activity_blocked": [
+    "services.room_assignment"
+  ],
+  "assign_room.enter": [
+    "services.room_assignment"
+  ],
+  "assign_room.exit": [
+    "services.room_assignment"
+  ],
+  "assign_room.manual_multi_assign": [
+    "services.room_assignment"
+  ],
+  "assign_room.pushed_out_compact": [
+    "services.room_assignment"
+  ],
+  "auto_assign.enter": [
+    "services.room_auto_assign"
+  ],
+  "auto_assign.exit": [
+    "services.room_auto_assign"
+  ],
+  "auto_assign.failed": [
+    "services.room_auto_assign"
+  ],
+  "cascade.clamped_to_today": [
+    "api.reservations_room"
+  ],
+  "chip.tenant_mismatch": [
+    "services.chip_reconciler"
+  ],
+  "chip_store.cross_tenant_reservation": [
+    "services.chip_store"
+  ],
+  "chip_store.delete_reservation.deleted": [
+    "services.chip_store"
+  ],
+  "chip_store.delete_schedule.deleted": [
+    "services.chip_store"
+  ],
+  "chip_store.delete_template.deleted": [
+    "services.chip_store"
+  ],
+  "chip_store.ensure.created": [
+    "services.chip_store"
+  ],
+  "chip_store.ensure.race": [
+    "services.chip_store"
+  ],
+  "chip_store.ensure.race_no_existing": [
+    "services.chip_store"
+  ],
+  "chip_store.record_failed": [
+    "services.chip_store"
+  ],
+  "chip_store.record_sent": [
+    "services.chip_store"
+  ],
+  "chip_store.remove.deleted": [
+    "services.chip_store"
+  ],
+  "clear_all_for_reservation.compact": [
+    "services.room_assignment"
+  ],
+  "clear_all_for_reservation.enter": [
+    "services.room_assignment"
+  ],
+  "clear_all_for_reservation.exit": [
+    "services.room_assignment"
+  ],
+  "compact_bed_orders": [
+    "services.room_assignment"
+  ],
+  "custom_schedule.chip_eligibility_breakdown": [
+    "scheduler.template_scheduler"
+  ],
+  "daily_assign.mode": [
+    "services.room_auto_assign"
+  ],
+  "daily_chip_reconcile.stale_repair": [
+    "services.room_auto_assign"
+  ],
+  "dashboard.stats.computed": [
+    "api.dashboard"
+  ],
+  "dormitory.hardline": [
+    "services.room_assignment"
+  ],
+  "event_bus.publish": [
+    "services.event_bus"
+  ],
+  "event_sms.api.enter": [
+    "api.event_sms"
+  ],
+  "event_sms.triggered": [
+    "api.event_sms"
+  ],
+  "event_sms_hook.enter": [
+    "services.event_sms_hook"
+  ],
+  "event_sms_hook.exit": [
+    "services.event_sms_hook"
+  ],
+  "event_sms_hook.no_event_loop": [
+    "services.event_sms_hook"
+  ],
+  "event_sms_hook.no_schedules": [
+    "services.event_sms_hook"
+  ],
+  "event_sms_hook.no_tenant_ctx": [
+    "services.event_sms_hook"
+  ],
+  "event_sms_hook.scheduled": [
+    "services.event_sms_hook"
+  ],
+  "extend_stay.completed": [
+    "api.reservations_stay"
+  ],
+  "extend_stay.invoked": [
+    "api.reservations_stay"
+  ],
+  "filter.activity_excluded": [
+    "services.filters"
+  ],
+  "filter.applied": [
+    "services.filters"
+  ],
+  "filter.apply.enter": [
+    "services.filters"
+  ],
+  "filter.apply.exit": [
+    "services.filters"
+  ],
+  "filter.v1_normalize.hit": [
+    "services.filters"
+  ],
+  "invariant.check.enter": [
+    "services.room_assignment_invariants"
+  ],
+  "invariant.check.exit": [
+    "services.room_assignment_invariants"
+  ],
+  "invariant.room_config_impact": [
+    "services.room_assignment_invariants"
+  ],
+  "invariant.violation": [
+    "services.room_assignment_invariants"
+  ],
+  "invariant.violation_detected": [
+    "services.reservation_lifecycle"
+  ],
+  "job.daily_room_assign.enter": [
+    "scheduler.jobs"
+  ],
+  "job.daily_room_assign.exit": [
+    "scheduler.jobs"
+  ],
+  "job.detect_consecutive_stays.enter": [
+    "scheduler.jobs"
+  ],
+  "job.detect_consecutive_stays.exit": [
+    "scheduler.jobs"
+  ],
+  "job.detect_consecutive_stays.tenant_failed": [
+    "scheduler.jobs"
+  ],
+  "job.sync_naver_reservations.enter": [
+    "scheduler.jobs"
+  ],
+  "job.sync_naver_reservations.exit": [
+    "scheduler.jobs"
+  ],
+  "job.sync_naver_reservations.tenant_failed": [
+    "scheduler.jobs"
+  ],
+  "job.sync_unstable_reservations.enter": [
+    "scheduler.jobs"
+  ],
+  "job.sync_unstable_reservations.exit": [
+    "scheduler.jobs"
+  ],
+  "job.sync_unstable_reservations.tenant_failed": [
+    "scheduler.jobs"
+  ],
+  "mutator.pin_released": [
+    "services.reservation_mutator"
+  ],
+  "mutator.skipped": [
+    "services.reservation_mutator"
+  ],
+  "naver_api.fetch_page.enter": [
+    "real.reservation"
+  ],
+  "naver_api.fetch_page.exit": [
+    "real.reservation"
+  ],
+  "naver_api.response_summary": [
+    "real.reservation"
+  ],
+  "naver_sync.bed_order_align": [
+    "services.naver_sync"
+  ],
+  "naver_sync.cancel_chip_cleanup": [
+    "services.reservation_lifecycle"
+  ],
+  "naver_sync.enter": [
+    "services.naver_sync"
+  ],
+  "naver_sync.exit": [
+    "services.naver_sync"
+  ],
+  "naver_sync.fetched": [
+    "services.naver_sync"
+  ],
+  "naver_sync.phase5": [
+    "services.naver_sync"
+  ],
+  "naver_sync.same_day_cancel": [
+    "services.reservation_lifecycle"
+  ],
+  "naver_sync.sms_field_changed": [
+    "services.naver_sync"
+  ],
+  "naver_sync.split_freeze_rescue": [
+    "services.naver_sync"
+  ],
+  "naver_sync.split_multi_room": [
+    "services.naver_sync"
+  ],
+  "naver_sync.split_summary": [
+    "services.naver_sync"
+  ],
+  "naver_sync.status_pin_invariant_violation": [
+    "services.naver_sync"
+  ],
+  "naver_sync.status_pin_self_healed": [
+    "services.naver_sync"
+  ],
+  "naver_sync.user_extension_overridden": [
+    "services.naver_sync"
+  ],
+  "naver_sync.user_extension_preserved": [
+    "services.naver_sync"
+  ],
+  "onsite_female_invite.deleted": [
+    "api.onsite_female_invite"
+  ],
+  "onsite_female_invite.updated": [
+    "api.onsite_female_invite"
+  ],
+  "party3_mms.no_reservations": [
+    "services.party3_mms"
+  ],
+  "party3_mms.no_schedule": [
+    "services.party3_mms"
+  ],
+  "party3_mms.reconcile.done": [
+    "services.party3_mms"
+  ],
+  "party3_mms.reconcile.enter": [
+    "services.party3_mms"
+  ],
+  "party3_mms.single.created": [
+    "services.party3_mms"
+  ],
+  "party3_mms.single.deleted": [
+    "services.party3_mms"
+  ],
+  "party_checkin.toggle.not_found": [
+    "api.party_checkin"
+  ],
+  "party_checkin.toggled": [
+    "api.party_checkin"
+  ],
+  "password_display.prefix_skipped": [
+    "services.password_display"
+  ],
+  "pushed_out.awaiting_scheduler": [
+    "services.room_assignment"
+  ],
+  "reconcile_all_chips.enter": [
+    "services.reconcile"
+  ],
+  "reconcile_all_chips.exit": [
+    "services.reconcile"
+  ],
+  "reconcile_chips_for_reservation.enter": [
+    "services.chip_reconciler"
+  ],
+  "reconcile_chips_for_reservation.exit": [
+    "services.chip_reconciler"
+  ],
+  "reconcile_chips_for_schedule.enter": [
+    "services.chip_reconciler"
+  ],
+  "reconcile_chips_for_schedule.exit": [
+    "services.chip_reconciler"
+  ],
+  "reconcile_dates.co_occupy": [
+    "services.room_assignment"
+  ],
+  "reconcile_dates.enter": [
+    "services.room_assignment"
+  ],
+  "reconcile_dates.exit": [
+    "services.room_assignment"
+  ],
+  "reconcile_dates.orphan_compact": [
+    "services.room_assignment"
+  ],
+  "reduce_extension.completed": [
+    "api.reservations_stay"
+  ],
+  "reduce_extension.flag_cleared": [
+    "api.reservations_stay"
+  ],
+  "reduce_extension.invoked": [
+    "api.reservations_stay"
+  ],
+  "reduce_extension.protected_chip_preserved": [
+    "api.reservations_stay"
+  ],
+  "request.enter": [
+    "main"
+  ],
+  "request.error": [
+    "main"
+  ],
+  "request.exit": [
+    "main"
+  ],
+  "reservation.created": [
+    "api.reservations"
+  ],
+  "reservation.deleted": [
+    "api.reservations"
+  ],
+  "reservation.invalid_status": [
+    "api.reservations"
+  ],
+  "reservation.status_changed": [
+    "services.naver_sync"
+  ],
+  "reservation.status_pin_released": [
+    "api.reservations"
+  ],
+  "reservation.updated": [
+    "api.reservations"
+  ],
+  "rooms.delete": [
+    "api.rooms"
+  ],
+  "rooms.grades_updated": [
+    "api.rooms"
+  ],
+  "rooms.hide.enter": [
+    "api.rooms"
+  ],
+  "rooms.hide.exit": [
+    "api.rooms"
+  ],
+  "rooms.manual_auto_assign_trigger": [
+    "api.rooms"
+  ],
+  "rooms.reordered": [
+    "api.rooms"
+  ],
+  "rooms.unhide.enter": [
+    "api.rooms"
+  ],
+  "rooms.update.config_affects_assignments": [
+    "api.rooms"
+  ],
+  "schedule.created": [
+    "api.template_schedules"
+  ],
+  "schedule.date_target.legacy_value": [
+    "services.schedule_utils"
+  ],
+  "schedule.deleted": [
+    "api.template_schedules"
+  ],
+  "schedule.execute.enter": [
+    "scheduler.template_scheduler"
+  ],
+  "schedule.execute.exit": [
+    "scheduler.template_scheduler"
+  ],
+  "schedule.execute.fetch_miss": [
+    "scheduler.schedule_manager"
+  ],
+  "schedule.execute.targets": [
+    "scheduler.template_scheduler"
+  ],
+  "schedule.manual_execute": [
+    "api.template_schedules"
+  ],
+  "schedule.section_guard.ui_violation": [
+    "services.filters"
+  ],
+  "schedule.toggled": [
+    "api.template_schedules"
+  ],
+  "schedule.updated": [
+    "api.template_schedules"
+  ],
+  "schedule_manager.job_added": [
+    "scheduler.schedule_manager"
+  ],
+  "schedule_manager.job_removed": [
+    "scheduler.schedule_manager"
+  ],
+  "schedule_manager.job_updated": [
+    "scheduler.schedule_manager"
+  ],
+  "schedule_manager.sync_all.enter": [
+    "scheduler.schedule_manager"
+  ],
+  "schedule_manager.sync_all.exit": [
+    "scheduler.schedule_manager"
+  ],
+  "scheduler.api.manual_execute": [
+    "api.scheduler"
+  ],
+  "send_single_sms.enter": [
+    "services.sms_sender"
+  ],
+  "send_single_sms.exit": [
+    "services.sms_sender"
+  ],
+  "shift_daily_records": [
+    "services.room_assignment"
+  ],
+  "sms_assignment.duplicate": [
+    "api.reservations_sms"
+  ],
+  "sms_sender.blocked_empty_room": [
+    "services.sms_sender"
+  ],
+  "sms_sender.blocked_invalid_phone": [
+    "services.sms_sender"
+  ],
+  "sms_sender.blocked_template_missing": [
+    "services.sms_sender"
+  ],
+  "sms_sender.provider_call": [
+    "services.sms_sender"
+  ],
+  "split_guard.bc_drift": [
+    "services.split_group_guard"
+  ],
+  "split_guard.cancel_orphan": [
+    "services.split_group_guard"
+  ],
+  "split_guard.cancel_propagated": [
+    "services.split_group_guard"
+  ],
+  "split_guard.mode": [
+    "main"
+  ],
+  "split_guard.reactivated_orphan": [
+    "services.split_group_guard"
+  ],
+  "split_guard.sweep": [
+    "services.split_group_guard"
+  ],
+  "split_guard.unsplit_multi_bc": [
+    "services.split_group_guard"
+  ],
+  "sse.subscribed": [
+    "api.events"
+  ],
+  "sse.unsubscribed": [
+    "api.events"
+  ],
+  "stale_chip_reconcile.enter": [
+    "services.room_auto_assign"
+  ],
+  "stale_chip_reconcile.res_failed": [
+    "services.room_auto_assign"
+  ],
+  "stale_chip_reconcile.res_repaired": [
+    "services.room_auto_assign"
+  ],
+  "stay_group.chain_formed": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.detect.enter": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.detect.exit": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.link_api.done": [
+    "api.reservations_stay"
+  ],
+  "stay_group.link_api.validation_failed": [
+    "api.reservations_stay"
+  ],
+  "stay_group.manually_linked": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.relinked_after_exclude": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.unlink_api.done": [
+    "api.reservations_stay"
+  ],
+  "stay_group.unlink_api.not_in_group": [
+    "api.reservations_stay"
+  ],
+  "stay_group.unlinked": [
+    "services.consecutive_stay"
+  ],
+  "stay_group.validate_failed": [
+    "services.consecutive_stay"
+  ],
+  "surcharge.all_deleted": [
+    "services.surcharge"
+  ],
+  "surcharge.batch.enter": [
+    "services.surcharge"
+  ],
+  "surcharge.batch.exit": [
+    "services.surcharge"
+  ],
+  "surcharge.chip_applied": [
+    "services.surcharge"
+  ],
+  "surcharge.reconcile.enter": [
+    "services.surcharge"
+  ],
+  "surcharge.reconcile_failed": [
+    "services.surcharge"
+  ],
+  "template.created": [
+    "api.templates"
+  ],
+  "template.deleted": [
+    "api.templates"
+  ],
+  "template.render.enter": [
+    "templates.renderer"
+  ],
+  "template.render.exit": [
+    "templates.renderer"
+  ],
+  "template.render.unreplaced": [
+    "templates.renderer"
+  ],
+  "template.reordered": [
+    "api.templates"
+  ],
+  "template.updated": [
+    "api.templates"
+  ],
+  "template.variables.calculated": [
+    "templates.variables"
+  ],
+  "tenant_context.model_registered": [
+    "db.tenant_context"
+  ],
+  "unassign_dates.compact": [
+    "services.room_assignment"
+  ],
+  "unassign_dates.enter": [
+    "services.room_assignment"
+  ],
+  "unassign_dates.exit": [
+    "services.room_assignment"
+  ],
+  "unassign_room.compact": [
+    "services.room_assignment"
+  ],
+  "unassign_room.enter": [
+    "services.room_assignment"
+  ],
+  "unassign_room.exit": [
+    "services.room_assignment"
+  ],
+  "update_reservation.cleared_stale_extension_flag": [
+    "api.reservations"
+  ]
+}

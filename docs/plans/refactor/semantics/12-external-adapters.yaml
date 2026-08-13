@@ -1,0 +1,130 @@
+# 외부 연동 어댑터 — 알리고(문자 발송) · 네이버(예약 조회).
+# 시스템 밖과 이야기하는 유일한 두 곳. 여기 실패는 우리 잘못이 아닐 수 있으므로
+# 예외를 잡아 결과 dict 로 돌려주고, 호출자가 판단하게 한다.
+
+- module: real/sms.py
+  fns:
+    _detect_msg_type:
+      역할: "본문 길이로 SMS 인지 LMS 인지 자동 판단 (EUC-KR 기준 90바이트)"
+      등급: D
+      핵심: true
+      주의: "EUC-KR 로 인코딩 안 되는 글자(이모지 등)가 있으면 UTF-8 바이트로 폴백한다. 두 인코딩의 길이가 달라 경계값에서 판정이 달라질 수 있다"
+    _build_auth_params:
+      역할: "알리고 인증 파라미터를 만든다"
+      등급: I
+      주의: "⚠️ 전역 설정(settings)에서 읽는다. 인스턴스의 api_key 가 아니라 — 테넌트별 키 분리가 안 되는 구조"
+    RealSMSProvider.__init__:
+      역할: "발송기 초기화. 테넌트별 발신번호와 테스트모드를 받는다"
+      등급: I
+      주의: "테스트모드면 알리고가 실제로 안 보낸다. 기본값이 True(안전) 이므로 운영에서 꺼야 실제 발송된다"
+    RealSMSProvider.send_sms:
+      역할: "문자 한 건을 알리고에 보낸다"
+      등급: D
+      핵심: true
+      주의: |
+        · 종류를 안 주면 길이로 자동 판단
+        · ★ **LMS 가 2000바이트를 넘으면 대량 발송 엔드포인트로 폴백**한다 (건당 엔드포인트가
+          거부하기 때문). 이 폴백이 없으면 긴 문자가 조용히 실패한다
+        · LMS 제목은 지정됐을 때만 넘긴다 (없으면 알리고가 본문 첫 줄을 씀)
+        · 성공 판정은 응답의 `result_code == "1"` 문자열 비교
+        · HTTP 오류와 그 외 예외를 나눠서 잡지만 반환 형태는 같다. **예외를 밖으로 안 던진다**
+        · 전화번호는 진단로그에서 마스킹된다
+    RealSMSProvider.send_party_mms:
+      역할: "파티 안내 MMS 를 보낸다 — 사진 3장을 직접 첨부"
+      등급: D
+      주의: |
+        · **사진 파일이 하나라도 없으면 발송하지 않고 실패를 돌려준다**. 파일 경로는
+          `backend/app/static/mms/party0{1,2,3}.jpg` 로 고정
+        · 대량 발송 엔드포인트에 건수 1로 보내는 방식 (일반 문자와 경로가 다름)
+        · 본문 최대 2000바이트
+    RealSMSProvider.send_bulk:
+      역할: "여러 건을 한꺼번에 보낸다"
+      등급: D
+      주의: "**500건 단위로 자동 분할**해 순차 발송한다. 배치 하나가 실패하면 그 배치 전체를 실패로 세고 나머지는 계속한다. 전체 성공은 실패 0일 때만"
+    RealSMSProvider.get_remain:
+      역할: "알리고 잔여 발송 건수를 조회한다"
+      등급: I
+    RealSMSProvider.simulate_receive:
+      역할: "수신 시뮬레이션 (테스트용 스텁)"
+      등급: I
+    RealSMSProvider._send_single_via_mass:
+      역할: "긴 LMS 를 대량 엔드포인트로 한 건 보내는 폴백 경로"
+      등급: D
+    RealSMSProvider._send_mass_batch:
+      역할: "배치 하나(최대 500건)를 대량 엔드포인트로 보낸다"
+      등급: D
+      주의: "종류를 안 주면 **첫 메시지 기준**으로 판단한다 — 배치 안에 긴 문자와 짧은 문자가 섞이면 전부 첫 번째 기준을 따른다. 타임아웃 60초"
+
+- module: real/reservation.py
+  fns:
+    RealReservationProvider.__init__:
+      역할: "네이버 접속기 초기화 — 사업장 id 와 쿠키"
+      등급: I
+    RealReservationProvider._get_headers:
+      역할: "네이버 API 요청 헤더 (쿠키 인증)"
+      등급: G
+      주의: "쿠키가 만료되면 전부 실패한다. 쿠키 갱신은 운영자가 설정 화면에서 직접 넣는다"
+    RealReservationProvider._fetch_page:
+      역할: "예약 목록 한 페이지를 가져온다"
+      등급: D
+      핵심: true
+      주의: |
+        · **조회 기준이 두 가지** — `REGDATE`(등록일, 평소) / `USEDATE`(체크인일, 대사용)
+        · 한 번에 최대 31일, 페이지당 200건
+        · 캐시 회피용 타임스탬프를 매번 붙인다
+        · 확정 상태 코드 필터를 비워 보내서 **취소건도 함께 받는다** (취소를 감지하려면 필요)
+    RealReservationProvider.sync_reservations:
+      역할: "등록일 기준으로 예약을 가져온다 (평소 5분 주기 경로)"
+      등급: D
+      핵심: true
+    RealReservationProvider._process_raw_data:
+      역할: "네이버 원본 응답을 우리 표준 형식으로 변환한다. 확정·취소 분리, 성별·나이 조회, 표준화"
+      등급: D
+      핵심: true
+      주의: |
+        · 확정(RC03)과 취소(RC04)만 취한다. 나머지 상태는 버린다
+        · ★ **취소건을 그대로 전부 처리한다.** 예전엔 '재예약한 사람의 취소' 를 중복으로
+          보고 걸러냈는데, 그건 스프레드시트 시절 로직이라 DB 기반에서는 **정당한 취소를
+          조용히 삼키던 버그**였다. 되돌리면 취소 누락 사고가 재발한다
+        · 성별·나이·방문횟수는 별도 API 를 사용자 id 로 조회한다. **동시 10개 제한**을 걸고
+          병렬로 가져온 뒤 캐시에 담는다. 개별 실패는 무시하고 넘어간다
+        · 응답 상태 분포와 취소 id 목록(앞 30개)을 진단로그로 남긴다 — 취소 누락 사고
+          추적용으로 실제 사건 이후 추가된 것
+        · 예외는 전부 잡고 **빈 목록을 돌려준다** — 즉 API 장애가 '예약 0건' 으로 보인다
+    RealReservationProvider.fetch_by_checkin_date:
+      역할: "체크인 날짜 기준으로 조회한다 (매일 09:55 대사용)"
+      등급: D
+      주의: "등록일 기준 조회가 놓친 것(오래전 등록됐는데 오늘 체크인)을 잡는 경로"
+    RealReservationProvider._parse_user_info_response:
+      역할: "사용자 정보 응답에서 성별·연령대·방문횟수를 뽑는다"
+      등급: D
+    RealReservationProvider._get_user_info_with_client:
+      역할: "공유 커넥션으로 사용자 정보를 조회 (병렬 처리용)"
+      등급: I
+    RealReservationProvider.get_user_info:
+      역할: "사용자 정보를 단건 조회 (커넥션을 새로 연다)"
+      등급: I
+      주의: "위 함수와 거의 같고 커넥션만 다르다 — 중복 후보"
+    RealReservationProvider.get_reservation_details:
+      역할: "[미구현] 예약 상세 조회 — 항상 None 반환"
+      등급: L
+      주의: "Protocol 을 만족시키기 위한 빈 스텁. 이식 대상에서 제외 검토"
+    RealReservationProvider._format_date:
+      역할: "네이버 날짜 문자열을 YYYY-MM-DD 로 변환"
+      등급: D
+      핵심: true
+      주의: "⚠️ 파싱 실패하거나 값이 없으면 **빈 문자열('')** 을 돌려준다. 이게 시스템 전체 `''` 문제의 뿌리다 — None 이었으면 SQL 에서 갈라지지 않았을 것 (알려진 잠재버그 LB-01, 현행 보존)"
+    RealReservationProvider._detect_multi_bookings:
+      역할: "같은 사람(이름+전화)이 여러 건 예약했는지 감지"
+      등급: D
+    RealReservationProvider._parse_reservation:
+      역할: "네이버 예약 항목 하나를 우리 표준 형식으로 바꾼다"
+      등급: D
+      핵심: true
+      주의: "인원수는 예약 옵션 중 '인원수' 항목에서 뽑는다. 이름이 `name` 이거나 `originalName` 둘 중 하나로 올 수 있어 둘 다 본다"
+    RealReservationProvider._extract_custom_form:
+      역할: "요청사항 자유입력을 뽑아낸다 (언스테이블 성별 파싱의 원본)"
+      등급: D
+    RealReservationProvider.fetch_biz_items:
+      역할: "네이버 상품 목록을 가져온다 (상품↔객실 매핑 설정용)"
+      등급: D
