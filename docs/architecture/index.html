@@ -1,0 +1,686 @@
+<title>SMS 시스템 아키텍처 맵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#FBFBFD; --panel:#FFFFFF; --panel-2:#F4F6F8;
+    --ink:#191F28; --ink-2:#4E5968; --ink-3:#8B95A1;
+    --line:#E3E7EB; --line-soft:#EEF1F4;
+    --accent:#3182F6; --accent-soft:#E8F3FF;
+    --ok:#00A98F; --ok-soft:#E4F7F3;
+    --warn:#C97A00; --warn-soft:#FFF3E0;
+    --bad:#E23744; --bad-soft:#FDECEE;
+    --sans:"IBM Plex Sans KR","Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    --mono:"IBM Plex Mono","SF Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
+      --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
+      --line:#2C2E37; --line-soft:#23252D;
+      --accent:#74A9FF; --accent-soft:#17253C;
+      --ok:#35D2B4; --ok-soft:#10312C;
+      --warn:#FFB13D; --warn-soft:#33260E;
+      --bad:#FF7C85; --bad-soft:#361A1E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
+    --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
+    --line:#2C2E37; --line-soft:#23252D;
+    --accent:#74A9FF; --accent-soft:#17253C;
+    --ok:#35D2B4; --ok-soft:#10312C;
+    --warn:#FFB13D; --warn-soft:#33260E;
+    --bad:#FF7C85; --bad-soft:#361A1E;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.72;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px 120px}
+
+  /* ── header ── */
+  header.top{padding:64px 0 40px; border-bottom:1px solid var(--line)}
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; font-weight:500; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 18px;
+  }
+  h1{
+    font-size:clamp(30px,4.4vw,46px); line-height:1.18; font-weight:700;
+    letter-spacing:-.022em; margin:0 0 16px; text-wrap:balance;
+  }
+  .lede{font-size:17px; color:var(--ink-2); max-width:66ch; margin:0}
+  .facts{
+    display:flex; flex-wrap:wrap; gap:0; margin-top:34px;
+    border:1px solid var(--line); border-radius:2px; overflow:hidden; background:var(--panel);
+  }
+  .fact{flex:1 1 150px; padding:14px 18px; border-right:1px solid var(--line-soft)}
+  .fact:last-child{border-right:0}
+  .fact b{
+    display:block; font-family:var(--mono); font-size:20px; font-weight:600;
+    letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+  }
+  .fact span{font-size:12px; color:var(--ink-3)}
+
+  /* ── layout ── */
+  .cols{display:grid; grid-template-columns:200px minmax(0,1fr); gap:52px; margin-top:52px}
+  @media (max-width:900px){ .cols{grid-template-columns:1fr; gap:0} nav.toc{display:none} }
+  nav.toc{position:sticky; top:28px; align-self:start}
+  nav.toc p{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); margin:0 0 12px;
+  }
+  nav.toc a{
+    display:block; padding:5px 0 5px 14px; border-left:2px solid var(--line);
+    color:var(--ink-2); text-decoration:none; font-size:13.5px;
+  }
+  nav.toc a:hover{color:var(--accent); border-left-color:var(--accent)}
+  nav.toc a b{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:8px}
+
+  section{padding-top:56px}
+  h2{
+    font-size:24px; font-weight:700; letter-spacing:-.02em; margin:0 0 8px;
+    padding-bottom:14px; border-bottom:1px solid var(--line); text-wrap:balance;
+  }
+  h2 .num{
+    font-family:var(--mono); font-size:12px; font-weight:500; color:var(--accent);
+    letter-spacing:.08em; display:block; margin-bottom:6px;
+  }
+  h3{font-size:16.5px; font-weight:600; margin:34px 0 10px; letter-spacing:-.01em}
+  p{margin:0 0 14px; max-width:70ch}
+  .muted{color:var(--ink-2)}
+  code{
+    font-family:var(--mono); font-size:.87em; background:var(--panel-2);
+    border:1px solid var(--line-soft); border-radius:2px; padding:1px 5px; white-space:nowrap;
+  }
+  a{color:var(--accent)}
+
+  /* ── figures ── */
+  figure{margin:28px 0; padding:0}
+  figure svg{display:block; width:100%; max-width:100%; height:auto; color:var(--ink)}
+  figcaption{
+    font-size:12.5px; color:var(--ink-3); margin-top:12px; padding-left:14px;
+    border-left:2px solid var(--line); max-width:70ch;
+  }
+  .figbox{border:1px solid var(--line); background:var(--panel); padding:22px 20px; border-radius:2px; overflow-x:auto}
+
+  /* ── tables ── */
+  .tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:2px; background:var(--panel); margin:20px 0}
+  table{border-collapse:collapse; width:100%; min-width:640px; font-size:13.5px}
+  th{
+    text-align:left; font-family:var(--mono); font-size:11px; font-weight:600;
+    letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+    padding:11px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  td{padding:11px 14px; border-bottom:1px solid var(--line-soft); vertical-align:top; color:var(--ink-2)}
+  tr:last-child td{border-bottom:0}
+  td b{color:var(--ink); font-weight:600}
+  td .path{font-family:var(--mono); font-size:12px; color:var(--ink-2); white-space:nowrap}
+
+  /* ── tags ── */
+  .tag{
+    display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:600;
+    letter-spacing:.05em; padding:2px 7px; border-radius:2px; white-space:nowrap;
+  }
+  .t-ok{background:var(--ok-soft); color:var(--ok)}
+  .t-warn{background:var(--warn-soft); color:var(--warn)}
+  .t-bad{background:var(--bad-soft); color:var(--bad)}
+  .t-acc{background:var(--accent-soft); color:var(--accent)}
+  .t-idle{background:var(--panel-2); color:var(--ink-3)}
+
+  /* ── tree ── */
+  pre.tree{
+    font-family:var(--mono); font-size:12.5px; line-height:1.85; margin:20px 0;
+    padding:20px 22px; background:var(--panel); border:1px solid var(--line);
+    border-radius:2px; overflow-x:auto; color:var(--ink-2);
+  }
+  pre.tree b{color:var(--ink); font-weight:600}
+  pre.tree i{color:var(--ink-3); font-style:normal}
+  pre.tree u{color:var(--accent); text-decoration:none}
+
+  /* ── service cards ── */
+  .svc{display:grid; grid-template-columns:repeat(auto-fill,minmax(258px,1fr)); gap:14px; margin:22px 0}
+  .card{border:1px solid var(--line); background:var(--panel); padding:16px 17px; border-radius:2px}
+  .card h4{
+    margin:0 0 4px; font-size:14.5px; font-weight:600; display:flex;
+    justify-content:space-between; align-items:baseline; gap:8px;
+  }
+  .card .ord{font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+  .card p{font-size:12.8px; color:var(--ink-2); margin:6px 0 10px; line-height:1.6}
+  .card .mods{font-family:var(--mono); font-size:11px; color:var(--ink-3); line-height:1.7; word-break:break-all}
+
+  /* ── callout ── */
+  .note{
+    border:1px solid var(--line); border-top:3px solid var(--warn);
+    background:var(--panel); padding:16px 18px; margin:22px 0; border-radius:2px;
+  }
+  .note.acc{border-top-color:var(--accent)}
+  .note h4{margin:0 0 6px; font-size:14px; font-weight:600}
+  .note p{margin:0; font-size:13.5px; color:var(--ink-2)}
+  .note p + p{margin-top:8px}
+
+  ul{margin:0 0 14px; padding-left:20px; max-width:70ch}
+  li{margin-bottom:6px; color:var(--ink-2)}
+  li b{color:var(--ink)}
+
+  footer{margin-top:80px; padding-top:24px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-3)}
+  footer code{background:none; border:0; padding:0}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">sms-system · architecture map</p>
+  <h1>SMS 시스템 아키텍처 맵</h1>
+  <p class="lede">
+    게스트하우스 예약 운영 + SMS 자동 발송 시스템의 현재 구조, 탭별 기능 배치, 그리고
+    마이크로서비스로 쪼갤 때 어디를 잘라야 하고 어디는 붙여둬야 하는지에 대한 지도입니다.
+  </p>
+  <div class="facts">
+    <div class="fact"><b>21.8k</b><span>백엔드 Python LOC</span></div>
+    <div class="fact"><b>21.9k</b><span>프론트 TS/TSX LOC</span></div>
+    <div class="fact"><b>27</b><span>API 라우터 모듈</span></div>
+    <div class="fact"><b>34</b><span>서비스 모듈</span></div>
+    <div class="fact"><b>14</b><span>스케줄러 잡</span></div>
+    <div class="fact"><b>1</b><span>실행 프로세스</span></div>
+  </div>
+</header>
+
+<div class="cols">
+<nav class="toc" aria-label="목차">
+  <p>목차</p>
+  <a href="#now"><b>00</b>지금 구조</a>
+  <a href="#folders"><b>01</b>폴더 아키텍처</a>
+  <a href="#tabs"><b>02</b>탭별 기능 맵</a>
+  <a href="#split"><b>03</b>서비스 분해안</a>
+  <a href="#coupling"><b>04</b>분해를 막는 결합</a>
+  <a href="#docs"><b>05</b>기능 설명서</a>
+</nav>
+
+<main>
+
+<!-- ══ 00 ══ -->
+<section id="now">
+  <h2><span class="num">00</span>지금 구조 — 모듈러 모놀리스</h2>
+  <p class="muted">
+    현재 시스템은 <b>단일 FastAPI 프로세스</b> 하나와 React SPA 하나입니다. 27개 API 라우터, 34개 서비스 모듈,
+    APScheduler(14개 잡), SSE 이벤트 버스가 <b>같은 프로세스·같은 DB 세션 풀</b>을 공유합니다.
+    멀티테넌트는 네트워크가 아니라 <code>ContextVar</code> + SQLAlchemy 이벤트 훅으로 격리됩니다.
+  </p>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 900 430" role="img" aria-label="현재 런타임 배치도: 브라우저 SPA가 단일 FastAPI 프로세스에 REST와 SSE로 연결되고, 그 프로세스 안에 API 라우터·서비스·APScheduler·이벤트 버스가 함께 들어 있으며, 하나의 DB와 네이버·알리고·디스코드 외부 API에 연결된다">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#3182F6"/>
+          </marker>
+        </defs>
+
+        <!-- browser -->
+        <rect x="14" y="150" width="150" height="96" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="89" y="186" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">React SPA</text>
+        <text x="89" y="206" text-anchor="middle" font-size="11" fill="currentColor" opacity=".62">12 페이지 · Zustand</text>
+        <text x="89" y="224" text-anchor="middle" font-size="11" fill="currentColor" opacity=".62">TanStack Query</text>
+
+        <!-- process container -->
+        <rect x="248" y="28" width="374" height="374" fill="none" stroke="#3182F6" stroke-width="1.6"/>
+        <text x="264" y="50" font-size="12" font-weight="600" fill="#3182F6">FastAPI 단일 프로세스 (uvicorn)</text>
+
+        <rect x="268" y="66" width="334" height="60" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+        <text x="284" y="90" font-size="12.5" font-weight="600" fill="currentColor">API 라우터 27</text>
+        <text x="284" y="110" font-size="11" fill="currentColor" opacity=".62">인증 · 테넌트 스코프 DB 세션 · rate limit</text>
+
+        <rect x="268" y="140" width="334" height="60" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+        <text x="284" y="164" font-size="12.5" font-weight="600" fill="currentColor">서비스 34</text>
+        <text x="284" y="184" font-size="11" fill="currentColor" opacity=".62">예약 · 배정 · 칩 · 발송 · 동기화</text>
+
+        <rect x="268" y="214" width="334" height="60" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+        <text x="284" y="238" font-size="12.5" font-weight="600" fill="currentColor">APScheduler — 잡 14</text>
+        <text x="284" y="258" font-size="11" fill="currentColor" opacity=".62">5분 동기화 · 배정 · 템플릿 스케줄</text>
+
+        <rect x="268" y="288" width="334" height="60" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+        <text x="284" y="312" font-size="12.5" font-weight="600" fill="currentColor">event_bus (in-process)</text>
+        <text x="284" y="332" font-size="11" fill="currentColor" opacity=".62">SSE 브로드캐스트 · 테넌트별 큐</text>
+
+        <text x="284" y="376" font-size="11" fill="#3182F6">ContextVar tenant_id → 모든 SELECT/INSERT 자동 필터</text>
+
+        <!-- external -->
+        <rect x="700" y="60" width="186" height="60" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="793" y="86" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">PostgreSQL / SQLite</text>
+        <text x="793" y="104" text-anchor="middle" font-size="11" fill="currentColor" opacity=".62">20+ 테이블 · 단일 스키마</text>
+
+        <rect x="700" y="160" width="186" height="56" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="793" y="184" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">네이버 스마트플레이스</text>
+        <text x="793" y="202" text-anchor="middle" font-size="11" fill="currentColor" opacity=".62">비공개 API · 쿠키 인증</text>
+
+        <rect x="700" y="248" width="186" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="793" y="272" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Aligo SMS</text>
+        <text x="793" y="289" text-anchor="middle" font-size="11" fill="currentColor" opacity=".62">SMS/LMS · 500건 배치</text>
+
+        <rect x="700" y="330" width="186" height="46" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="793" y="358" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Discord 경보</text>
+
+        <!-- arrows -->
+        <line x1="164" y1="180" x2="246" y2="118" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+        <text x="205" y="140" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">REST</text>
+        <text x="205" y="153" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">X-Tenant-Id</text>
+
+        <line x1="246" y1="318" x2="164" y2="228" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="196" y="290" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">SSE 푸시</text>
+
+        <line x1="622" y1="170" x2="698" y2="104" stroke="#3182F6" stroke-width="1.4" marker-end="url(#arA)"/>
+        <text x="668" y="146" text-anchor="middle" font-size="10.5" fill="#3182F6">단일 트랜잭션</text>
+
+        <line x1="622" y1="244" x2="698" y2="192" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+        <text x="666" y="230" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">5분 폴링</text>
+
+        <line x1="622" y1="176" x2="698" y2="268" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+        <text x="676" y="300" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">발송</text>
+
+        <line x1="622" y1="200" x2="698" y2="350" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      </svg>
+    </div>
+    <figcaption>
+      쪼갤 대상은 이 그림의 파란 상자 하나다. 스케줄러도, 이벤트 버스도, 34개 서비스도 같은 프로세스 안에서
+      같은 DB 세션을 공유하고 있어 “서비스”라는 말이 아직 배포 단위가 아니라 폴더 이름을 뜻한다.
+    </figcaption>
+  </figure>
+
+  <div class="note acc">
+    <h4>이 구조의 좋은 점은 유지할 가치가 있다</h4>
+    <p>
+      모듈 경계 자체는 이미 상당히 선명합니다 — <code>reservation_mutator</code>(필드 변경 게이트웨이),
+      <code>reservation_lifecycle</code>(후처리 게이트웨이), <code>chip_reconciler</code>(칩 재계산),
+      <code>custom_schedule_registry</code>(비표준 발송 등록소)처럼 “한 가지 책임 + 단일 진입점” 패턴이
+      코드에 이미 박혀 있습니다. 마이크로서비스화는 <b>새 경계를 발명하는 일이 아니라 이미 있는 경계를 프로세스로 승격시키는 일</b>이어야 합니다.
+    </p>
+  </div>
+</section>
+
+<!-- ══ 01 ══ -->
+<section id="folders">
+  <h2><span class="num">01</span>폴더 아키텍처</h2>
+  <p class="muted">실제 디렉터리 구조입니다. 파란색은 §03 분해안에서 <b>먼저 떨어져 나갈 후보</b>입니다.</p>
+
+<pre class="tree"><b>sms-system/</b>
+├── <b>backend/</b>
+│   ├── <b>app/</b>
+│   │   ├── main.py            <i>FastAPI 앱 · 라우터 27개 등록 · startup/shutdown</i>
+│   │   ├── config.py          <i>Pydantic Settings · DEMO_MODE · KST</i>
+│   │   ├── factory.py         <i>테넌트별 Provider 팩토리 (Mock ↔ Real 핫스왑)</i>
+│   │   ├── diag_logger.py     <i>diag() 계측 — 정답지 검증의 기반</i>
+│   │   ├── rate_limit.py      <i>slowapi + X-Forwarded-For</i>
+│   │   ├── <b>api/</b>  <i>(27)</i>      auth · reservations{,_room,_sms,_stay} · rooms · buildings
+│   │   │                      templates · template_schedules · dashboard · scheduler
+│   │   │                      settings · activity_logs · events · tenants · party_checkin
+│   │   │                      party_hosts · daily_host · daily_review · sales_report
+│   │   │                      cleancrew · event_sms · onsite_female_invite · deps
+│   │   ├── <b>services/</b>  <i>(34)</i> <u>naver_sync</u> · reservation_mutator · reservation_lifecycle
+│   │   │                      chip_reconciler · reconcile · chip_store · filters
+│   │   │                      room_assignment · room_auto_assign · room_grade · room_lookup
+│   │   │                      room_assignment_invariants · room_upgrade_{common,promise,review}
+│   │   │                      surcharge · party3_mms · party_type · dorm_gender
+│   │   │                      consecutive_stay · stay_logic · split_group_guard
+│   │   │                      sms_sender · event_sms_hook · custom_schedule_registry
+│   │   │                      schedule_utils · section_registry · template_{drift,guard}
+│   │   │                      activity_logger · event_bus · discord_notify · password_display
+│   │   ├── <b>scheduler/</b>  <i>(4)</i>  jobs · template_scheduler · schedule_manager · room_auto_assign
+│   │   ├── <b>db/</b>  <i>(5)</i>        models · database · tenant_context · seed
+│   │   ├── <b>templates/</b>  <i>(3)</i>  renderer · variables
+│   │   ├── <b>providers/</b>  <i>(2)</i>  base (Protocol 정의)
+│   │   ├── <u><b>real/</b></u>  <i>(3)</i>       reservation (네이버) · sms (Aligo)
+│   │   └── <b>auth/</b>  <i>(4)</i>      utils (JWT/bcrypt) · dependencies (RBAC)
+│   ├── alembic/               <i>마이그레이션</i>
+│   ├── tests/                 <i>unit · integration</i>
+│   └── scripts/
+├── <b>frontend/</b>
+│   └── <b>src/</b>
+│       ├── App.tsx            <i>라우터 · 역할별 접근 제어</i>
+│       ├── pages/  <i>(12+)</i>   Dashboard · Reservations · RoomAssignment/ · RoomSettings
+│       │                      Templates · EventSms · SalesReport · PartyCheckin
+│       │                      ConsecutiveStays · ActivityLogs · Settings · UserManagement
+│       ├── components/        <i>Layout(사이드바) · ui/</i>
+│       ├── services/api.ts    <i>Axios · 토큰 자동 갱신 · X-Tenant-Id 주입</i>
+│       ├── stores/            <i>auth-store · tenant-store</i>
+│       ├── hooks/             <i>useSseInvalidator 등</i>
+│       └── lib/               <i>queryKeys · sectionSpec · stayLogic · partyTypeSpec</i>
+├── <b>docs/</b>
+│   ├── <u>architecture/</u>        <i>← 이 문서 · features/ 기능별 설명서</i>
+│   ├── pipelines/             <i>핵심 흐름 5종 (Mermaid)</i>
+│   ├── plans/                 <i>단계적 마이그레이션 plan 37종</i>
+│   └── diag-golden/           <i>diag 정답지 · invariants · state.json</i>
+└── <b>scripts/</b>
+    ├── diag/                  <i>extract_trace · diff_trace · check_invariants · coverage_scan</i>
+    ├── arch/                  <i>check_layers · module_independence</i>
+    └── spec/                  <i>함수/변수 명세 자동 추출</i></pre>
+
+  <h3>레이어 규칙</h3>
+  <p class="muted">
+    <code>api/</code> → <code>services/</code> → <code>db/</code> 단방향입니다. <code>services/</code>는 FastAPI를 import 하지 않고,
+    <code>scheduler/</code>는 <code>api/</code>를 거치지 않고 <code>services/</code>를 직접 호출합니다.
+    이 규칙은 <code>scripts/arch/check_layers.py</code>가 강제합니다 — 마이크로서비스 분해가 가능한 이유가 바로 이 규칙입니다.
+  </p>
+</section>
+
+<!-- ══ 02 ══ -->
+<section id="tabs">
+  <h2><span class="num">02</span>탭별 기능 맵</h2>
+  <p class="muted">
+    사이드바 탭 하나 = 화면 하나 = API 묶음 하나 = 서비스 묶음 하나. 아래 표가 “탭 → 코드” 진입점 색인입니다.
+    <b>기능 흐름 설명서</b>는 이 표의 행 단위로 만들어 나갑니다(§05).
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr>
+      <th>탭</th><th>라우트</th><th>화면</th><th>주요 API</th><th>핵심 서비스</th><th>백그라운드 잡</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>대시보드</b></td><td class="path">/</td><td class="path">Dashboard.tsx</td>
+        <td class="path">dashboard.py</td>
+        <td class="path">dorm_gender<br>consecutive_stay</td>
+        <td class="path">refresh_snapshots ×4</td>
+      </tr>
+      <tr>
+        <td><b>예약 관리</b></td><td class="path">/reservations</td><td class="path">Reservations.tsx</td>
+        <td class="path">reservations.py<br>_room / _sms / _stay</td>
+        <td class="path">reservation_mutator<br>reservation_lifecycle<br>naver_sync</td>
+        <td class="path">sync_naver (5분)<br>reconcile_today (09:55)<br>detect_consecutive_stays</td>
+      </tr>
+      <tr>
+        <td><b>객실 배정</b></td><td class="path">/rooms</td><td class="path">RoomAssignment/</td>
+        <td class="path">rooms.py<br>reservations_room.py</td>
+        <td class="path">room_assignment<br>room_auto_assign<br>room_assignment_invariants</td>
+        <td class="path">daily_room_assign (10:01)</td>
+      </tr>
+      <tr>
+        <td><b>객실 설정</b></td><td class="path">/rooms/manage</td><td class="path">RoomSettings.tsx</td>
+        <td class="path">rooms.py · buildings.py</td>
+        <td class="path">room_lookup · room_grade</td>
+        <td><span class="tag t-idle">없음</span></td>
+      </tr>
+      <tr>
+        <td><b>템플릿 설정</b></td><td class="path">/templates</td><td class="path">Templates.tsx</td>
+        <td class="path">templates.py<br>template_schedules.py</td>
+        <td class="path">chip_reconciler · reconcile<br>filters · schedule_utils<br>custom_schedule_registry</td>
+        <td class="path">TemplateSchedule 동적 잡<br>template_drift_check (09:00)</td>
+      </tr>
+      <tr>
+        <td><b>이벤트 문자</b></td><td class="path">/event-sms</td><td class="path">EventSms.tsx</td>
+        <td class="path">event_sms.py</td>
+        <td class="path">event_sms_hook · sms_sender</td>
+        <td class="path">신규 예약 즉시 발송 훅</td>
+      </tr>
+      <tr>
+        <td><b>파티 입장 체크</b></td><td class="path">/party-checkin</td><td class="path">PartyCheckin.tsx</td>
+        <td class="path">party_checkin.py<br>party_hosts.py · daily_host.py</td>
+        <td class="path">party_type · party3_mms</td>
+        <td class="path">party3 당일 MMS</td>
+      </tr>
+      <tr>
+        <td><b>현장 매출 조회</b></td><td class="path">/sales-report</td><td class="path">SalesReport.tsx</td>
+        <td class="path">sales_report.py<br>daily_review.py</td>
+        <td class="path">— (읽기 위주)</td>
+        <td><span class="tag t-idle">없음</span></td>
+      </tr>
+      <tr>
+        <td><b>연박 객실</b><br><span class="tag t-idle">cleancrew</span></td><td class="path">/clean</td><td class="path">ConsecutiveStays.tsx</td>
+        <td class="path">cleancrew.py</td>
+        <td class="path">consecutive_stay · stay_logic</td>
+        <td class="path">detect_consecutive_stays ×4</td>
+      </tr>
+      <tr>
+        <td><b>활동 로그</b></td><td class="path">/activity-logs</td><td class="path">ActivityLogs.tsx</td>
+        <td class="path">activity_logs.py · events.py</td>
+        <td class="path">activity_logger · event_bus<br>discord_notify</td>
+        <td class="path">sync_status_log (6시간)</td>
+      </tr>
+      <tr>
+        <td><b>연동 설정</b></td><td class="path">/settings</td><td class="path">Settings.tsx</td>
+        <td class="path">settings.py · tenants.py</td>
+        <td class="path">factory (Provider 핫스왑)</td>
+        <td class="path">sync_unstable (피크 10분)</td>
+      </tr>
+      <tr>
+        <td><b>계정 설정</b></td><td class="path">/users</td><td class="path">UserManagement.tsx</td>
+        <td class="path">auth.py</td>
+        <td class="path">auth/utils · auth/dependencies</td>
+        <td><span class="tag t-idle">없음</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ══ 03 ══ -->
+<section id="split">
+  <h2><span class="num">03</span>서비스 분해안 — 무엇을 떼고 무엇을 붙여둘 것인가</h2>
+  <p class="muted">
+    34개 서비스를 전부 독립 서비스로 쪼개는 건 잘못된 목표입니다. 이 시스템의 심장인
+    <b>예약 · 객실배정 · SMS 칩</b>은 하나의 트랜잭션에서 함께 재계산되기 때문에 나누는 순간
+    분산 트랜잭션 문제로 바뀝니다. 아래는 <b>용접부(붙여둘 것)와 절단선(떼어낼 것)</b>을 구분한 지도입니다.
+  </p>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 900 500" role="img" aria-label="서비스 분해 절단선 지도: 가운데 Stay Core(예약·객실배정·칩)는 같은 트랜잭션으로 용접되어 남고, 네이버 인제스트·인증테넌시·발송 워커·현장운영·관측이 각각 계약을 통해 떨어져 나온다">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar2A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#3182F6"/>
+          </marker>
+        </defs>
+
+        <!-- welded core -->
+        <rect x="286" y="176" width="328" height="150" fill="none" stroke="#3182F6" stroke-width="2"/>
+        <text x="450" y="200" text-anchor="middle" font-size="13" font-weight="700" fill="#3182F6">Stay Core — 용접 구간</text>
+        <rect x="300" y="212" width="96" height="46" fill="none" stroke="currentColor" stroke-width="1"/>
+        <text x="348" y="234" text-anchor="middle" font-size="11.5" fill="currentColor">예약</text>
+        <text x="348" y="249" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".6">mutator</text>
+        <rect x="402" y="212" width="96" height="46" fill="none" stroke="currentColor" stroke-width="1"/>
+        <text x="450" y="234" text-anchor="middle" font-size="11.5" fill="currentColor">객실 배정</text>
+        <text x="450" y="249" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".6">invariants</text>
+        <rect x="504" y="212" width="96" height="46" fill="none" stroke="currentColor" stroke-width="1"/>
+        <text x="552" y="234" text-anchor="middle" font-size="11.5" fill="currentColor">SMS 칩</text>
+        <text x="552" y="249" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".6">reconciler</text>
+        <line x1="396" y1="235" x2="402" y2="235" stroke="currentColor" stroke-width="1"/>
+        <line x1="498" y1="235" x2="504" y2="235" stroke="currentColor" stroke-width="1"/>
+        <text x="450" y="284" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">reconcile_all_chips() — 세 도메인이 한 커밋에서 재계산된다</text>
+        <text x="450" y="302" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".72">여기를 자르면 분산 트랜잭션이 된다 · 자르지 말 것</text>
+
+        <!-- 1 naver ingest -->
+        <rect x="316" y="30" width="268" height="62" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="332" y="52" font-size="12.5" font-weight="600" fill="currentColor">네이버 인제스트 워커</text>
+        <text x="332" y="70" font-size="10.5" fill="currentColor" opacity=".62">real/reservation · naver_sync · biz item</text>
+        <text x="570" y="52" text-anchor="end" font-size="11" font-weight="600" fill="#3182F6">①</text>
+        <line x1="450" y1="94" x2="450" y2="174" stroke="#3182F6" stroke-width="1.4" marker-end="url(#ar2A)"/>
+        <text x="462" y="128" font-size="10.5" fill="#3182F6">예약 업서트</text>
+        <text x="462" y="144" font-size="10.5" fill="#3182F6">(멱등 이벤트)</text>
+
+        <!-- 2 identity -->
+        <rect x="24" y="176" width="222" height="62" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="40" y="198" font-size="12.5" font-weight="600" fill="currentColor">인증 · 테넌시</text>
+        <text x="40" y="216" font-size="10.5" fill="currentColor" opacity=".62">auth · users · tenants · settings</text>
+        <text x="232" y="198" text-anchor="end" font-size="11" font-weight="600" fill="#3182F6">①</text>
+        <line x1="248" y1="207" x2="284" y2="207" stroke="#3182F6" stroke-width="1.4" marker-end="url(#ar2A)"/>
+        <text x="266" y="196" text-anchor="middle" font-size="10" fill="#3182F6">JWT 검증</text>
+
+        <!-- 3 sender -->
+        <rect x="654" y="176" width="222" height="62" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="670" y="198" font-size="12.5" font-weight="600" fill="currentColor">발송 워커</text>
+        <text x="670" y="216" font-size="10.5" fill="currentColor" opacity=".62">sms_sender · real/sms(Aligo)</text>
+        <text x="862" y="198" text-anchor="end" font-size="11" font-weight="600" fill="#3182F6">②</text>
+        <line x1="616" y1="207" x2="652" y2="207" stroke="#3182F6" stroke-width="1.4" marker-end="url(#ar2A)"/>
+        <text x="634" y="196" text-anchor="middle" font-size="10" fill="#3182F6">발송 큐</text>
+
+        <!-- 4 floor ops -->
+        <rect x="24" y="382" width="268" height="72" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="40" y="404" font-size="12.5" font-weight="600" fill="currentColor">현장 운영</text>
+        <text x="40" y="422" font-size="10.5" fill="currentColor" opacity=".62">파티 체크인 · 호스트 · 매출 · 청소</text>
+        <text x="40" y="440" font-size="10.5" fill="currentColor" opacity=".62">party_checkin · sales_report · cleancrew</text>
+        <text x="278" y="404" text-anchor="end" font-size="11" font-weight="600" fill="#3182F6">②</text>
+        <line x1="292" y1="392" x2="352" y2="330" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+        <text x="300" y="360" font-size="10" fill="currentColor" opacity=".72">예약 읽기 API</text>
+
+        <!-- 5 observability -->
+        <rect x="608" y="382" width="268" height="72" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="624" y="404" font-size="12.5" font-weight="600" fill="currentColor">관측 · 알림</text>
+        <text x="624" y="422" font-size="10.5" fill="currentColor" opacity=".62">activity_log · SSE · diag · Discord</text>
+        <text x="624" y="440" font-size="10.5" fill="currentColor" opacity=".62">읽기 전용 소비자 — 되돌림 없음</text>
+        <text x="862" y="404" text-anchor="end" font-size="11" font-weight="600" fill="#3182F6">①</text>
+        <line x1="548" y1="330" x2="606" y2="392" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+        <text x="556" y="360" font-size="10" fill="currentColor" opacity=".72">도메인 이벤트</text>
+
+        <text x="450" y="478" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">① 1차 분리 (의존 단방향, 되돌림 불필요)   ·   ② 2차 분리 (읽기 계약 정리 후)</text>
+      </svg>
+    </div>
+    <figcaption>
+      절단 가능성은 “도메인이 다른가”가 아니라 <b>되돌림(rollback)이 경계를 넘어야 하는가</b>로 갈린다.
+      네이버 인제스트·관측·인증은 실패해도 코어 트랜잭션을 되돌릴 필요가 없어 먼저 떨어진다.
+    </figcaption>
+  </figure>
+
+  <div class="svc">
+    <div class="card">
+      <h4>네이버 인제스트 <span class="ord">① 1차</span></h4>
+      <p>외부 폴링·파싱·정규화 전담. 코어에는 “정규화된 예약” 이벤트만 넘긴다. 쿠키 만료·레이트리밋 같은 외부 장애를 코어에서 격리.</p>
+      <div class="mods">real/reservation · naver_sync · NaverBizItem</div>
+    </div>
+    <div class="card">
+      <h4>인증 · 테넌시 <span class="ord">① 1차</span></h4>
+      <p>JWT 발급/검증, 사용자·테넌트·연동 설정. 다른 모든 서비스가 읽기만 하는 의존 말단이라 방향이 이미 단방향.</p>
+      <div class="mods">auth/ · api/auth · api/tenants · api/settings</div>
+    </div>
+    <div class="card">
+      <h4>관측 · 알림 <span class="ord">① 1차</span></h4>
+      <p>ActivityLog·diag·SSE·Discord. 순수 소비자이므로 유실이 코어 정합성을 깨지 않는다. 여기부터 메시지 브로커를 도입하는 게 안전.</p>
+      <div class="mods">activity_logger · event_bus · diag_logger · discord_notify</div>
+    </div>
+    <div class="card">
+      <h4>Stay Core <span class="ord">유지</span></h4>
+      <p>예약 + 객실배정 + 칩. <code>reconcile_all_chips()</code>가 셋을 한 커밋으로 묶는다. 분해 대상이 아니라 <b>보호 대상</b>.</p>
+      <div class="mods">reservation_mutator · reservation_lifecycle · room_assignment · chip_reconciler · reconcile</div>
+    </div>
+    <div class="card">
+      <h4>발송 워커 <span class="ord">② 2차</span></h4>
+      <p>칩 → 실제 SMS/MMS 전송. 칩 생성(코어)과 전송(워커)을 <code>sent_at</code> 기준으로 분리하면 큐로 뗄 수 있다.</p>
+      <div class="mods">sms_sender · real/sms · templates/renderer</div>
+    </div>
+    <div class="card">
+      <h4>현장 운영 <span class="ord">② 2차</span></h4>
+      <p>파티 체크인·호스트·매출·청소. 예약을 읽기만 하고 자기 테이블에 쓴다. 읽기 계약(예약 조회 API)만 확정되면 분리 가능.</p>
+      <div class="mods">party_checkin · party_hosts · daily_host · sales_report · cleancrew</div>
+    </div>
+    <div class="card">
+      <h4>스케줄 오케스트레이터 <span class="ord">② 2차</span></h4>
+      <p>지금은 API 프로세스 안의 APScheduler. 잡 실행을 별도 워커로 빼야 API 재배포가 5분 동기화를 끊지 않는다.</p>
+      <div class="mods">scheduler/jobs · schedule_manager · template_scheduler</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 04 ══ -->
+<section id="coupling">
+  <h2><span class="num">04</span>분해를 막는 결합 3가지</h2>
+  <p class="muted">분해안을 실행하기 전에 반드시 먼저 풀어야 하는 결합입니다. 순서를 뒤집으면 사고가 납니다.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>결합</th><th>지금 동작</th><th>왜 문제인가</th><th>선행 작업</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>ContextVar 테넌트 격리</b><br><span class="tag t-bad">가장 위험</span></td>
+        <td class="path">db/tenant_context.py<br>before_compile / before_flush</td>
+        <td>테넌트 필터가 프로세스 로컬 상태다. 프로세스가 나뉘면 필터가 따라가지 않고, 우회(<code>bypass</code>)가 유출되면 크로스 테넌트 조회가 발생한다.</td>
+        <td>테넌트 ID를 <b>요청/이벤트 페이로드의 1급 필드</b>로 승격하고, 서비스 간 호출마다 명시 전달 + 수신 측 검증</td>
+      </tr>
+      <tr>
+        <td><b>단일 트랜잭션 칩 재계산</b><br><span class="tag t-warn">코어 보호</span></td>
+        <td class="path">reconcile_all_chips()<br>5종 reconciler 일괄</td>
+        <td>예약·배정·칩이 한 커밋 안에서 정합을 맞춘다. 서비스로 나누면 “칩은 생겼는데 배정이 롤백된” 상태가 실제로 발생한다.</td>
+        <td>나누지 않는다. 대신 코어 내부에서 <b>멱등 재계산</b>을 유지해 외부 이벤트 재전송에 안전하게 만든다</td>
+      </tr>
+      <tr>
+        <td><b>인프로세스 스케줄러 + SSE</b><br><span class="tag t-warn">배포 결합</span></td>
+        <td class="path">APScheduler 14잡<br>event_bus 메모리 큐</td>
+        <td>API를 재배포하면 스케줄러가 함께 죽고, SSE 구독도 끊긴다. 스케일 아웃 시 잡이 <b>중복 실행</b>된다.</td>
+        <td>잡 워커 분리 + 분산 잡 락, 이벤트 버스를 Redis Pub/Sub 등 프로세스 외부로 이동</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <h4>권고 순서</h4>
+    <p>
+      <b>1)</b> 테넌트 ID 명시 전달로 전환 → <b>2)</b> 이벤트 버스를 프로세스 밖으로 →
+      <b>3)</b> 스케줄러 워커 분리(같은 코드베이스, 다른 프로세스) → <b>4)</b> 네이버 인제스트를 독립 워커로 →
+      <b>5)</b> 인증·관측 분리 → <b>6)</b> 발송 워커·현장 운영 분리.
+    </p>
+    <p>
+      3)까지만 해도 “재배포가 동기화를 끊는” 현재의 가장 큰 운영 리스크가 사라집니다.
+      마이크로서비스의 실익 대부분은 <b>4) 이전에</b> 회수됩니다.
+    </p>
+  </div>
+</section>
+
+<!-- ══ 05 ══ -->
+<section id="docs">
+  <h2><span class="num">05</span>기능별 흐름 설명서</h2>
+  <p class="muted">
+    §02 표의 각 기능을 “트리거 → 데이터 → 분기 → 후속 → 실패 처리 → 진단” 순서로 풀어 쓴 문서입니다.
+    <b>네이버 예약 동기화</b>가 이 형식의 기준 문서입니다.
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>기능</th><th>소속 탭</th><th>문서</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>네이버 예약 동기화</b></td><td>예약 관리 / 연동 설정</td>
+        <td><a href="features/naver-sync.html">features/naver-sync.html</a></td>
+        <td><span class="tag t-ok">작성 완료</span></td>
+      </tr>
+      <tr><td>객실 자동 배정</td><td>객실 배정</td><td class="path">features/room-assignment.html</td><td><span class="tag t-idle">예정</span></td></tr>
+      <tr><td>템플릿 스케줄 발송</td><td>템플릿 설정</td><td class="path">features/template-schedule.html</td><td><span class="tag t-idle">예정</span></td></tr>
+      <tr><td>칩 재계산 (5종)</td><td>템플릿 설정</td><td class="path">features/chip-reconcile.html</td><td><span class="tag t-idle">예정</span></td></tr>
+      <tr><td>연박 감지 · 청소 배정</td><td>연박 객실</td><td class="path">features/consecutive-stay.html</td><td><span class="tag t-idle">예정</span></td></tr>
+      <tr><td>파티 체크인 · 파티3 MMS</td><td>파티 입장 체크</td><td class="path">features/party-checkin.html</td><td><span class="tag t-idle">예정</span></td></tr>
+      <tr><td>멀티테넌트 격리</td><td>전역</td><td class="path">features/multi-tenant.html</td><td><span class="tag t-idle">예정</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>문서 형식 (기준)</h3>
+  <ul>
+    <li><b>한눈에</b> — 무엇을, 언제, 얼마나 자주</li>
+    <li><b>진입점</b> — 자동 트리거와 수동 트리거를 모두 나열</li>
+    <li><b>흐름도</b> — 단계별 코드 위치가 붙은 다이어그램</li>
+    <li><b>단계 상세</b> — 각 단계가 하는 일 · 커밋 지점 · 실패 시 동작</li>
+    <li><b>데이터 계약</b> — 외부 필드 ↔ DB 컬럼 매핑</li>
+    <li><b>보호 규칙</b> — 운영자 수동 편집을 자동화가 덮지 않게 하는 핀</li>
+    <li><b>진단</b> — diag 이벤트 목록과 운영 점검 순서</li>
+    <li><b>서비스 분해 관점</b> — 이 기능이 떨어져 나갈 때의 경계와 계약</li>
+  </ul>
+</section>
+
+<footer>
+  기준 브랜치 <code>claude/microservice-architecture-design-frguxb</code> · 코드 스캔 기준일 2026-08-23 ·
+  관련 문서 <code>docs/pipelines/</code> · <code>docs/plans/</code> · <code>docs/diag-golden/</code>
+</footer>
+
+</main>
+</div>
+</div>
