@@ -1,0 +1,1231 @@
+<title>예약 데이터의 일생</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#FBFBFD; --panel:#FFFFFF; --panel-2:#F4F6F8;
+    --ink:#191F28; --ink-2:#4E5968; --ink-3:#8B95A1;
+    --line:#E3E7EB; --line-soft:#EEF1F4;
+    --accent:#1F63CC; --accent-soft:#E8F3FF;
+    --ok:#00806A; --ok-soft:#EDFAF7;
+    --warn:#9A6200; --warn-soft:#FFF3E0;
+    --bad:#C4292F; --bad-soft:#FDECEE;
+    --sans:"IBM Plex Sans KR","Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    --mono:"IBM Plex Mono","SF Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
+      --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
+      --line:#2C2E37; --line-soft:#23252D;
+      --accent:#5A93EE; --accent-soft:#17253C;
+      --ok:#12A88A; --ok-soft:#10312C;
+      --warn:#FFB13D; --warn-soft:#33260E;
+      --bad:#E6565F; --bad-soft:#361A1E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
+    --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
+    --line:#2C2E37; --line-soft:#23252D;
+    --accent:#5A93EE; --accent-soft:#17253C;
+    --ok:#12A88A; --ok-soft:#10312C;
+    --warn:#FFB13D; --warn-soft:#33260E;
+    --bad:#E6565F; --bad-soft:#361A1E;
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px 120px}
+
+  header.top{padding:56px 0 40px; border-bottom:1px solid var(--line)}
+  .crumb{font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin:0 0 18px}
+  .crumb a{color:var(--ink-3); text-decoration:none}
+  .crumb a:hover{color:var(--accent)}
+  h1{font-size:clamp(30px,4.4vw,46px); line-height:1.18; font-weight:700; letter-spacing:-.022em; margin:0 0 16px; text-wrap:balance}
+  .lede{font-size:17px; color:var(--ink-2); max-width:64ch; margin:0}
+  .howto{border:1px solid var(--line); background:var(--panel); padding:18px 22px; margin-top:32px; border-radius:2px; font-size:13.8px; color:var(--ink-2)}
+  .howto b{color:var(--ink)}
+
+  .cols{display:grid; grid-template-columns:222px minmax(0,1fr); gap:52px; margin-top:52px}
+  @media (max-width:940px){ .cols{grid-template-columns:1fr; gap:0} nav.toc{display:none} }
+  nav.toc{position:sticky; top:28px; align-self:start}
+  nav.toc p{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 12px}
+  nav.toc a{display:block; padding:5px 0 5px 14px; border-left:2px solid var(--line); color:var(--ink-2); text-decoration:none; font-size:13.5px}
+  nav.toc a:hover{color:var(--accent); border-left-color:var(--accent)}
+  nav.toc a b{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:8px}
+  nav.toc .grp{margin-top:16px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); padding-left:14px}
+
+  section{padding-top:58px}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.02em; margin:0 0 10px; padding-bottom:14px; border-bottom:1px solid var(--line); text-wrap:balance}
+  h2 .num{font-family:var(--mono); font-size:12px; font-weight:500; color:var(--accent); letter-spacing:.08em; display:block; margin-bottom:6px}
+  h3{font-size:17px; font-weight:600; margin:38px 0 10px; letter-spacing:-.01em}
+  p{margin:0 0 15px; max-width:68ch}
+  .muted{color:var(--ink-2)}
+  code{font-family:var(--mono); font-size:.87em; background:var(--panel-2); border:1px solid var(--line-soft); border-radius:2px; padding:1px 5px; white-space:nowrap}
+  a{color:var(--accent)}
+
+  .plain{background:var(--panel-2); border-left:3px solid var(--accent); padding:15px 18px; margin:20px 0; max-width:68ch}
+  .plain .lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:7px}
+  .plain p{margin:0; font-size:14.5px; color:var(--ink); max-width:none}
+  .plain p + p{margin-top:9px}
+
+  details.dev{border:1px solid var(--line); background:var(--panel); margin:18px 0; border-radius:2px}
+  details.dev > summary{cursor:pointer; padding:11px 16px; font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; color:var(--ink-3); list-style:none; display:flex; align-items:center; gap:9px}
+  details.dev > summary::-webkit-details-marker{display:none}
+  details.dev > summary::before{content:"+"; font-size:14px; line-height:1; color:var(--accent); font-weight:600}
+  details.dev[open] > summary::before{content:"−"}
+  details.dev > summary:hover{color:var(--accent)}
+  details.dev .body{padding:4px 16px 18px; border-top:1px solid var(--line-soft)}
+  details.dev .body > *:first-child{margin-top:14px}
+  details.dev .body p{font-size:13.5px}
+  details.dev .tablewrap{border:0; margin:14px 0}
+  details.dev table{min-width:520px}
+
+  figure{margin:26px 0; padding:0}
+  figure svg{display:block; width:100%; max-width:100%; height:auto; color:var(--ink)}
+  figcaption{font-size:12.8px; color:var(--ink-3); margin-top:12px; padding-left:14px; border-left:2px solid var(--line); max-width:70ch}
+  .figbox{border:1px solid var(--line); background:var(--panel); padding:22px 20px; border-radius:2px; overflow-x:auto}
+  .figlabel{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 10px}
+
+  .tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:2px; background:var(--panel); margin:20px 0}
+  table{border-collapse:collapse; width:100%; min-width:600px; font-size:13.8px}
+  th{text-align:left; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); padding:11px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); white-space:nowrap}
+  td{padding:12px 14px; border-bottom:1px solid var(--line-soft); vertical-align:top; color:var(--ink-2)}
+  tr:last-child td{border-bottom:0}
+  td b{color:var(--ink); font-weight:600}
+  td .path, .path{font-family:var(--mono); font-size:12px; white-space:nowrap}
+  td.num, th.num{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+
+  .tag{display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.05em; padding:2px 7px; border-radius:2px; white-space:nowrap}
+  .t-ok{background:var(--ok-soft); color:var(--ok)}
+  .t-warn{background:var(--warn-soft); color:var(--warn)}
+  .t-bad{background:var(--bad-soft); color:var(--bad)}
+  .t-acc{background:var(--accent-soft); color:var(--accent)}
+  .t-idle{background:var(--panel-2); color:var(--ink-3)}
+
+  /* 코어 부분 카드 */
+  .part{border:1px solid var(--line); background:var(--panel); border-radius:2px; margin:22px 0; overflow:hidden}
+  .part > .hd{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; padding:16px 20px; background:var(--panel-2); border-bottom:1px solid var(--line)}
+  .part > .hd .n{font-family:var(--mono); font-size:12px; font-weight:600; color:var(--accent)}
+  .part > .hd h3{margin:0; font-size:18px; font-weight:700; letter-spacing:-.015em}
+  .part > .hd .en{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-left:auto}
+  .part > .bd{padding:18px 20px}
+  .part > .bd > *:first-child{margin-top:0}
+  .part > .bd p{max-width:70ch}
+  .part .role{display:grid; grid-template-columns:104px minmax(0,1fr); gap:9px 14px; margin:16px 0 0; font-size:13.6px}
+  @media (max-width:640px){ .part .role{grid-template-columns:1fr; gap:2px} .part .role dt{margin-top:10px} }
+  .part .role dt{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); padding-top:3px}
+  .part .role dd{margin:0; color:var(--ink-2)}
+  .part .role dd b{color:var(--ink)}
+
+  .note{border:1px solid var(--line); border-top:3px solid var(--warn); background:var(--panel); padding:16px 18px; margin:20px 0; border-radius:2px}
+  .note.acc{border-top-color:var(--accent)}
+  .note.bad{border-top-color:var(--bad)}
+  .note.ok{border-top-color:var(--ok)}
+  .note h4{margin:0 0 6px; font-size:14px; font-weight:600}
+  .note p{margin:0; font-size:13.8px; color:var(--ink-2)}
+  .note p + p{margin-top:9px}
+  .note ul,.note ol{margin:10px 0 0; padding-left:20px; font-size:13.8px}
+  .note li{color:var(--ink-2); margin-bottom:6px}
+
+  ul{margin:0 0 15px; padding-left:20px; max-width:68ch}
+  li{margin-bottom:7px; color:var(--ink-2)}
+  li b{color:var(--ink)}
+
+  footer{margin-top:80px; padding-top:24px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-3)}
+  footer code{background:none; border:0; padding:0}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="crumb"><a href="index.html">아키텍처 맵</a> / 핵심 층 상세</p>
+  <h1>예약 데이터의 일생</h1>
+  <p class="lede">
+    아키텍처 맵에서 <b>“핵심(코어)”</b>이라고 표시한 층을 자세히 뜯어봅니다.
+    무엇이 왜 코어인지, 8개 부분이 각각 무슨 일을 하는지, 그리고 지금 실제로 어디서 어떻게 쓰이고 있는지를 정리했습니다.
+  </p>
+  <div class="howto">
+    본문은 개발 지식 없이 읽을 수 있게 썼습니다. <b>+ 개발자용</b> 접힘 블록에 파일 위치와 실측 수치가 들어 있습니다.
+    수치는 모두 <b>지금 코드를 직접 세어본 값</b>입니다 (2026-08-23 기준).
+  </div>
+</header>
+
+<div class="cols">
+<nav class="toc" aria-label="목차">
+  <p>목차</p>
+  <a href="#what"><b>00</b>코어란 무엇인가</a>
+  <a href="#life"><b>01</b>예약의 일생</a>
+  <a href="#layer"><b>02</b>8부분의 층</a>
+  <div class="grp">8개 부분</div>
+  <a href="#p1"><b>①</b>어휘 사전</a>
+  <a href="#p2"><b>②</b>달력</a>
+  <a href="#p3"><b>③</b>예약 관문</a>
+  <a href="#p4"><b>④</b>문자 예약표</a>
+  <a href="#p5"><b>⑤</b>문자 발송</a>
+  <a href="#p6"><b>⑥</b>뒷정리 순서표</a>
+  <a href="#p7"><b>⑦</b>방 찾기</a>
+  <a href="#p8"><b>⑧</b>바깥 연결 규격</a>
+  <div class="grp">정리</div>
+  <a href="#move"><b>03</b>지금 위치 → 코어 자리</a>
+  <a href="#notcore"><b>04</b>코어가 아닌 것</a>
+  <a href="#dontmerge"><b>05</b>합치면 안 되는 것</a>
+</nav>
+
+<main>
+
+<!-- ══════════ 00 ══════════ -->
+<section id="what">
+  <h2><span class="num">00</span>코어란 무엇인가</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      코어는 <b>“공통으로 쓰는 것 모음”이 아닙니다.</b> 그렇게 정의하면 경계가 안 그어집니다 —
+      아무거나 두 곳에서 쓰면 코어가 돼버리니까요.
+    </p>
+    <p>
+      이 시스템의 코어는 <b>“예약 데이터가 태어나서 · 정리되고 · 검사를 지나 저장되고 · 딸린 것들이 맞춰지는 한 줄기 흐름”</b>입니다.
+      한마디로 <b>예약 데이터의 일생</b>입니다.
+    </p>
+  </div>
+
+  <h3>판정하는 방법 — 한 줄 질문</h3>
+  <p class="muted" style="font-size:16px">
+    <b>“이걸 지우면 예약 데이터가 앞뒤가 안 맞게 되는가?”</b>
+  </p>
+  <p class="muted">
+    <b>예 → 코어</b>입니다. <b>아니오 → 기능(모듈)</b>입니다. 실제로 이 질문 하나로 갈립니다.
+  </p>
+
+  <figure>
+    <p class="figlabel">그림 1 — 코어냐 기능이냐, 실제 판정 예시</p>
+    <div class="figbox">
+      <svg viewBox="0 0 900 300" role="img" aria-label="방 배정 기능을 지우면 방이 안 잡힐 뿐 데이터는 멀쩡하므로 기능이고, 날짜 변경 시 배정표를 맞춰주는 처리를 지우면 옛 날짜에 유령 배정이 남아 데이터가 어긋나므로 코어다">
+        <defs>
+          <marker id="c-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="20" y="24" font-size="11.5" font-weight="600" fill="currentColor" opacity=".6">“빈 방을 찾아 손님을 넣는 계산”을 지우면?</text>
+        <rect x="20" y="38" width="400" height="100" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="36" y="62" font-size="11" fill="currentColor">예약 4/10~4/12 · 방 배정 없음</text>
+        <text x="36" y="86" font-size="11" fill="currentColor" opacity=".7">→ 운영자가 손으로 배정하면 된다</text>
+        <text x="36" y="110" font-size="11" fill="currentColor" opacity=".7">→ 예약 · 날짜 · 문자 예약표 전부 멀쩡</text>
+        <text x="36" y="130" font-size="10.5" fill="currentColor" opacity=".5">불편할 뿐, 데이터는 앞뒤가 맞는다</text>
+        <line x1="422" y1="88" x2="452" y2="88" stroke="currentColor" stroke-width="1.2" marker-end="url(#c-ar)"/>
+        <rect x="456" y="62" width="150" height="52" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="531" y="93" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">기능</text>
+        <text x="620" y="86" font-size="11" fill="currentColor" opacity=".6">떼어낼 수 있다</text>
+        <text x="620" y="104" font-size="11" fill="currentColor" opacity=".6">— 모듈에 둔다</text>
+
+        <line x1="20" y1="160" x2="880" y2="160" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="20" y="188" font-size="11.5" font-weight="600" fill="currentColor" opacity=".6">“날짜가 바뀌면 배정표를 따라 옮기는 처리”를 지우면?</text>
+        <rect x="20" y="202" width="400" height="82" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="36" y="226" font-size="11" fill="currentColor">예약을 4/10~4/12 → 4/15~4/17 로 변경</text>
+        <text x="36" y="250" font-size="11" fill="var(--bad)">→ 배정표에는 4/10·4/11 이 그대로 남는다</text>
+        <text x="36" y="272" font-size="11" fill="var(--bad)">→ 그 방은 “찬 방”으로 계속 잡히고, 문자도 옛 날짜로 나간다</text>
+        <line x1="422" y1="240" x2="452" y2="240" stroke="var(--bad)" stroke-width="1.3" marker-end="url(#c-ar)"/>
+        <rect x="456" y="214" width="150" height="52" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+        <text x="531" y="245" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">코어</text>
+        <text x="620" y="238" font-size="11" fill="currentColor" opacity=".6">뗄 수 없다</text>
+        <text x="620" y="256" font-size="11" fill="currentColor" opacity=".6">— 코어에 둔다</text>
+      </svg>
+    </div>
+    <figcaption>
+      둘 다 “객실 배정”이라는 한 단어 아래 있지만 성질이 정반대다. <b>어디에 넣을지 결정</b>하는 건 기능,
+      <b>결정된 것을 앞뒤 맞게 유지</b>하는 건 코어다. 실제로 지금 이 둘이 <b>같은 파일(1,110줄)</b>에 섞여 있다.
+    </figcaption>
+  </figure>
+
+  <div class="note acc">
+    <h4>코어는 “안 바뀌는 곳”이 아닙니다</h4>
+    <p>
+      업무 규칙이 바뀌면 코어는 바뀝니다 — 파티 기준이 바뀌거나, 밤 계산 규칙이 바뀌면요.
+      <b>업무 규칙이 바뀌어도 안 바뀌는 것</b>(로그인·설정·데이터베이스 연결·기록)은 코어가 아니라
+      그 아래 <b>바탕</b> 층입니다. 이 둘을 한 곳에 두면 “코어는 안정적”이라는 말이 말로만 남습니다.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════ 01 ══════════ -->
+<section id="life">
+  <h2><span class="num">01</span>예약 하나의 일생</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      예약 한 건이 <b>들어와서 사라질 때까지</b> 거치는 여덟 단계입니다.
+      각 단계마다 <b>코어의 어느 부분이 일하는지</b>를 오른쪽에 붙였습니다. 이 그림이 이 문서의 지도입니다.
+    </p>
+  </div>
+
+  <figure>
+    <p class="figlabel">그림 2 — 예약 데이터가 지나는 여덟 단계와 담당 부분</p>
+    <div class="figbox">
+      <svg viewBox="0 0 900 650" role="img" aria-label="예약 데이터가 태어나서 정체 판정, 숙박일 계산, 저장 검사, 저장, 딸린 것 맞추기, 내보내기, 소멸까지 여덟 단계를 지나며 각 단계마다 코어의 어느 부분이 담당하는지 표시된 흐름도">
+        <defs>
+          <marker id="l-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+        </defs>
+
+        <text x="20" y="22" font-size="11" font-weight="600" fill="currentColor" opacity=".55">단계</text>
+        <text x="626" y="22" font-size="11" font-weight="600" fill="var(--accent)">담당하는 코어 부분</text>
+
+        <line x1="108" y1="46" x2="108" y2="608" stroke="var(--accent)" stroke-width="1.2" opacity=".45"/>
+
+        <!-- 1 -->
+        <circle cx="108" cy="72" r="5" fill="var(--ground)" stroke="currentColor" stroke-width="2"/>
+        <rect x="132" y="46" width="470" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="148" y="68" font-size="12.5" font-weight="600" fill="currentColor">1 · 태어난다</text>
+        <text x="148" y="86" font-size="10.5" fill="currentColor" opacity=".65">네이버에서 5분마다 들어오거나 · 직원이 직접 등록</text>
+        <line x1="604" y1="72" x2="620" y2="72" stroke="currentColor" stroke-width="1" opacity=".35"/>
+        <text x="626" y="76" font-size="10.5" fill="currentColor" opacity=".5">— (입구는 기능 영역)</text>
+
+        <!-- 2 -->
+        <circle cx="108" cy="146" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="120" width="470" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="148" y="142" font-size="12.5" font-weight="600" fill="currentColor">2 · 이게 무엇인지 정한다</text>
+        <text x="148" y="160" font-size="10.5" fill="currentColor" opacity=".65">도미토리인가 · 파티인가 · 액티비티인가 · 몇 명인가 · 배정 대상인가</text>
+        <line x1="604" y1="146" x2="620" y2="146" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="150" font-size="11.5" font-weight="600" fill="var(--accent)">① 어휘 사전</text>
+
+        <!-- 3 -->
+        <circle cx="108" cy="220" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="194" width="470" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="148" y="216" font-size="12.5" font-weight="600" fill="currentColor">3 · 며칠 묵는지 센다</text>
+        <text x="148" y="234" font-size="10.5" fill="currentColor" opacity=".65">밤 목록 · “그날 우리 집에 있는 손님인가” 판정</text>
+        <line x1="604" y1="220" x2="620" y2="220" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="224" font-size="11.5" font-weight="600" fill="var(--accent)">② 달력</text>
+
+        <!-- 4 -->
+        <circle cx="108" cy="294" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="268" width="470" height="52" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="148" y="290" font-size="12.5" font-weight="600" fill="var(--accent)">4 · 이 값을 써도 되는지 본다</text>
+        <text x="148" y="308" font-size="10.5" fill="currentColor" opacity=".65">사람이 손댄 값인가 · 누가 바꾸려 하는가(네이버 / 직원 / 시스템)</text>
+        <line x1="604" y1="294" x2="620" y2="294" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="298" font-size="11.5" font-weight="600" fill="var(--accent)">③ 예약 관문</text>
+
+        <!-- 5 -->
+        <circle cx="108" cy="356" r="6" fill="var(--accent)"/>
+        <rect x="132" y="336" width="470" height="40" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="148" y="361" font-size="12" font-weight="600" fill="currentColor">5 · 저장한다</text>
+        <text x="626" y="360" font-size="10.5" fill="currentColor" opacity=".5">— (저장 자체는 바탕 층)</text>
+
+        <!-- 6 -->
+        <circle cx="108" cy="440" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="392" width="470" height="96" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="148" y="414" font-size="12.5" font-weight="600" fill="var(--accent)">6 · 딸린 것들을 맞춘다</text>
+        <text x="148" y="434" font-size="10.5" fill="currentColor" opacity=".72">날짜가 바뀌면 → 파티 체크인·일자별 메모를 평행 이동</text>
+        <text x="148" y="452" font-size="10.5" fill="currentColor" opacity=".72">→ 배정표에서 범위 밖 날짜 삭제 · 빠진 날짜 추가</text>
+        <text x="148" y="470" font-size="10.5" fill="currentColor" opacity=".72">→ 보낼 문자 목록 5종을 전부 다시 계산</text>
+        <line x1="604" y1="416" x2="620" y2="416" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="420" font-size="11.5" font-weight="600" fill="var(--accent)">⑥ 뒷정리 순서표</text>
+        <text x="626" y="440" font-size="10.5" fill="currentColor" opacity=".6">가 순서를 지휘하고</text>
+        <text x="626" y="462" font-size="11.5" font-weight="600" fill="var(--accent)">④ 문자 예약표</text>
+        <text x="626" y="480" font-size="10.5" fill="currentColor" opacity=".6">가 실제 계산</text>
+
+        <!-- 7 -->
+        <circle cx="108" cy="534" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="508" width="470" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="148" y="530" font-size="12.5" font-weight="600" fill="currentColor">7 · 밖으로 나간다</text>
+        <text x="148" y="548" font-size="10.5" fill="currentColor" opacity=".65">손님에게 문자로 · 직원 화면에 목록으로</text>
+        <line x1="604" y1="522" x2="620" y2="522" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="526" font-size="11.5" font-weight="600" fill="var(--accent)">⑤ 문자 발송</text>
+        <text x="626" y="548" font-size="11.5" font-weight="600" fill="var(--accent)">③ 응답 만들기</text>
+
+        <!-- 8 -->
+        <circle cx="108" cy="608" r="5" fill="var(--ground)" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="132" y="582" width="470" height="52" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="148" y="604" font-size="12.5" font-weight="600" fill="currentColor">8 · 사라진다</text>
+        <text x="148" y="622" font-size="10.5" fill="currentColor" opacity=".65">취소·삭제 시 배정·문자 예약표·연박 묶음까지 정리</text>
+        <line x1="604" y1="608" x2="620" y2="608" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#l-ar)"/>
+        <text x="626" y="612" font-size="11.5" font-weight="600" fill="var(--accent)">⑥ 뒷정리 순서표</text>
+
+        <text x="626" y="200" font-size="10" fill="currentColor" opacity=".5">⑦ 방 찾기 · ⑧ 바깥 연결 규격은</text>
+        <text x="626" y="216" font-size="10" fill="currentColor" opacity=".5">특정 단계가 아니라 전 구간에서 쓰인다</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>4번과 6번이 이 층의 심장</b>이다. 4번이 없으면 직원이 고친 값이 날아가고,
+      6번이 없으면 예약과 딸린 것들이 서로 다른 말을 하게 된다.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ══════════ 02 ══════════ -->
+<section id="layer">
+  <h2><span class="num">02</span>8부분의 층 — 누가 누구를 부르나</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      코어 안에서도 <b>위아래가 있습니다.</b> 맨 아래는 <b>아무도 안 부르고 계산만 하는 것</b>(어휘 사전, 달력),
+      가운데는 <b>검사하고 저장하는 관문</b>, 맨 위는 <b>순서를 지휘하는 것</b>입니다. 위가 아래를 부르고, 아래는 위를 모릅니다.
+    </p>
+  </div>
+
+  <figure>
+    <p class="figlabel">그림 3 — 코어 8부분의 층</p>
+    <div class="figbox">
+      <svg viewBox="0 0 900 400" role="img" aria-label="코어 내부 세 층: 맨 위 지휘층에 뒷정리 순서표, 가운데 관문층에 예약 관문·문자 예약표·문자 발송, 맨 아래 계산층에 어휘 사전·달력·방 찾기·바깥 연결 규격이 있고 위가 아래를 부른다">
+        <defs><marker id="y-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker></defs>
+
+        <text x="20" y="42" font-size="11" font-weight="600" fill="currentColor" opacity=".55">지휘</text>
+        <text x="20" y="58" font-size="9.5" fill="currentColor" opacity=".45">순서를 안다</text>
+        <rect x="106" y="26" width="300" height="56" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+        <text x="256" y="50" text-anchor="middle" font-size="13" font-weight="700" fill="var(--accent)">⑥ 뒷정리 순서표</text>
+        <text x="256" y="70" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".68">“날짜가 바뀌면 무엇을 어떤 순서로”</text>
+        <text x="424" y="48" font-size="10.5" fill="currentColor" opacity=".6">지금 <tspan font-weight="700" fill="currentColor">20곳</tspan>에서 불린다 —</text>
+        <text x="424" y="66" font-size="10.5" fill="currentColor" opacity=".6">예약 수정·배정 변경·동기화·취소 전부</text>
+
+        <line x1="180" y1="86" x2="180" y2="128" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#y-ar)"/>
+        <line x1="330" y1="86" x2="420" y2="128" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#y-ar)"/>
+
+        <text x="20" y="152" font-size="11" font-weight="600" fill="currentColor" opacity=".55">관문</text>
+        <text x="20" y="168" font-size="9.5" fill="currentColor" opacity=".45">검사하고</text>
+        <text x="20" y="182" font-size="9.5" fill="currentColor" opacity=".45">저장한다</text>
+        <rect x="106" y="130" width="196" height="72" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="204" y="156" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">③ 예약 관문</text>
+        <text x="204" y="176" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">이 값을 써도 되나</text>
+        <text x="204" y="192" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">+ 화면 응답 만들기</text>
+
+        <rect x="316" y="130" width="196" height="72" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="414" y="156" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">④ 문자 예약표</text>
+        <text x="414" y="176" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">누구에게 · 언제 · 무슨 문자</text>
+        <text x="414" y="192" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">보낸 것 · 손댄 것은 보호</text>
+
+        <rect x="526" y="130" width="196" height="72" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="624" y="156" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">⑤ 문자 발송</text>
+        <text x="624" y="176" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">보내기 직전 5겹 차단</text>
+        <text x="624" y="192" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">성공하면 즉시 기록</text>
+
+        <line x1="204" y1="206" x2="204" y2="252" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#y-ar)"/>
+        <line x1="414" y1="206" x2="360" y2="252" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#y-ar)"/>
+        <line x1="624" y1="206" x2="624" y2="252" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#y-ar)"/>
+
+        <text x="20" y="286" font-size="11" font-weight="600" fill="currentColor" opacity=".55">계산</text>
+        <text x="20" y="302" font-size="9.5" fill="currentColor" opacity=".45">아무도 안 부른다</text>
+        <text x="20" y="316" font-size="9.5" fill="currentColor" opacity=".45">묻는 말에만 답</text>
+        <rect x="106" y="254" width="186" height="66" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="199" y="280" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">① 어휘 사전</text>
+        <text x="199" y="300" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">이게 무엇인가</text>
+
+        <rect x="306" y="254" width="186" height="66" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="399" y="280" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">② 달력</text>
+        <text x="399" y="300" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">며칠 묵나</text>
+
+        <rect x="506" y="254" width="186" height="66" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="599" y="280" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">⑦ 방 찾기</text>
+        <text x="599" y="300" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">어느 방이었나</text>
+
+        <rect x="706" y="254" width="174" height="66" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text x="793" y="280" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--accent)">⑧ 연결 규격</text>
+        <text x="793" y="300" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">바깥과 이어지는 문</text>
+
+        <line x1="20" y1="344" x2="880" y2="344" stroke="currentColor" stroke-width="1" opacity=".2"/>
+        <text x="20" y="368" font-size="10.5" fill="currentColor" opacity=".7">위 → 아래 방향으로만 부른다. 같은 층끼리도 웬만하면 안 부른다.</text>
+        <text x="20" y="388" font-size="10.5" fill="currentColor" opacity=".7">맨 아래 “계산” 층은 데이터베이스도 안 만지는 것이 원칙 — 그래서 어디서든 안전하게 쓸 수 있다.</text>
+      </svg>
+    </div>
+    <figcaption>
+      이 층 구분이 실제 코드에도 규칙으로 박혀 있다 — 예를 들어 숙박일 계산 모듈에는
+      <b>“다른 앱 모듈을 절대 import 하지 말 것”</b>이라는 제약이 주석으로 명시돼 있다. 어기면 순환 참조가 재발한다.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ══════════ ① ══════════ -->
+<section id="p1">
+  <h2>여덟 부분 하나씩</h2>
+
+  <div class="part">
+    <div class="hd"><span class="n">①</span><h3>어휘 사전</h3><span class="en">core/vocabulary</span></div>
+    <div class="bd">
+      <p>
+        <b>“이게 무엇인가”를 판정하는 말뭉치</b>입니다. 예약 하나가 들어왔을 때
+        <b>배정 대상인가 · 숙박 손님인가 · 밤이 있는가 · 파티에 참여하는가 · 등급이 몇인가</b>를
+        여기서 답합니다.
+      </p>
+      <p class="muted">
+        예를 들어 <b>액티비티(투어·체험) 예약</b>은 사람은 오지만 방에서 자지 않습니다.
+        그래서 “배정 대상 아님 · 숙박 인원 통계에서 제외 · 밤 0개 · 연박 불가”라는 성질을 갖습니다.
+        이런 판정이 예전엔 <b>코드 30여 곳에 각각 적혀</b> 있었고, 지금은 명세서 한 곳에 모여 있습니다.
+      </p>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd>
+          <b>구역 명세서</b>(방/파티/언스테이블/액티비티/미배정 각각의 7가지 성질) ·
+          <b>파티 참여 기준</b> · <b>객실 등급</b>(1 도미토리 ~ 5 스위트) ·
+          <span class="tag t-acc">이사 예정</span> 상품 정원 판정(더블룸인가·도미토리인가·초과 인원 몇 명인가) · 성별 판정
+        </dd>
+        <dt>지금 쓰임</dt>
+        <dd>구역 명세서는 <b>9개 파일</b>이 사용 중. 파티 기준 4곳, 등급 2곳.
+          다만 <b>옛날 하드코딩 13곳이 아직 나란히 살아 있습니다</b> — 명세서를 만들어 놓고 호출처 교체가 덜 끝난 상태입니다.</dd>
+        <dt>왜 코어</dt>
+        <dd>여기 답이 바뀌면 <b>배정·통계·문자 대상이 전부 동시에 바뀝니다.</b> 어느 한 기능의 소유가 아닙니다.</dd>
+        <dt>정리 후</dt>
+        <dd>남은 하드코딩 13곳을 명세서 호출로 교체. 지금 추가요금 기능 안에 숨어 있는
+          <b>상품 정원 판정</b>을 여기로 올립니다 — 그건 “추가요금의 것”이 아니라 도메인 공통 어휘이기 때문입니다.</dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 실측</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>파일</th><th class="num">줄</th><th class="num">import</th><th>내용</th></tr></thead>
+            <tbody>
+              <tr><td class="path">services/section_registry.py</td><td class="num">108</td><td class="num">9</td>
+                  <td><code>SectionSpec</code> — assignable · lodging_guest · has_stay · draggable · default_party_inherit · naver_inbound · label</td></tr>
+              <tr><td class="path">services/party_type.py</td><td class="num">56</td><td class="num">4</td>
+                  <td><code>PARTY_JOINED_TYPES</code> / <code>PARTY3_2CHA_TYPES</code> · <code>effective_party_type{,_sql}</code></td></tr>
+              <tr><td class="path">services/room_grade.py</td><td class="num">41</td><td class="num">2</td>
+                  <td><code>grade_of_room</code> · <code>grade_of_biz_item</code> · 1~5 등급</td></tr>
+              <tr><td class="path">services/surcharge.py (private)</td><td class="num">—</td><td class="num">—</td>
+                  <td><span class="tag t-acc">승격</span> <code>_is_double_room</code> · <code>_is_dormitory_reservation</code> · <code>compute_guest_count</code> · <code>compute_excess</code> — <code>templates/variables.py</code>가 직접 참조 중</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            <code>section_registry</code> 상단 주석에 <b>명세서가 담지 않는 것 5가지</b>가 명시돼 있습니다 —
+            room_id 우선 / unstable_party 오버레이 / party_type 오버레이 / 프론트 sectionOverrides / filters room 카테고리 modifier.
+            이들은 section <b>단독</b>이 아니라 다른 플래그와 결합되는 로직이라 <b>호출처에 그대로 둡니다</b>(옮기면 방어 로직을 잃음).
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ② ══════════ -->
+<section id="p2" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">②</span><h3>달력</h3><span class="en">core/calendar</span></div>
+    <div class="bd">
+      <p>
+        <b>“며칠 묵나 · 그날 우리 집에 있나”를 답하는 부분</b>입니다.
+        이 시스템에서 가장 많은 곳이 쓰는 판단이 여기 있습니다.
+      </p>
+      <p class="muted">
+        핵심 질문은 두 개입니다. <b>“이 예약의 밤은 며칠인가”</b>(4/10~4/12면 밤은 4/10·4/11 두 개, 퇴실일은 밤이 아님)와
+        <b>“4월 11일에 우리 집에 있는 예약은 누구인가”</b>입니다. 두 번째가 특히 중요한데,
+        첫날·중간날·당일예약·파티만 참석까지 <b>네 가지 경우를 한 번에 잡아야</b> 하고 퇴실일은 빼야 하기 때문입니다.
+      </p>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><b>당일 1박인지 판정</b> · <b>밤 목록 만들기</b> · <b>발송 목표 날짜 계산</b>(오늘/내일 등) ·
+          <span class="tag t-acc">이사 예정</span> <b>“그날 있는 예약” 조건</b>과 <b>액티비티 인원 격리 조건</b></dd>
+        <dt>지금 쓰임</dt>
+        <dd><b>“그날 있는 예약” 조건은 11곳 · 6개 도메인</b>이 씁니다 — 조사에서 계산한 <b>코어 확산도 1위</b>입니다.
+          그런데 지금 위치는 문자 스케줄 필터 파일(541줄) 안입니다. 날짜 목록 만들기는 13곳에서 사용.</dd>
+        <dt>왜 코어</dt>
+        <dd>여기 판정이 한 칸 틀리면 <b>문자가 퇴실한 손님에게 가거나, 있는 손님이 목록에서 빠집니다.</b></dd>
+        <dt>정리 후</dt>
+        <dd>여기가 <b>숙박(Stay) 개념</b>이 들어갈 자리입니다. 지금 54개 함수에 흩어진 밤 계산을 이 한 곳으로 모읍니다
+          (→ <a href="index.html#pipes">아키텍처 맵 §04-1</a>).</dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 실측</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>파일 / 함수</th><th class="num">줄</th><th class="num">호출</th><th>내용</th></tr></thead>
+            <tbody>
+              <tr><td class="path">services/stay_logic.py</td><td class="num">47</td><td class="num">4</td>
+                  <td><code>is_single_day_stay</code> · <code>stay_nights</code> — 반열림 <code>[ci, co)</code>. NULL/''/co==ci = 당일 1박</td></tr>
+              <tr><td class="path">services/schedule_utils.py</td><td class="num">90</td><td class="num">—</td>
+                  <td><code>get_schedule_dates</code>(3) · <code>date_range</code>(13) · <code>resolve_target_date</code>(2)</td></tr>
+              <tr><td class="path">services/filters.py :: stay_coverage_filter</td><td class="num">—</td><td class="num">11</td>
+                  <td><span class="tag t-acc">승격</span> 4분기 OR — 첫날 / 중간일 / NULL 체크아웃 / 당일만. 퇴실일 제외</td></tr>
+              <tr><td class="path">services/filters.py :: activity_stats_filter</td><td class="num">—</td><td class="num">—</td>
+                  <td><span class="tag t-acc">승격</span> 통계 SUM 에서 액티비티 미참여 격리</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            ⚠️ <code>stay_logic.py</code>는 <b>leaf 제약</b>이 걸려 있습니다 — <code>datetime</code> 외 <code>app.*</code> import 금지.
+            <code>date_range</code>를 여기서 re-export 하면
+            <code>room_assignment → chip_reconciler → template_scheduler → room_assignment</code> 순환이 재발하므로
+            <code>schedule_utils.py</code>에 물리적으로 잔류시킨 것입니다.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ③ ══════════ -->
+<section id="p3" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">③</span><h3>예약 관문</h3><span class="en">core/reservation</span></div>
+    <div class="bd">
+      <p>
+        <b>예약 값을 바꾸려는 모든 시도가 지나야 하는 문</b>입니다. 그리고 예약을 화면에 보여줄 때
+        <b>한 벌로 만들어 내보내는 곳</b>이기도 합니다.
+      </p>
+      <p class="muted">
+        문에서 묻는 건 두 가지입니다. <b>“누가 바꾸려 하는가”</b>(네이버 자동 / 직원 손 / 시스템 내부)와
+        <b>“이 자리에 건드리지 마 스티커가 붙어 있는가”</b>. 예를 들어 직원이 퇴실일을 연장해 두면
+        네이버가 옛날 값을 보내와도 통과시키지 않습니다.
+      </p>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><b>변경 권한표</b>(필드 × 출처 = 허용 / 조건부 / 금지) ·
+          <span class="tag t-acc">이사 예정</span> <b>날짜 바뀌면 일자별 기록 평행이동</b> ·
+          <span class="tag t-acc">이사 예정</span> <b>화면 응답 만들기</b></dd>
+        <dt>지금 쓰임</dt>
+        <dd>
+          변경 권한표는 <b>3개 파일만</b> 사용 중이고 <b>우회가 24곳</b> 있습니다 — 관문을 만들어 놓고 아직 강제하지 않아서입니다.
+          반면 <b>화면 응답 만들기는 24곳에서 호출</b>됩니다. 예약이 화면에 보이는 모든 경로가 여기를 지납니다.
+        </dd>
+        <dt>왜 코어</dt>
+        <dd>
+          응답 만들기가 코어인 이유가 흥미롭습니다 — <b>“문자 예약표를 화면에 어떻게 표시할지” 규칙이 전부 여기 들어 있기</b> 때문입니다.
+          예를 들어 연박으로 묶인 다른 예약이 어제 보낸 문자도 오늘 화면에 “발송 완료”로 보여줘야 하는데, 그 판단이 여기 있습니다.
+          두 벌로 만들면 화면마다 다르게 보입니다.
+        </dd>
+        <dt>정리 후</dt>
+        <dd>우회 24곳을 흡수한 뒤 <b>문을 잠급니다</b> — 우회하면 즉시 오류가 나게. 이게 정리 전체의 최종 목표 중 하나입니다.</dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 실측</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>파일 / 함수</th><th class="num">줄</th><th class="num">호출</th><th>내용</th></tr></thead>
+            <tbody>
+              <tr><td class="path">services/reservation_mutator.py</td><td class="num">240</td><td class="num">3</td>
+                  <td><code>ChangeSource</code>(NAVER/MANUAL/SYSTEM) × <code>FIELD_PERMISSIONS</code>(guarded/always/never) · <code>apply_changes</code> · <code>release_manual_pin</code></td></tr>
+              <tr><td class="path">room_assignment.py :: _shift_daily_records</td><td class="num">~85</td><td class="num">1</td>
+                  <td><span class="tag t-acc">승격</span> 날짜 변경 시 <code>ReservationDailyInfo</code>·<code>PartyCheckin</code> 상대 인덱스 평행이동</td></tr>
+              <tr><td class="path">api/reservations_shared.py :: _to_response</td><td class="num">131</td><td class="num">24</td>
+                  <td><span class="tag t-acc">승격</span> 예약 직렬화 단일 소스 — 칩 표시 규칙 · stay_group sibling 칩 병합 · override 폴백</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            <code>_to_response</code>의 <code>override if override is not None else res.party_type</code>는
+            <b><code>''</code>를 실값으로 채택</b>합니다 — <code>party_type.effective_party_type()</code>(Python truthy, <code>''</code>도 폴백)과
+            의도적으로 다릅니다. 통일하면 그리드 표시가 바뀝니다.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ④ ══════════ -->
+<section id="p4" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">④</span><h3>문자 예약표</h3><span class="en">core/chip</span></div>
+    <div class="bd">
+      <p>
+        <b>“이 손님에게 · 이 문자를 · 이 날 보낸다”를 적어둔 표</b>를 만들고 지키는 부분입니다.
+        표의 한 줄을 “칩”이라고 부릅니다.
+      </p>
+      <p class="muted">
+        예약이 바뀌면 이 표를 <b>처음부터 다시 계산</b>합니다. 날짜가 바뀌면 옛 날짜 줄을 지우고 새 날짜 줄을 만들고,
+        방이 바뀌면 건물 조건이 걸린 문자를 다시 판정합니다.
+      </p>
+
+      <div class="note ok">
+        <h4>절대 지우지 않는 두 가지</h4>
+        <p>
+          다시 계산할 때도 <b>① 이미 보낸 줄</b>과 <b>② 사람이 직접 손댄 줄</b>(수동 추가 · 발송 제외 · 발송 실패 기록)은
+          건드리지 않습니다. 이게 없으면 재계산 한 번에 <b>같은 문자가 두 번 나가거나, 빼놓은 손님에게 다시 나갑니다.</b>
+        </p>
+      </div>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><b>칩 만들기·지우기 단일 창구</b>(보호 규칙 포함) · <b>발송 결과 기록</b> ·
+          <b>두 방향 재계산</b>(예약 한 건 기준 / 스케줄 한 개 기준)</dd>
+        <dt>지금 쓰임</dt>
+        <dd><b>12개 파일</b>이 칩 창구를 씁니다. 만들기 11곳 · 지우기 11곳.
+          예전엔 17개 파일이 각자 칩을 직접 만들고 지웠는데, 지금은 창구 하나로 모였습니다 — <b>코어 중 정리가 가장 잘 된 곳</b>입니다.</dd>
+        <dt>왜 코어</dt>
+        <dd>예약·객실배정·문자 스케줄 <b>셋 다에 딸린 파생물</b>이라 어느 한쪽 소유가 아닙니다.</dd>
+        <dt>정리 후</dt>
+        <dd>이것도 <b>문을 잠급니다.</b> 지금은 우회가 0건이지만 <b>“우연히” 0건</b>이라, 규칙이 아니라 관례로 지켜지는 상태입니다.</dd>
+      </dl>
+
+      <div class="note bad">
+        <h4>여기에 알려진 결함이 하나 있습니다</h4>
+        <p>
+          <b>템플릿을 비활성화할 때 칩을 일괄 삭제하는 코드에 “우리 지점만”이라는 조건이 빠져 있습니다.</b>
+          두 지점이 같은 템플릿 이름을 쓰는 상태에서 한쪽이 끄면 <b>다른 지점의 칩까지 지워지고, 되돌릴 수 없으며, 흔적도 남지 않습니다.</b>
+          정리 계획에서 <b>가장 먼저(코드 이동 전에) 고칠 항목</b>으로 잡혀 있습니다.
+        </p>
+      </div>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 실측</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>파일 / 함수</th><th class="num">줄</th><th class="num">호출</th><th>내용</th></tr></thead>
+            <tbody>
+              <tr><td class="path">services/chip_store.py</td><td class="num">536</td><td class="num">12파일</td>
+                  <td><code>ensure_chip</code>(11) · <code>remove_chip</code>(11) · <code>delete_chips_for_{reservation,template,schedule}</code> · <code>record_sent</code> · <code>record_failed</code></td></tr>
+              <tr><td class="path">services/chip_reconciler.py</td><td class="num">393</td><td class="num">5파일</td>
+                  <td><code>reconcile_chips_for_reservation</code>(예약 중심) · <code>reconcile_chips_for_schedule</code>(스케줄 중심) · <code>_sync_chips</code> diff</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            보호 규칙: <code>PROTECTED_ASSIGNED_BY = ('manual','excluded','failed')</code> 또는 <code>sent_at IS NOT NULL</code> →
+            <code>force=False</code>(기본)에서 삭제 안 함. <code>force=True</code>는 <code>on_status_cancelled</code>·<code>on_reservation_deleted</code>에서만.
+          </p>
+          <p class="muted">
+            🔴 <code>chip_store.py:288 delete_chips_for_template</code> — 벌크 삭제 tenant 조건 누락 (G-1).
+            같은 파일의 다른 벌크 삭제 3곳은 “우연히” 안전한 상태 (G-2).
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ⑤ ══════════ -->
+<section id="p5" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">⑤</span><h3>문자 발송</h3><span class="en">core/sms</span></div>
+    <div class="bd">
+      <p>
+        <b>실제로 손님 휴대폰에 문자를 보내기 직전의 마지막 검문소</b>입니다.
+        여기서 <b>다섯 겹으로 막습니다.</b>
+      </p>
+
+      <figure style="margin:20px 0">
+        <p class="figlabel">그림 4 — 발송 직전 5겹 차단</p>
+        <div class="figbox">
+          <svg viewBox="0 0 900 300" role="img" aria-label="문자 발송 요청이 전화번호 유무, 전화번호 형식, 템플릿 존재, 방 정보 채워짐, 미치환 변수 없음 다섯 검사를 순서대로 통과해야 발송되고, 각 검사에서 걸리면 무엇을 막은 것인지 아래에 표시된다">
+            <defs>
+              <marker id="s5-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+              <marker id="s5-arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+              <marker id="s5-arO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
+            </defs>
+
+            <rect x="10" y="60" width="88" height="44" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="54" y="87" text-anchor="middle" font-size="11" fill="currentColor">발송 요청</text>
+
+            <line x1="100" y1="82" x2="116" y2="82" stroke="currentColor" stroke-width="1.1" marker-end="url(#s5-ar)"/>
+            <rect x="118" y="58" width="122" height="48" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="179" y="79" text-anchor="middle" font-size="10.5" font-weight="600" fill="currentColor">① 번호가 있나</text>
+            <text x="179" y="96" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">전화번호 빈칸</text>
+
+            <line x1="242" y1="82" x2="256" y2="82" stroke="currentColor" stroke-width="1.1" marker-end="url(#s5-ar)"/>
+            <rect x="258" y="58" width="122" height="48" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="319" y="79" text-anchor="middle" font-size="10.5" font-weight="600" fill="currentColor">② 번호가 맞나</text>
+            <text x="319" y="96" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">숫자 9~15자리</text>
+
+            <line x1="382" y1="82" x2="396" y2="82" stroke="currentColor" stroke-width="1.1" marker-end="url(#s5-ar)"/>
+            <rect x="398" y="58" width="122" height="48" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+            <text x="459" y="79" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--bad)">③ 문구가 있나</text>
+            <text x="459" y="96" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">템플릿 존재</text>
+
+            <line x1="522" y1="82" x2="536" y2="82" stroke="currentColor" stroke-width="1.1" marker-end="url(#s5-ar)"/>
+            <rect x="538" y="58" width="122" height="48" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="599" y="79" text-anchor="middle" font-size="10.5" font-weight="600" fill="currentColor">④ 방 정보가 찼나</text>
+            <text x="599" y="96" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">방 변수 쓰는 문자만</text>
+
+            <line x1="662" y1="82" x2="676" y2="82" stroke="currentColor" stroke-width="1.1" marker-end="url(#s5-ar)"/>
+            <rect x="678" y="58" width="122" height="48" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="739" y="79" text-anchor="middle" font-size="10.5" font-weight="600" fill="currentColor">⑤ 빈칸이 남았나</text>
+            <text x="739" y="96" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">치환 안 된 변수</text>
+
+            <line x1="802" y1="82" x2="816" y2="82" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#s5-arO)"/>
+            <rect x="818" y="58" width="72" height="48" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+            <text x="854" y="79" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ok)">발송</text>
+            <text x="854" y="96" text-anchor="middle" font-size="9" fill="var(--ok)">→ 즉시 기록</text>
+
+            <line x1="179" y1="108" x2="179" y2="150" stroke="var(--bad)" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#s5-arB)"/>
+            <line x1="319" y1="108" x2="319" y2="150" stroke="var(--bad)" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#s5-arB)"/>
+            <line x1="459" y1="108" x2="459" y2="150" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#s5-arB)"/>
+            <line x1="599" y1="108" x2="599" y2="150" stroke="var(--bad)" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#s5-arB)"/>
+            <line x1="739" y1="108" x2="739" y2="150" stroke="var(--bad)" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#s5-arB)"/>
+
+            <text x="10" y="172" font-size="11" font-weight="600" fill="var(--bad)">막지 않았다면 손님이 받았을 것</text>
+
+            <text x="179" y="200" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".75">발송 오류</text>
+            <text x="319" y="200" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".75">엉뚱한 번호로</text>
+
+            <rect x="392" y="186" width="136" height="46" fill="var(--bad-soft)" stroke="var(--bad)" stroke-width="1.2"/>
+            <text x="460" y="204" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--bad)">[Template not found]</text>
+            <text x="460" y="222" text-anchor="middle" font-size="9" fill="var(--bad)">라는 글자가 그대로 발송</text>
+
+            <text x="599" y="200" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".75">“객실은 ___ 입니다”</text>
+            <text x="599" y="215" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".75">빈칸 문자</text>
+
+            <text x="739" y="200" text-anchor="middle" font-size="9.5" fill="currentColor" opacity=".75">“&#123;&#123;고객명&#123;&#123;님 안녕하세요”</text>
+
+            <line x1="10" y1="252" x2="890" y2="252" stroke="currentColor" stroke-width="1" opacity=".2"/>
+            <text x="10" y="274" font-size="10.5" fill="currentColor" opacity=".72">③번이 이 다섯 중 가장 중요합니다 — 나머지는 “안 나가는” 사고지만, ③은 <tspan font-weight="600" fill="var(--bad)">이상한 문자가 실제로 나가는</tspan> 사고입니다.</text>
+            <text x="10" y="292" font-size="10.5" fill="currentColor" opacity=".72">발송에 성공하면 <tspan font-weight="600">그 자리에서 즉시 기록</tspan>합니다 — 뒤 처리가 멈춰도 중복 발송이 안 되도록.</text>
+          </svg>
+        </div>
+      </figure>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><span class="tag t-acc">이사 예정</span> <b>한 건 발송 + 5겹 차단</b> · <b>문구 채우기</b>(<code>&#123;&#123;변수&#125;&#125;</code> 치환) ·
+          <b>변수 계산</b>(객실 번호 · 비밀번호 · 참여 인원 · 추가요금 등)</dd>
+        <dt>지금 쓰임</dt>
+        <dd>지금은 <b>문자 기능(모듈) 안에</b> 있습니다. 자동 스케줄 발송 · 즉시 발송 · 수동 발송이 전부 여기를 지납니다.</dd>
+        <dt>왜 코어</dt>
+        <dd>
+          <b>5겹 차단이 곧 관문이기 때문입니다.</b> 지금처럼 모듈에 두면, 나중에 그 모듈을 떼어낼 때
+          <b>오발송 방어까지 같이 사라집니다.</b> 방어는 남아야 합니다.
+        </dd>
+        <dt>정리 후</dt>
+        <dd>발송 자체(관문)는 코어로, <b>템플릿 관리 화면·칩 토글 API</b> 같은 것은 기능에 남습니다.</dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 5겹 상세</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>겹</th><th>검사</th><th>실패 시</th></tr></thead>
+            <tbody>
+              <tr><td class="num">1</td><td class="path">not reservation.phone</td><td><code>"전화번호가 없습니다"</code></td></tr>
+              <tr><td class="num">2</td><td class="path">isdigit() and 9 &lt;= len &lt;= 15</td><td><code>record_failed</code> 기록 + 반환</td></tr>
+              <tr><td class="num">3</td><td class="path">get_template(key) is None</td><td><code>"템플릿 없음"</code> — <b>renderer가 에러 문자열을 그대로 반환하던 사고 방지</b></td></tr>
+              <tr><td class="num">4</td><td class="path">_ROOM_VARS_REQUIRED ∩ 템플릿 사용변수 중 context 빈 값</td><td><code>"방 정보 누락: …"</code></td></tr>
+              <tr><td class="num">5</td><td class="path">렌더 후 미치환 <code>&#123;&#123;…&#125;&#125;</code> 잔존</td><td>차단 <span class="tag t-warn">단, 이 겹만 실패 기록을 안 남김 — 알려진 불일치</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            <code>services/sms_sender.py</code>(365) · <code>templates/renderer.py</code>(104) · <code>templates/variables.py</code>(442).
+            발송 성공 → <code>chip_store.record_sent</code> 즉시 커밋. LMS 제목은 템플릿 <code>lms_title</code>, 없으면 provider가 본문 첫 줄 자동 추출.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ⑥ ══════════ -->
+<section id="p6" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">⑥</span><h3>뒷정리 순서표</h3><span class="en">core/lifecycle</span></div>
+    <div class="bd">
+      <p>
+        <b>예약에 무슨 일이 생기면 뒤따라 해야 할 일들을 정해진 순서로 실행하는 지휘자</b>입니다.
+        코어에서 가장 많이 불리는 부분입니다.
+      </p>
+      <p class="muted">
+        다섯 가지 사건에 각각 반응합니다 — <b>날짜가 바뀜 · 인원/성별이 바뀜 · 취소됨 · 방이 배정됨 · 예약이 삭제됨.</b>
+        예를 들어 <b>날짜가 바뀌면</b> ① 파티 체크인과 일자별 메모를 평행 이동 → ② 배정표에서 범위 밖 날짜를 지우고 빠진 날짜를 채움 →
+        ③ 보낼 문자 목록 5종을 전부 다시 계산, 이 순서로 돕니다.
+      </p>
+
+      <div class="note acc">
+        <h4>순서가 진짜로 중요합니다</h4>
+        <p>
+          <b>문자 목록 계산을 방 배정보다 먼저 하면 안 됩니다.</b> “○○동 손님에게만” 같은 조건이 걸린 문자는
+          방이 정해지기 전에는 대상을 고를 수 없어서, 칩이 아예 안 만들어집니다.
+          그래서 이 순서는 취향이 아니라 <b>데이터 의존</b>이고, 코어가 순서를 <b>글로 선언</b>하는 이유입니다.
+        </p>
+      </div>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><b>5가지 사건별 후처리</b> · <b>문자 목록 5종 일괄 재계산</b> ·
+          <span class="tag t-acc">신설 예정</span> <b>순서 선언표</b>와 <b>특수 문자 등록소</b></dd>
+        <dt>지금 쓰임</dt>
+        <dd>
+          일괄 재계산은 <b>20곳에서 호출</b>됩니다 — 서비스 6곳(배정·동기화·분할 정합) + 화면 API 14곳(예약 수정·방 배정·연박 연장·방 설정 변경).
+          예약을 건드리는 거의 모든 경로가 여기로 모입니다.
+        </dd>
+        <dt>왜 코어</dt>
+        <dd>여기가 없으면 <b>예약은 바뀌었는데 딸린 것들은 옛날 상태로 남습니다.</b> 정의상 데이터 부정합입니다.</dd>
+        <dt>정리 후</dt>
+        <dd>
+          지금은 기능들이 <b>직접</b> 서로를 부릅니다. 정리 후에는 기능이 “예약 동기화됨” 같은 <b>신호만</b> 보내고,
+          이 순서표가 등록된 순서대로 실행합니다 (→ <a href="index.html#pipes">아키텍처 맵 §04-3</a>).
+        </dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용 — 파일과 호출처 20곳</summary>
+        <div class="body">
+          <div class="tablewrap">
+          <table>
+            <thead><tr><th>파일 / 함수</th><th class="num">줄</th><th>내용</th></tr></thead>
+            <tbody>
+              <tr><td class="path">services/reservation_lifecycle.py</td><td class="num">259</td>
+                  <td><code>on_dates_changed</code> · <code>on_constraints_changed</code> · <code>on_status_cancelled</code> · <code>on_room_assigned</code> · <code>on_reservation_deleted</code></td></tr>
+              <tr><td class="path">services/reconcile.py</td><td class="num">97</td>
+                  <td><code>reconcile_all_chips</code> — 표준칩(<code>sync_sms_tags</code>) + surcharge + party3 + room_upgrade_promise + _review</td></tr>
+              <tr><td class="path">core/lifecycle/hooks.py</td><td class="num">신규</td>
+                  <td><code>HOOK_POINTS</code> 순서 선언 + <code>emit(point, ctx)</code></td></tr>
+              <tr><td class="path">core/lifecycle/reconciler_registry.py</td><td class="num">신규</td>
+                  <td>커스텀 5종 디스패치 — <code>custom_schedule_registry</code> 패턴 확장</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="muted">
+            <code>reconcile_all_chips</code> 호출처 실측 20곳 —
+            <code>room_assignment</code>(2) · <code>naver_sync</code>(2) · <code>split_group_guard</code>(1) · <code>reservation_lifecycle</code>(4) ·
+            <code>api/reservations</code>(3) · <code>api/reservations_room</code>(2) · <code>api/reservations_stay</code>(2) · <code>api/rooms</code>(2).
+          </p>
+          <p class="muted">
+            스코프 분리 — <code>RoomAssignment</code> 자체 정리는 <code>_reconcile_dates</code>가 담당하며,
+            <code>reconcile_all_chips</code>는 <b>배정이 이미 최신인 시점</b>에 호출되어야 합니다.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ⑦⑧ ══════════ -->
+<section id="p7" style="padding-top:20px">
+  <div class="part">
+    <div class="hd"><span class="n">⑦</span><h3>방 찾기</h3><span class="en">core/lookup</span></div>
+    <div class="bd">
+      <p>
+        <b>“이 예약들이 어느 방이었지?”를 한 번에 물어보는 창구</b>입니다. 작지만 성능에 중요합니다.
+      </p>
+      <p class="muted">
+        예약 100건을 화면에 보여줄 때 방 정보를 <b>하나씩 100번 물어보면 화면이 느려집니다.</b>
+        여기는 <b>100건을 한 번에</b> 물어봅니다. 그리고 날짜를 지정하지 않으면 <b>“첫 밤의 방”</b>을 돌려주는 규칙이 정해져 있어,
+        호출하는 쪽마다 다른 답을 받는 일이 없습니다.
+      </p>
+      <dl class="role">
+        <dt>지금 쓰임</dt>
+        <dd>3개 파일에서 사용 — 예약 목록 · 문자 변수 계산 · 화면 응답.</dd>
+        <dt>왜 코어</dt>
+        <dd>“어느 방인가”는 예약 데이터의 파생 상태이고, <b>여러 도메인이 같은 답을 받아야</b> 하기 때문입니다.</dd>
+      </dl>
+      <details class="dev">
+        <summary>개발자용</summary>
+        <div class="body">
+          <p class="muted">
+            <code>services/room_lookup.py</code>(76) — <code>batch_room_lookup</code> · <code>batch_room_number_map</code>.
+            <code>target_date=None</code>이면 <code>order_by(date)</code>로 <b>가장 이른 배정</b>을 결정적으로 선택(첫 밤 기준).
+            특정 날짜가 필요하면 호출자가 <code>target_date</code>를 명시해야 합니다.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="part" id="p8">
+    <div class="hd"><span class="n">⑧</span><h3>바깥 연결 규격</h3><span class="en">core/ports</span></div>
+    <div class="bd">
+      <p>
+        <b>“이런 모양이면 꽂을 수 있다”는 콘센트 규격</b>입니다. 네이버든 문자 발송 업체든,
+        이 규격에 맞기만 하면 코어는 <b>상대가 누구인지 몰라도 됩니다.</b>
+      </p>
+
+      <div class="note">
+        <h4>“죽은 코드처럼 보이지만 지우면 안 되는 것”</h4>
+        <p>
+          이 규격은 원래 <b>가짜(연습용) 연결과 진짜 연결을 바꿔 끼우려고</b> 만들었는데, 가짜 쪽이 전부 삭제되면서
+          지금은 구현이 하나뿐입니다. 그래서 “쓸모없는 추상화”로 보여 삭제 후보에 올랐었습니다.
+        </p>
+        <p>
+          <b>실제로 확인해 보니 테스트 3개가 이 규격으로 가짜 연결을 끼우고 있었습니다.</b>
+          지웠다면 <b>테스트가 실제 문자 발송 업체를 호출해서 손님에게 문자가 나갔을 것</b>입니다.
+          → 삭제가 아니라 <b>코어의 포트로 승격</b>하는 것으로 결론이 바뀌었습니다.
+        </p>
+      </div>
+
+      <dl class="role">
+        <dt>들어 있는 것</dt>
+        <dd><b>문자 발송 규격</b> · <b>예약 조회 규격</b> · <span class="tag t-acc">신설 예정</span> <b>방 배정 규격</b></dd>
+        <dt>정리 후</dt>
+        <dd>
+          방 배정 규격이 생기면, <b>배정 기능을 떼어내도 시스템이 안 깨집니다</b> —
+          꽂힌 게 없으면 호출한 쪽이 “배정 기능 없음”이라고 정해진 대로 처리합니다.
+        </dd>
+      </dl>
+
+      <details class="dev">
+        <summary>개발자용</summary>
+        <div class="body">
+          <p class="muted">
+            <code>providers/base.py</code>(77) — <code>SMSProvider</code>(<code>send_sms</code>·<code>send_bulk</code>·<code>simulate_receive</code>) ·
+            <code>ReservationProvider</code>(<code>sync_reservations</code>·<code>get_reservation_details</code>·<code>fetch_by_checkin_date</code>).
+            신설 <code>RoomAllocator.assign(db, reservation_id, room_id, dates) -&gt; AssignResult</code>, <code>get() -&gt; RoomAllocator | None</code>.
+          </p>
+          <p class="muted">
+            배치는 <code>core/ports</code>(규격) / <code>adapters/{aligo,naver}</code>(구현) / <code>bootstrap/factory.py</code>(꽂기).
+            Protocol을 지우면 코어가 <code>real/sms.py</code>·<code>real/reservation.py</code>를 직접 import 하게 되어 계층이 무너집니다.
+          </p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 03 ══════════ -->
+<section id="move">
+  <h2><span class="num">03</span>지금 위치 → 코어 자리</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      코어 8부분 중 <b>절반은 이미 제자리에 있고</b>, 절반은 <b>다른 기능 안에 섞여 있거나 큰 파일에 갇혀</b> 있습니다.
+      아래가 “어디서 어디로 가나”입니다.
+    </p>
+  </div>
+
+  <figure>
+    <p class="figlabel">그림 5 — 이사 지도</p>
+    <div class="figbox">
+      <svg viewBox="0 0 900 420" role="img" aria-label="지금 여러 폴더에 섞여 있는 코어 코드가 코어 여덟 폴더로 옮겨지는 지도. 일부는 파일을 쪼개야 하고 일부는 그대로 옮기면 된다">
+        <defs>
+          <marker id="m-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+          <marker id="m-arW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+
+        <text x="20" y="24" font-size="11.5" font-weight="600" fill="currentColor" opacity=".6">지금 있는 곳</text>
+        <text x="560" y="24" font-size="11.5" font-weight="600" fill="var(--accent)">코어 자리</text>
+
+        <rect x="20" y="38" width="240" height="42" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="34" y="56" font-size="11" fill="currentColor">services/ 안에 그대로</text>
+        <text x="34" y="72" font-size="9.5" fill="currentColor" opacity=".6">구역명세 · 파티기준 · 등급 · 숙박판정 · 방찾기</text>
+
+        <rect x="20" y="92" width="240" height="42" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="34" y="110" font-size="11" fill="currentColor">services/ 안에 그대로</text>
+        <text x="34" y="126" font-size="9.5" fill="currentColor" opacity=".6">예약 관문 · 칩 창구 · 칩 재계산 · 순서표</text>
+
+        <rect x="20" y="152" width="240" height="52" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="34" y="172" font-size="11" font-weight="600" fill="var(--bad)">room_assignment.py — 1,110줄</text>
+        <text x="34" y="188" font-size="9.5" fill="currentColor" opacity=".7">배정 “결정”(기능) + 배정 “유지”(코어) 혼재</text>
+        <text x="34" y="200" font-size="9" fill="var(--bad)">쪼개야 함</text>
+
+        <rect x="20" y="216" width="240" height="46" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="34" y="236" font-size="11" font-weight="600" fill="var(--bad)">filters.py — 541줄</text>
+        <text x="34" y="252" font-size="9.5" fill="currentColor" opacity=".7">날짜 조건(코어) + 스케줄 필터 파서(기능)</text>
+
+        <rect x="20" y="274" width="240" height="46" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="34" y="294" font-size="11" font-weight="600" fill="var(--bad)">surcharge.py · sms_sender.py</text>
+        <text x="34" y="310" font-size="9.5" fill="currentColor" opacity=".7">기능 안에 코어(정원 판정 · 5겹 차단)가 갇힘</text>
+
+        <rect x="20" y="332" width="240" height="46" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="34" y="352" font-size="11" font-weight="600" fill="var(--bad)">api/reservations_shared.py</text>
+        <text x="34" y="368" font-size="9.5" fill="currentColor" opacity=".7">화면 응답 만들기(131줄)가 API 층에 있음</text>
+
+        <line x1="262" y1="59"  x2="330" y2="70"  stroke="var(--accent)" stroke-width="1.2" marker-end="url(#m-ar)"/>
+        <line x1="262" y1="113" x2="330" y2="150" stroke="var(--accent)" stroke-width="1.2" marker-end="url(#m-ar)"/>
+        <line x1="262" y1="178" x2="330" y2="196" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#m-arW)"/>
+        <line x1="262" y1="239" x2="330" y2="226" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#m-arW)"/>
+        <line x1="262" y1="297" x2="330" y2="262" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#m-arW)"/>
+        <line x1="262" y1="355" x2="330" y2="290" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#m-arW)"/>
+
+        <rect x="332" y="60" width="180" height="270" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="422" y="80" text-anchor="middle" font-size="10.5" font-weight="600" fill="currentColor" opacity=".7">파란 화살표 = 그대로 이동</text>
+        <text x="422" y="98" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--bad)">빨간 화살표 = 쪼개서 이동</text>
+        <text x="422" y="130" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">쪼개는 6건이</text>
+        <text x="422" y="148" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">이 정리에서 가장 조심스러운 부분</text>
+        <text x="422" y="180" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">— 한 파일 안에서</text>
+        <text x="422" y="198" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">정반대 정책이 공존하는 곳이</text>
+        <text x="422" y="216" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">실제로 있기 때문</text>
+        <text x="422" y="256" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">먼저 “지금 동작을 그대로 고정하는</text>
+        <text x="422" y="274" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">테스트”를 깔고 나서 쪼갠다</text>
+
+        <line x1="514" y1="195" x2="552" y2="195" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#m-ar)"/>
+
+        <rect x="556" y="38" width="324" height="340" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+        <text x="572" y="60" font-size="12.5" font-weight="700" fill="var(--accent)">core/</text>
+        <text x="572" y="88" font-size="11" fill="currentColor">vocabulary/ &nbsp;<tspan opacity=".6">어휘 사전</tspan></text>
+        <text x="572" y="124" font-size="11" fill="currentColor">calendar/ &nbsp;<tspan opacity=".6">달력 · 숙박(Stay)</tspan></text>
+        <text x="572" y="160" font-size="11" fill="currentColor">reservation/ &nbsp;<tspan opacity=".6">예약 관문 · 응답</tspan></text>
+        <text x="572" y="196" font-size="11" fill="currentColor">chip/ &nbsp;<tspan opacity=".6">문자 예약표</tspan></text>
+        <text x="572" y="232" font-size="11" fill="currentColor">sms/ &nbsp;<tspan opacity=".6">발송 관문 · 문구 채우기</tspan></text>
+        <text x="572" y="268" font-size="11" fill="currentColor">lifecycle/ &nbsp;<tspan opacity=".6">순서표 · 등록소</tspan></text>
+        <text x="572" y="304" font-size="11" fill="currentColor">lookup/ &nbsp;<tspan opacity=".6">방 찾기</tspan></text>
+        <text x="572" y="340" font-size="11" fill="currentColor">ports/ &nbsp;<tspan opacity=".6">바깥 연결 규격</tspan></text>
+        <text x="572" y="366" font-size="9.5" fill="currentColor" opacity=".5">현재 코어 성격 코드 약 4,900줄 · 전체의 19%</text>
+
+        <line x1="556" y1="96"  x2="880" y2="96"  stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="132" x2="880" y2="132" stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="168" x2="880" y2="168" stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="204" x2="880" y2="204" stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="240" x2="880" y2="240" stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="276" x2="880" y2="276" stroke="currentColor" stroke-width="1" opacity=".12"/>
+        <line x1="556" y1="312" x2="880" y2="312" stroke="currentColor" stroke-width="1" opacity=".12"/>
+
+        <text x="20" y="402" font-size="10.5" fill="currentColor" opacity=".62">이 이사는 “동작이 하나도 안 바뀌는” 단계로 진행합니다 — 옮기기 전후로 시스템이 남기는 발자국 기록이 같은지 자동 대조합니다.</text>
+      </svg>
+    </div>
+    <figcaption>
+      쪼개야 하는 6건이 이 정리의 난이도 대부분을 차지한다. <b>한 파일 안에 정반대 정책이 의도적으로 공존하는 곳</b>이 있어서,
+      기계적으로 나누면 방어가 사라진다.
+    </figcaption>
+  </figure>
+
+  <details class="dev">
+    <summary>개발자용 — 파일별 이동 대상 전체</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>지금</th><th>→ 코어 자리</th><th>방식</th></tr></thead>
+        <tbody>
+          <tr><td class="path">services/section_registry · party_type · room_grade</td><td class="path">core/vocabulary</td><td>이동</td></tr>
+          <tr><td class="path">services/surcharge :: _is_double_room · _is_dormitory_reservation · compute_guest_count · compute_excess</td><td class="path">core/vocabulary/product_capacity</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">services/dorm_gender 등 3곳 성별 판정</td><td class="path">core/vocabulary/gender</td><td><span class="tag t-bad">통합</span></td></tr>
+          <tr><td class="path">services/stay_logic · schedule_utils</td><td class="path">core/calendar</td><td>이동</td></tr>
+          <tr><td class="path">services/filters :: stay_coverage_filter · activity_stats_filter</td><td class="path">core/calendar/coverage</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">services/reservation_mutator</td><td class="path">core/reservation</td><td>이동</td></tr>
+          <tr><td class="path">services/room_assignment :: _shift_daily_records</td><td class="path">core/reservation/daily_records</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">api/reservations_shared :: _to_response (131줄)</td><td class="path">core/reservation/serialization</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">services/chip_store · chip_reconciler</td><td class="path">core/chip</td><td>이동</td></tr>
+          <tr><td class="path">services/room_assignment :: _reconcile_dates · unassign_room · clear_all_for_reservation · sync_sms_tags</td><td class="path">core/reservation · core/chip</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">services/sms_sender :: send_single_sms + 5겹</td><td class="path">core/sms</td><td><span class="tag t-bad">분할</span></td></tr>
+          <tr><td class="path">templates/renderer · variables</td><td class="path">core/sms</td><td>이동</td></tr>
+          <tr><td class="path">services/reservation_lifecycle · reconcile</td><td class="path">core/lifecycle</td><td>이동</td></tr>
+          <tr><td class="path">— (신규)</td><td class="path">core/lifecycle/hooks · reconciler_registry</td><td>신설</td></tr>
+          <tr><td class="path">services/room_lookup</td><td class="path">core/lookup</td><td>이동</td></tr>
+          <tr><td class="path">providers/base</td><td class="path">core/ports (+ RoomAllocator 신설)</td><td>이동</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════ 04 ══════════ -->
+<section id="notcore">
+  <h2><span class="num">04</span>코어가 아닌 것 — 경계선</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      헷갈리기 쉬운 것들입니다. <b>중요하다고 코어인 건 아닙니다.</b>
+      네이버 동기화는 이 시스템의 존재 이유지만 코어가 아닙니다 — 없으면 <b>예약이 안 들어올 뿐</b>,
+      이미 있는 데이터가 어긋나지는 않기 때문입니다.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>이건</th><th>코어일 것 같지만</th><th>실제로는</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>빈 방 찾아 넣기</b><br>(자동 배정 알고리즘)</td>
+        <td>객실 배정은 핵심 업무니까</td>
+        <td><b>기능.</b> 없으면 손으로 배정하면 됨 — 데이터는 멀쩡. 조사 결과 <b>25개 함수가 그대로 기능에 남습니다</b> = 진짜 독립 모듈</td>
+      </tr>
+      <tr>
+        <td><b>네이버에서 가져오기</b></td>
+        <td>시스템의 존재 이유니까</td>
+        <td><b>기능 + 어댑터.</b> 예약을 “만들어 넣는” 입구일 뿐. 정리 후 <b>가장 먼저 떼어낼 후보</b></td>
+      </tr>
+      <tr>
+        <td><b>추가요금 · 파티 안내 MMS<br>업그레이드 약속/후기</b></td>
+        <td>문자 관련이니 코어 아닌가</td>
+        <td><b>기능.</b> 다만 <b>등록소에 자기를 꽂아</b> 코어가 필요할 때 불러줌. 지금은 반대로 코어가 이들을 직접 부르고 있어서 26곳에 얽힘</td>
+      </tr>
+      <tr>
+        <td><b>도미토리 남녀 분리 잠금</b></td>
+        <td>중요한 규칙이니까</td>
+        <td><b>기능.</b> 배정 “결정”에 속하는 규칙</td>
+      </tr>
+      <tr>
+        <td><b>연박 감지 · 분할 예약 정합</b></td>
+        <td>예약 데이터를 만지니까</td>
+        <td><b>기능(준필수).</b> 다만 지금 11곳이 붙잡고 있어 떼기 어려움</td>
+      </tr>
+      <tr>
+        <td><b>로그인 · 지점 격리 · 설정 · 기록</b></td>
+        <td>모두가 쓰니까 코어 아닌가</td>
+        <td><b>바탕 층.</b> <b>업무 규칙이 바뀌어도 안 바뀝니다.</b> 여기에 “예약”·“문자”·“파티” 같은 단어가 나오면 잘못 놓인 것</td>
+      </tr>
+      <tr>
+        <td><b>대시보드 · 매출 · 파티 체크인</b></td>
+        <td>—</td>
+        <td><b>기능.</b> 예약을 읽기만 하는 말단이라 <b>지금도 떼어낼 수 있습니다</b></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <h4>계산이 예상을 반박한 사례</h4>
+    <p>
+      조사할 때 <b>구역 명세서를 코어라고 가정</b>했는데, 실제로 세어 보니 함수마다 <b>특정 기능 전용</b>이었습니다
+      (명세서 패턴이라 코어처럼 보였을 뿐). 반대로 <b>“그날 있는 예약” 판정</b>은 6개 도메인이 써서
+      코어 1순위인데도 <b>문자 스케줄 필터 파일 안에 갇혀</b> 있었습니다.
+    </p>
+    <p>
+      코어를 <b>느낌이 아니라 “몇 개 도메인이 쓰는가”로 계산</b>한 이유입니다.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════ 05 ══════════ -->
+<section id="dontmerge">
+  <h2><span class="num">05</span>코어 안에서 합치면 안 되는 것</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      “정리”라고 하면 비슷한 걸 합치고 싶어집니다. 그런데 <b>겉보기엔 중복인데 실제로는 달라야 하는 것</b>들이 있습니다.
+      합치면 그 자리에서 사고가 납니다. 코어 안에서 특히 조심해야 할 것들입니다.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>겉보기</th><th>합치면</th><th>왜 달라야 하나</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>파티 참여 집합 두 개</b><br>(1차만·1+2차·2차만) vs (1+2차·2차만)</td>
+        <td><span class="tag t-bad">오발송 / 통계 누락</span></td>
+        <td>앞은 <b>파티 참여 통계·명단</b>용, 뒤는 <b>2차 안내 MMS 대상</b>용.
+          넓은 쪽으로 합치면 <b>1차만 신청한 손님에게 2차 안내가 갑니다.</b> 좁은 쪽으로 합치면 통계에서 사람이 빠집니다</td>
+      </tr>
+      <tr>
+        <td><b>빈 값 처리 3가지</b><br>(파티 차수의 일자별 덮어쓰기)</td>
+        <td><span class="tag t-bad">화면·통계·문자 대상이 조용히 달라짐</span></td>
+        <td>파이썬 쪽은 <code>NULL</code>과 <code>''</code> 둘 다 원래 값으로 되돌리고,
+          SQL 쪽은 <code>NULL</code>만 되돌리며 <code>''</code>는 그대로 씁니다. <b>의도된 차이</b>입니다</td>
+      </tr>
+      <tr>
+        <td><b>배정 충돌 정책 두 가지</b></td>
+        <td><span class="tag t-bad">배정 사고</span></td>
+        <td>방 배정은 충돌 시 <b>기존 손님을 밀어내고</b>, 날짜 정리는 <b>밀어내지 않고 공존</b>시킵니다. <b>둘 다 맞습니다</b></td>
+      </tr>
+      <tr>
+        <td><b>숙박일 판정의 “이상한” 동작</b><br>(퇴실일이 입실일보다 앞선 손상 데이터)</td>
+        <td><span class="tag t-warn">동작 변화</span></td>
+        <td>지금은 그런 행을 <b>연박으로 취급</b>합니다. 이상해 보이지만 <b>현행 동작을 그대로 보존</b>하는 게 원칙 —
+          고칠지는 옮긴 뒤에 따로 결정합니다</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note bad">
+    <h4>원칙: 현행 보존</h4>
+    <p>
+      코어를 옮기는 동안에는 <b>“이상해 보이는 것”을 고치지 않습니다.</b>
+      옮기기와 고치기를 섞으면, 문제가 생겼을 때 <b>옮겨서 깨진 건지 고쳐서 깨진 건지 알 수 없습니다.</b>
+      먼저 자리를 잡고, 그다음에 하나씩 결정합니다.
+    </p>
+  </div>
+</section>
+
+<footer>
+  근거 — 코드 실측 2026-08-23 (<code>backend/app/services/</code> · <code>templates/</code> · <code>providers/</code> · <code>api/</code>) ·
+  설계 <code>docs/plans/refactor/03-아키텍처-재설계.md §4~§6</code> · 전수조사 <code>00-지금까지-정리.md §5</code> ·
+  상위 문서 <a href="index.html">아키텍처 맵</a>
+</footer>
+
+</main>
+</div>
+</div>
