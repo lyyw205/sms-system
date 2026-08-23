@@ -36,7 +36,7 @@
   }
 
   *{box-sizing:border-box}
-  body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.72; -webkit-font-smoothing:antialiased}
+  body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased}
   .wrap{max-width:1180px; margin:0 auto; padding:0 24px 120px}
 
   header.top{padding:56px 0 40px; border-bottom:1px solid var(--line)}
@@ -44,14 +44,11 @@
   .crumb a{color:var(--ink-3); text-decoration:none}
   .crumb a:hover{color:var(--accent)}
   h1{font-size:clamp(30px,4.4vw,46px); line-height:1.18; font-weight:700; letter-spacing:-.022em; margin:0 0 16px; text-wrap:balance}
-  .lede{font-size:17px; color:var(--ink-2); max-width:66ch; margin:0}
-  .facts{display:flex; flex-wrap:wrap; gap:0; margin-top:34px; border:1px solid var(--line); border-radius:2px; overflow:hidden; background:var(--panel)}
-  .fact{flex:1 1 140px; padding:14px 18px; border-right:1px solid var(--line-soft)}
-  .fact:last-child{border-right:0}
-  .fact b{display:block; font-family:var(--mono); font-size:19px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
-  .fact span{font-size:12px; color:var(--ink-3)}
+  .lede{font-size:17px; color:var(--ink-2); max-width:64ch; margin:0}
+  .howto{border:1px solid var(--line); background:var(--panel); padding:18px 22px; margin-top:32px; border-radius:2px; font-size:13.8px; color:var(--ink-2)}
+  .howto b{color:var(--ink)}
 
-  .cols{display:grid; grid-template-columns:200px minmax(0,1fr); gap:52px; margin-top:52px}
+  .cols{display:grid; grid-template-columns:206px minmax(0,1fr); gap:52px; margin-top:52px}
   @media (max-width:900px){ .cols{grid-template-columns:1fr; gap:0} nav.toc{display:none} }
   nav.toc{position:sticky; top:28px; align-self:start}
   nav.toc p{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 12px}
@@ -59,24 +56,41 @@
   nav.toc a:hover{color:var(--accent); border-left-color:var(--accent)}
   nav.toc a b{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-right:8px}
 
-  section{padding-top:56px}
-  h2{font-size:24px; font-weight:700; letter-spacing:-.02em; margin:0 0 8px; padding-bottom:14px; border-bottom:1px solid var(--line); text-wrap:balance}
+  section{padding-top:58px}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.02em; margin:0 0 10px; padding-bottom:14px; border-bottom:1px solid var(--line); text-wrap:balance}
   h2 .num{font-family:var(--mono); font-size:12px; font-weight:500; color:var(--accent); letter-spacing:.08em; display:block; margin-bottom:6px}
-  h3{font-size:16.5px; font-weight:600; margin:34px 0 10px; letter-spacing:-.01em}
-  p{margin:0 0 14px; max-width:70ch}
+  h3{font-size:16.5px; font-weight:600; margin:36px 0 10px; letter-spacing:-.01em}
+  p{margin:0 0 15px; max-width:68ch}
   .muted{color:var(--ink-2)}
   code{font-family:var(--mono); font-size:.87em; background:var(--panel-2); border:1px solid var(--line-soft); border-radius:2px; padding:1px 5px; white-space:nowrap}
   a{color:var(--accent)}
 
+  .plain{background:var(--panel-2); border-left:3px solid var(--accent); padding:15px 18px; margin:20px 0; max-width:68ch}
+  .plain .lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:7px}
+  .plain p{margin:0; font-size:14.5px; color:var(--ink); max-width:none}
+  .plain p + p{margin-top:9px}
+
+  details.dev{border:1px solid var(--line); background:var(--panel); margin:20px 0; border-radius:2px}
+  details.dev > summary{cursor:pointer; padding:11px 16px; font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; color:var(--ink-3); list-style:none; display:flex; align-items:center; gap:9px}
+  details.dev > summary::-webkit-details-marker{display:none}
+  details.dev > summary::before{content:"+"; font-size:14px; line-height:1; color:var(--accent); font-weight:600}
+  details.dev[open] > summary::before{content:"−"}
+  details.dev > summary:hover{color:var(--accent)}
+  details.dev .body{padding:4px 16px 18px; border-top:1px solid var(--line-soft)}
+  details.dev .body > *:first-child{margin-top:14px}
+  details.dev .body p{font-size:13.5px}
+  details.dev .tablewrap{border:0; margin:14px 0}
+  details.dev table{min-width:520px}
+
   figure{margin:28px 0; padding:0}
   figure svg{display:block; width:100%; max-width:100%; height:auto; color:var(--ink)}
-  figcaption{font-size:12.5px; color:var(--ink-3); margin-top:12px; padding-left:14px; border-left:2px solid var(--line); max-width:70ch}
+  figcaption{font-size:12.8px; color:var(--ink-3); margin-top:12px; padding-left:14px; border-left:2px solid var(--line); max-width:68ch}
   .figbox{border:1px solid var(--line); background:var(--panel); padding:22px 20px; border-radius:2px; overflow-x:auto}
 
   .tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:2px; background:var(--panel); margin:20px 0}
-  table{border-collapse:collapse; width:100%; min-width:640px; font-size:13.5px}
+  table{border-collapse:collapse; width:100%; min-width:600px; font-size:13.8px}
   th{text-align:left; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); padding:11px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); white-space:nowrap}
-  td{padding:11px 14px; border-bottom:1px solid var(--line-soft); vertical-align:top; color:var(--ink-2)}
+  td{padding:12px 14px; border-bottom:1px solid var(--line-soft); vertical-align:top; color:var(--ink-2)}
   tr:last-child td{border-bottom:0}
   td b{color:var(--ink); font-weight:600}
   td .path, .path{font-family:var(--mono); font-size:12px; white-space:nowrap}
@@ -88,36 +102,51 @@
   .t-acc{background:var(--accent-soft); color:var(--accent)}
   .t-idle{background:var(--panel-2); color:var(--ink-3)}
 
-  /* phase spine */
+  /* 손님 따라가기 타임라인 */
+  ol.story{list-style:none; margin:24px 0 0; padding:0 0 0 92px; position:relative}
+  ol.story::before{content:""; position:absolute; left:78px; top:12px; bottom:20px; width:1px; background:var(--line)}
+  ol.story > li{position:relative; margin-bottom:24px}
+  ol.story > li::before{content:""; position:absolute; left:-18px; top:8px; width:9px; height:9px; background:var(--ground); border:2px solid var(--accent)}
+  ol.story > li .t{position:absolute; left:-92px; top:0; width:64px; text-align:right; font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--ink-3); font-variant-numeric:tabular-nums}
+  ol.story > li h4{margin:0 0 3px; font-size:15px; font-weight:600}
+  ol.story > li p{margin:0; font-size:13.8px; color:var(--ink-2)}
+  @media (max-width:560px){
+    ol.story{padding-left:26px}
+    ol.story::before{left:12px}
+    ol.story > li::before{left:-18px}
+    ol.story > li .t{position:static; width:auto; text-align:left; display:block; margin-bottom:2px}
+  }
+
+  /* 단계 목록 */
   ol.phases{list-style:none; margin:26px 0 0; padding:0 0 0 34px; position:relative}
   ol.phases::before{content:""; position:absolute; left:9px; top:10px; bottom:26px; width:1px; background:var(--line)}
-  ol.phases > li{position:relative; margin-bottom:30px}
-  ol.phases > li::before{
-    content:""; position:absolute; left:-30px; top:9px; width:9px; height:9px;
-    background:var(--ground); border:2px solid var(--accent);
-  }
+  ol.phases > li{position:relative; margin-bottom:32px}
+  ol.phases > li::before{content:""; position:absolute; left:-30px; top:9px; width:9px; height:9px; background:var(--ground); border:2px solid var(--accent)}
   ol.phases > li.iso::before{border-color:var(--ink-3)}
-  .ph-h{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; margin-bottom:4px}
+  .ph-h{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; margin-bottom:5px}
   .ph-h .id{font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--accent); letter-spacing:.06em}
   .ph-h .nm{font-size:16px; font-weight:600}
-  .ph-h .loc{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-left:auto}
   ol.phases p{font-size:14px; margin:0 0 8px}
-  .kv{display:grid; grid-template-columns:74px minmax(0,1fr); gap:2px 12px; font-size:12.5px; margin-top:8px}
-  .kv dt{font-family:var(--mono); font-size:11px; color:var(--ink-3); padding-top:2px}
-  .kv dd{margin:0; color:var(--ink-2)}
+  ol.phases details.dev{margin:12px 0 0}
 
   .note{border:1px solid var(--line); border-top:3px solid var(--warn); background:var(--panel); padding:16px 18px; margin:22px 0; border-radius:2px}
   .note.acc{border-top-color:var(--accent)}
   .note.bad{border-top-color:var(--bad)}
   .note h4{margin:0 0 6px; font-size:14px; font-weight:600}
-  .note p{margin:0; font-size:13.5px; color:var(--ink-2)}
-  .note p + p{margin-top:8px}
-  .note ol,.note ul{margin:8px 0 0; padding-left:20px; font-size:13.5px}
-  .note li{color:var(--ink-2); margin-bottom:5px}
+  .note p{margin:0; font-size:13.8px; color:var(--ink-2)}
+  .note p + p{margin-top:9px}
+  .note ol,.note ul{margin:10px 0 0; padding-left:20px; font-size:13.8px}
+  .note li{color:var(--ink-2); margin-bottom:7px}
 
-  ul{margin:0 0 14px; padding-left:20px; max-width:70ch}
-  li{margin-bottom:6px; color:var(--ink-2)}
+  ul{margin:0 0 15px; padding-left:20px; max-width:68ch}
+  li{margin-bottom:7px; color:var(--ink-2)}
   li b{color:var(--ink)}
+
+  dl.gloss{display:grid; grid-template-columns:190px minmax(0,1fr); gap:0; margin:22px 0; border:1px solid var(--line); background:var(--panel); border-radius:2px; overflow:hidden}
+  @media (max-width:640px){ dl.gloss{grid-template-columns:1fr} }
+  dl.gloss dt{padding:13px 16px; font-weight:600; font-size:13.8px; border-bottom:1px solid var(--line-soft); background:var(--panel-2)}
+  dl.gloss dd{margin:0; padding:13px 16px; font-size:13.8px; color:var(--ink-2); border-bottom:1px solid var(--line-soft)}
+  dl.gloss dt:last-of-type, dl.gloss dd:last-of-type{border-bottom:0}
 
   footer{margin-top:80px; padding-top:24px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-3)}
   footer code{background:none; border:0; padding:0}
@@ -127,118 +156,269 @@
 
 <div class="wrap">
 <header class="top">
-  <p class="crumb"><a href="../index.html">아키텍처 맵</a> / 기능 설명서 / naver-sync</p>
+  <p class="crumb"><a href="../index.html">아키텍처 맵</a> / 기능 설명서 / 네이버 예약 동기화</p>
   <h1>네이버 예약 동기화</h1>
   <p class="lede">
-    네이버 스마트플레이스의 비공개 예약 API를 5분마다 폴링해 로컬 DB와 맞추고, 그 결과로
-    연박 감지 · 객실 자동배정 · SMS 칩 생성 · 즉시 발송까지 연쇄로 태우는 파이프라인입니다.
-    시스템에서 <b>바깥세상이 들어오는 유일한 입구</b>입니다.
+    네이버에 들어온 예약을 5분마다 확인해서 우리 장부로 옮기고, 그 뒤에 이어지는 일 —
+    연박 손님 묶기, 객실 배정, 보낼 문자 정리, 즉시 안내 문자 발송 — 까지 자동으로 처리하는 기능입니다.
+    <b>바깥 세상이 이 시스템으로 들어오는 유일한 입구</b>입니다.
   </p>
-  <div class="facts">
-    <div class="fact"><b>5분</b><span>기본 폴링 주기</span></div>
-    <div class="fact"><b>4</b><span>진입점</span></div>
-    <div class="fact"><b>6</b><span>파이프라인 단계</span></div>
-    <div class="fact"><b>1008</b><span>naver_sync.py LOC</span></div>
-    <div class="fact"><b>13</b><span>diag 이벤트</span></div>
+  <div class="howto">
+    본문은 개발 지식 없이 읽을 수 있게 썼습니다. <b>+ 개발자용</b>이라고 접힌 블록은 코드 위치와 조건이 들어 있으니 필요할 때만 펼치세요.
+    모르는 말이 나오면 맨 아래 <a href="#gloss">용어 사전</a>을 보세요.
   </div>
 </header>
 
 <div class="cols">
 <nav class="toc" aria-label="목차">
   <p>목차</p>
-  <a href="#glance"><b>00</b>한눈에</a>
-  <a href="#entry"><b>01</b>진입점</a>
-  <a href="#flow"><b>02</b>파이프라인</a>
-  <a href="#phases"><b>03</b>단계 상세</a>
-  <a href="#api"><b>04</b>네이버 API 계약</a>
-  <a href="#mapping"><b>05</b>데이터 매핑</a>
-  <a href="#split"><b>06</b>다객실 분할</a>
-  <a href="#pins"><b>07</b>보호 규칙</a>
-  <a href="#fail"><b>08</b>실패 격리</a>
-  <a href="#diag"><b>09</b>진단 · 점검</a>
-  <a href="#msa"><b>10</b>서비스 분해</a>
+  <a href="#story"><b>00</b>손님 따라가 보기</a>
+  <a href="#why"><b>01</b>왜 5분마다?</a>
+  <a href="#when"><b>02</b>언제 도는가</a>
+  <a href="#flow"><b>03</b>전체 순서도</a>
+  <a href="#steps"><b>04</b>단계별 설명</a>
+  <a href="#data"><b>05</b>받는 것과 채우는 것</a>
+  <a href="#split"><b>06</b>방 3개 예약 문제</a>
+  <a href="#pins"><b>07</b>사람이 고친 값 보호</a>
+  <a href="#fail"><b>08</b>실패하면 어떻게 되나</a>
+  <a href="#check"><b>09</b>문제 확인 순서</a>
+  <a href="#msa"><b>10</b>나중에 쪼갠다면</a>
+  <a href="#gloss"><b>11</b>용어 사전</a>
 </nav>
 
 <main>
 
-<!-- 00 -->
-<section id="glance">
-  <h2><span class="num">00</span>한눈에</h2>
+<!-- ══ 00 ══ -->
+<section id="story">
+  <h2><span class="num">00</span>손님 한 명을 따라가 보기</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      <b>손님이 네이버에서 예약 버튼을 누른 순간부터, 우리 시스템에서 문자가 나가기까지</b>
+      실제로 무슨 일이 벌어지는지 시간 순서대로 따라가 봅니다. 이 절만 읽어도 전체 그림이 잡힙니다.
+    </p>
+  </div>
+
   <p class="muted">
-    네이버는 예약 <b>웹훅을 주지 않습니다.</b> 그래서 이 기능은 “받는” 기능이 아니라 <b>주기적으로 긁어와 차이를 맞추는</b> 대사(對査) 기능입니다.
-    예약이 새로 생겼는지, 날짜가 바뀌었는지, 취소됐는지를 매번 전체 비교로 판정하고,
-    바뀐 것이 있으면 그 뒤에 붙은 배정·SMS 체계를 함께 재계산합니다.
+    <b>상황</b> — 김지현 손님이 <b>화요일 저녁 8시 12분</b>에 네이버에서 “2인실 2박”을 예약했습니다.
   </p>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>항목</th><th>내용</th></tr></thead>
-    <tbody>
-      <tr><td><b>본체</b></td><td class="path">app/services/naver_sync.py :: sync_naver_to_db()</td></tr>
-      <tr><td><b>외부 호출</b></td><td class="path">app/real/reservation.py :: RealReservationProvider</td></tr>
-      <tr><td><b>잡 등록</b></td><td class="path">app/scheduler/jobs.py :: sync_naver_reservations_job()</td></tr>
-      <tr><td><b>인증</b></td><td>테넌트 DB에 저장된 브라우저 쿠키 (<code>Tenant.naver_cookie</code>) — 만료 시 전체 동기화 중단</td></tr>
-      <tr><td><b>테넌트 처리</b></td><td>전 테넌트 순회, 테넌트마다 <b>독립 세션 + 독립 try/except</b>. 한 테넌트 실패가 다른 테넌트를 막지 않음</td></tr>
-      <tr><td><b>멱등성</b></td><td><code>external_id</code> / <code>naver_booking_id</code> 기준 업서트. 같은 응답을 여러 번 처리해도 결과 동일</td></tr>
-    </tbody>
-  </table>
+
+  <ol class="story">
+    <li>
+      <span class="t">20:12</span>
+      <h4>손님이 네이버에서 예약</h4>
+      <p>이 시점에 우리 시스템은 아직 아무것도 모릅니다. 네이버는 “예약 들어왔다”고 먼저 알려주지 않습니다.</p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>시스템이 네이버에 물어봄</h4>
+      <p>5분마다 도는 확인 작업이 실행됩니다. “최근에 새로 등록되거나 바뀐 예약 있나요?”라고 묻고 목록을 받아옵니다. 김지현 손님 예약이 여기 들어 있습니다.</p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>모자란 정보를 채움</h4>
+      <p>네이버가 준 건 상품 번호와 “1건”이라는 숫자뿐입니다. 우리 장부에서 그 상품이 어떤 방인지 찾아 <b>방 이름 · 실제 인원 · 남녀 · 도미토리 여부</b>를 채워 넣습니다.</p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>우리 장부에 저장 <span class="tag t-acc">여기부터 되돌아가지 않음</span></h4>
+      <p>기존에 없던 예약이므로 새로 만들어 저장합니다. <b>이 지점을 지나면 뒤에서 뭐가 실패해도 예약 자체는 남습니다.</b></p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>연박 손님인지 확인</h4>
+      <p>같은 이름·전화번호로 날짜가 이어지는 예약이 있으면 하나로 묶습니다. 청소팀 화면에서 “내일도 이어서 묵는 방”으로 표시되게 하기 위해서입니다.</p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>방 자동 배정 — 단, 오늘 체크인이면 안 함</h4>
+      <p>내일 이후 체크인이면 빈 방을 찾아 자동 배정합니다. <b>오후 3시 이후에 들어온 당일 체크인 예약은 자동 배정하지 않고</b> 운영자가 직접 배정하도록 남겨둡니다 — 체크인이 코앞이라 사람 판단이 필요하기 때문입니다.</p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>보낼 문자 목록 갱신 <span class="tag t-acc">저장 확정</span></h4>
+      <p>방이 정해진 뒤에야 “이 손님에게 · 이 문자를 · 이 날 보낸다”를 계산할 수 있습니다. 건물이나 방 조건이 붙은 문자는 배정 없이는 만들 수 없기 때문에 <b>순서가 이렇게 정해져 있습니다.</b></p>
+    </li>
+    <li>
+      <span class="t">20:15</span>
+      <h4>즉시 안내 문자 발송</h4>
+      <p>“예약 직후 보내기”로 설정된 안내가 있으면 지금 보냅니다. 이 발송이 실패해도 <b>앞의 예약 저장은 절대 되돌리지 않습니다.</b></p>
+    </li>
+    <li>
+      <span class="t">이후</span>
+      <h4>계속 지켜봄</h4>
+      <p>손님이 날짜를 바꾸거나 취소하면 다음 5분 확인 때 반영되고, 방 배정과 문자 목록도 따라서 다시 계산됩니다. 매일 오전 9:55에는 놓친 게 없는지 한 번 더 대조합니다.</p>
+    </li>
+  </ol>
+
+  <div class="note acc">
+    <h4>여기서 기억할 것 하나</h4>
+    <p>
+      이 기능은 “예약을 받는” 기능이 아니라 <b>“네이버 장부와 우리 장부를 계속 대조해서 맞추는”</b> 기능입니다.
+      그래서 같은 예약을 5분마다 몇 번을 다시 봐도 결과가 달라지지 않도록 만들어져 있습니다.
+    </p>
   </div>
 </section>
 
-<!-- 01 -->
-<section id="entry">
-  <h2><span class="num">01</span>진입점 — 같은 함수, 4가지 호출</h2>
+<!-- ══ 01 ══ -->
+<section id="why">
+  <h2><span class="num">01</span>왜 5분마다 물어보나</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      <b>네이버가 우리에게 먼저 알려주는 기능을 제공하지 않기 때문</b>입니다.
+      그래서 우리 쪽에서 계속 “새로운 거 있어요?”라고 물어보는 수밖에 없습니다.
+    </p>
+    <p>
+      게다가 우리가 쓰는 건 네이버가 공식으로 열어준 창구가 아니라, <b>네이버 사장님 페이지가 내부적으로 쓰는 통로</b>입니다.
+      그래서 ①로그인 열쇠(쿠키)가 만료되면 아무것도 못 가져오고 ②너무 자주 부르면 차단될 수 있습니다.
+    </p>
+  </div>
+
   <p class="muted">
-    네 경로 모두 최종적으로 <code>sync_naver_to_db()</code>를 부릅니다. 차이는 <b>어떤 날짜 필터로 긁어오는가</b>와
-    <b>당일 예약을 자동배정에 포함하는가</b> 두 가지뿐입니다.
+    5분이라는 간격은 이 둘 사이의 타협입니다. 더 짧게 하면 차단 위험이 커지고, 더 길게 하면
+    당일 취소 같은 급한 변경이 늦게 반영됩니다.
   </p>
+
+  <h3>확인은 두 갈래로 합니다</h3>
   <div class="tablewrap">
   <table>
-    <thead><tr><th>진입점</th><th>트리거</th><th>조회 범위</th><th>인자</th><th>목적</th></tr></thead>
+    <thead><tr><th>무엇을 기준으로</th><th>어떤 예약을 잡나</th><th>왜 필요한가</th></tr></thead>
     <tbody>
       <tr>
-        <td><b>정기 동기화</b></td>
-        <td class="path">cron */5분<br>KST</td>
-        <td>등록일 최근 1일 <span class="tag t-acc">REGDATE</span> + 체크인 오늘~내일 <span class="tag t-acc">USEDATE</span></td>
-        <td class="path">(기본값)</td>
-        <td>신규·변경·취소 상시 반영</td>
+        <td><b>최근에 예약된 것</b><br>(등록일 기준 1일)</td>
+        <td>방금 새로 들어온 예약, 방금 취소된 예약</td>
+        <td>가장 기본. 새 예약을 놓치지 않기 위해</td>
       </tr>
       <tr>
-        <td><b>일일 대사</b></td>
-        <td class="path">cron 09:55</td>
-        <td>체크인 오늘, 체크인 내일 <span class="tag t-acc">STARTDATE</span></td>
-        <td class="path">reconcile_date=</td>
-        <td>5분 동기화가 놓친 건 회수 — 10:01 자동배정 직전</td>
+        <td><b>곧 체크인하는 것</b><br>(체크인일 기준 오늘~내일)</td>
+        <td>몇 주 전에 예약해 두고 <b>오늘 갑자기 취소한</b> 손님</td>
+        <td>이게 없으면 그런 취소를 <b>다음 날 오전까지 모릅니다</b> — 빈 방인 줄 모르고 운영하게 됨</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <details class="dev">
+    <summary>개발자용 — 네이버 API 계약</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>항목</th><th>값</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td>베이스</td><td class="path">new.smartplace.naver.com</td><td>비공식 내부 엔드포인트</td></tr>
+          <tr><td>예약 목록</td><td class="path">/api/booking/v3.0/businesses/{bizId}/bookings</td><td><code>bizItemTypes=STANDARD</code></td></tr>
+          <tr><td>날짜 필터</td><td class="path">dateFilter=REGDATE | USEDATE</td><td>대사 모드는 STARTDATE 기반</td></tr>
+          <tr><td>페이징</td><td class="path">size=200</td><td>200건 미만이면 마지막 페이지</td></tr>
+          <tr><td>캐시 회피</td><td class="path">noCache={epoch_ms}</td><td>매 요청 갱신</td></tr>
+          <tr><td>인증</td><td class="path">Cookie 헤더 + X-Booking-Naver-Role: OWNER</td><td>만료 시 전면 중단</td></tr>
+          <tr><td>사용자 상세</td><td class="path">userId별 조회 (성별·연령·방문횟수)</td><td><code>Semaphore(10)</code> 동시성 제한</td></tr>
+          <tr><td>타임아웃</td><td class="path">30초</td><td>httpx AsyncClient</td></tr>
+          <tr><td>과거 이력</td><td class="path">from_date 지정 시 30일 청크 반복</td><td>USEDATE 보강 조회 생략</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">본체: <code>app/real/reservation.py :: RealReservationProvider.sync_reservations()</code></p>
+    </div>
+  </details>
+</section>
+
+<!-- ══ 02 ══ -->
+<section id="when">
+  <h2><span class="num">02</span>언제 도는가</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      <b>자동으로 도는 게 3가지, 사람이 직접 누르는 게 1가지</b> 있습니다.
+      네 가지 모두 결국 같은 작업을 하고, 차이는 “어느 범위를 확인하느냐”뿐입니다.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>무엇</th><th>언제</th><th>확인 범위</th><th>목적</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>정기 확인</b></td>
+        <td>5분마다</td>
+        <td>최근 등록분 + 오늘·내일 체크인분</td>
+        <td>평소 운영 — 새 예약·변경·취소 반영</td>
+      </tr>
+      <tr>
+        <td><b>아침 대조</b></td>
+        <td>매일 09:55</td>
+        <td>오늘 체크인 + 내일 체크인 전체</td>
+        <td>혹시 놓친 예약 회수 — <b>10:01 자동 배정 직전</b>에 맞춰둠</td>
       </tr>
       <tr>
         <td><b>수동 실행</b></td>
-        <td class="path">POST /api/reservations<br>/sync/naver</td>
-        <td>기본과 동일, <code>from_date</code> 주면 월 단위 청크로 과거 전체</td>
-        <td class="path">from_date=</td>
-        <td>운영자 즉시 동기화 · 과거 이력 적재 (<span class="tag t-warn">5회/분 제한</span>)</td>
+        <td>운영자가 버튼 클릭</td>
+        <td>기본과 동일<br>(날짜를 지정하면 과거 전체까지)</td>
+        <td>급할 때 즉시 반영 · 과거 이력 한번에 가져오기
+        <span class="tag t-warn">분당 5회 제한</span></td>
       </tr>
       <tr>
-        <td><b>언스테이블</b></td>
-        <td class="path">cron 15~20시 10분<br>+ 00:05 · 12:05</td>
-        <td>별도 business_id · 별도 쿠키</td>
-        <td class="path">source="unstable"</td>
-        <td>제2 사업장 예약 — 상품 매핑 없이 직접 해석</td>
+        <td><b>제2 사업장</b><br>(언스테이블)</td>
+        <td>오후 3~8시 10분마다<br>+ 00:05 · 12:05</td>
+        <td>별도 사업장의 예약</td>
+        <td>상품 등록이 안 된 사업장이라 인원·성별을 요청서 글에서 직접 읽어냄</td>
       </tr>
     </tbody>
   </table>
   </div>
-  <p class="muted">
-    정기 잡은 <code>coalesce=True</code>, <code>max_instances=1</code>, <code>misfire_grace_time=60</code>으로 등록됩니다 —
-    프로세스가 잠깐 죽었다 살아나도 밀린 실행이 쌓여 한꺼번에 터지지 않고 <b>한 번만 따라잡습니다.</b>
-  </p>
+
+  <div class="note">
+    <h4>프로그램이 잠깐 멈췄다 살아나면?</h4>
+    <p>
+      밀린 실행이 한꺼번에 터지지 않도록 설정돼 있습니다 — <b>딱 한 번만 따라잡고</b>, 동시에 두 번 돌지 않습니다.
+      그래서 재시작 직후 문자가 무더기로 나가는 일은 없습니다.
+    </p>
+  </div>
+
+  <details class="dev">
+    <summary>개발자용 — 잡 등록과 인자</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>진입점</th><th>등록</th><th>인자</th></tr></thead>
+        <tbody>
+          <tr><td>정기</td><td class="path">jobs.py :: sync_naver_reservations_job<br>CronTrigger(minute='*/5', KST)</td><td>(기본값)</td></tr>
+          <tr><td>대조</td><td class="path">reconcile_today_reservations_job<br>CronTrigger(9,55)</td><td class="path">reconcile_date=today, tomorrow</td></tr>
+          <tr><td>수동</td><td class="path">POST /api/reservations/sync/naver</td><td class="path">from_date= · reconcile_date=</td></tr>
+          <tr><td>언스테이블</td><td class="path">sync_unstable_reservations_job<br>hour='15-20',minute='*/10' + 0,12시 05분</td><td class="path">source="unstable"</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">
+        정기 잡 옵션: <code>coalesce=True</code> · <code>max_instances=1</code> · <code>misfire_grace_time=60</code>.
+        모든 경로가 최종적으로 <code>services/naver_sync.py :: sync_naver_to_db()</code> 를 호출합니다.
+      </p>
+    </div>
+  </details>
 </section>
 
-<!-- 02 -->
+<!-- ══ 03 ══ -->
 <section id="flow">
-  <h2><span class="num">02</span>파이프라인</h2>
+  <h2><span class="num">03</span>전체 순서도</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      한 번 실행되면 <b>9단계</b>가 순서대로 돕니다. 위쪽 4단계까지가 “예약을 우리 장부에 저장하는” 핵심이고,
+      그 아래는 저장된 예약을 바탕으로 <b>이어서 하는 뒷일</b>입니다.
+    </p>
+    <p>
+      <b>◆ 표시는 “저장 확정” 지점</b>입니다. 이 지점을 지나면 뒤에서 실패해도 앞의 결과는 남습니다.
+      <b>점선 테두리는 “실패해도 앞 단계를 되돌리지 않는” 단계</b>입니다.
+    </p>
+  </div>
 
   <figure>
     <div class="figbox">
-      <svg viewBox="0 0 900 760" role="img" aria-label="네이버 동기화 파이프라인: 네 개의 진입점이 sync_naver_to_db로 모이고, 조회·정규화·분할·업서트·정합가드·연박감지·자동배정·칩재계산·즉시발송 순으로 진행되며 중간에 세 번의 커밋 지점이 있다">
+      <svg viewBox="0 0 900 770" role="img" aria-label="동기화 순서도: 네 가지 실행 경로가 하나의 작업으로 모이고, 예약 가져오기·정보 채우기·방 여러 개 나누기·장부 저장·어긋남 검사·연박 묶기·객실 배정·문자 목록 계산·즉시 발송 순으로 진행되며 세 곳에 저장 확정 지점이 있다">
         <defs>
           <marker id="n-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
@@ -248,529 +428,696 @@
           </marker>
         </defs>
 
-        <!-- entry row -->
-        <rect x="14"  y="16" width="150" height="44" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <text x="89"  y="34" text-anchor="middle" font-size="11.5" fill="currentColor">정기 동기화</text>
-        <text x="89"  y="50" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">*/5분</text>
-        <rect x="178" y="16" width="150" height="44" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <text x="253" y="34" text-anchor="middle" font-size="11.5" fill="currentColor">일일 대사</text>
-        <text x="253" y="50" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">09:55</text>
-        <rect x="342" y="16" width="150" height="44" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <text x="417" y="34" text-anchor="middle" font-size="11.5" fill="currentColor">수동 실행</text>
-        <text x="417" y="50" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">운영자 버튼</text>
-        <rect x="506" y="16" width="150" height="44" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <text x="581" y="34" text-anchor="middle" font-size="11.5" fill="currentColor">언스테이블</text>
-        <text x="581" y="50" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">피크 10분</text>
+        <rect x="14"  y="16" width="150" height="46" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="89"  y="36" text-anchor="middle" font-size="11.5" fill="currentColor">정기 확인</text>
+        <text x="89"  y="52" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">5분마다</text>
+        <rect x="178" y="16" width="150" height="46" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="253" y="36" text-anchor="middle" font-size="11.5" fill="currentColor">아침 대조</text>
+        <text x="253" y="52" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">매일 09:55</text>
+        <rect x="342" y="16" width="150" height="46" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="417" y="36" text-anchor="middle" font-size="11.5" fill="currentColor">수동 실행</text>
+        <text x="417" y="52" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">운영자 버튼</text>
+        <rect x="506" y="16" width="150" height="46" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="581" y="36" text-anchor="middle" font-size="11.5" fill="currentColor">제2 사업장</text>
+        <text x="581" y="52" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">오후 10분마다</text>
 
-        <line x1="89"  y1="62" x2="300" y2="92" stroke="currentColor" stroke-width="1" opacity=".55"/>
-        <line x1="253" y1="62" x2="320" y2="92" stroke="currentColor" stroke-width="1" opacity=".55"/>
-        <line x1="417" y1="62" x2="350" y2="92" stroke="currentColor" stroke-width="1" opacity=".55"/>
-        <line x1="581" y1="62" x2="370" y2="92" stroke="currentColor" stroke-width="1" opacity=".55"/>
+        <line x1="89"  y1="64" x2="300" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="253" y1="64" x2="320" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="417" y1="64" x2="350" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="581" y1="64" x2="370" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
 
-        <rect x="200" y="94" width="270" height="38" fill="none" stroke="#3182F6" stroke-width="1.6"/>
-        <text x="335" y="118" text-anchor="middle" font-size="12.5" font-weight="600" fill="#3182F6">sync_naver_to_db( )</text>
+        <rect x="196" y="96" width="278" height="40" fill="none" stroke="#3182F6" stroke-width="1.6"/>
+        <text x="335" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="#3182F6">네 경로 모두 같은 작업으로 합류</text>
 
-        <!-- spine -->
-        <line x1="120" y1="150" x2="120" y2="700" stroke="currentColor" stroke-width="1" opacity=".45"/>
-        <line x1="335" y1="132" x2="335" y2="150" stroke="#3182F6" stroke-width="1.4"/>
-        <line x1="120" y1="150" x2="335" y2="150" stroke="#3182F6" stroke-width="1.4"/>
+        <line x1="120" y1="154" x2="120" y2="712" stroke="currentColor" stroke-width="1" opacity=".4"/>
+        <line x1="335" y1="136" x2="335" y2="154" stroke="#3182F6" stroke-width="1.4"/>
+        <line x1="120" y1="154" x2="335" y2="154" stroke="#3182F6" stroke-width="1.4"/>
 
-        <!-- phase blocks -->
         <g>
-          <rect x="140" y="152" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
-          <text x="156" y="174" font-size="12.5" font-weight="600" fill="currentColor">P1 · 조회</text>
-          <text x="156" y="192" font-size="10.5" fill="currentColor" opacity=".65">2-leg fetch → bookingId 중복 제거</text>
-          <circle cx="120" cy="178" r="4" fill="currentColor"/>
-          <line x1="470" y1="178" x2="700" y2="178" stroke="currentColor" stroke-width="1.1" marker-end="url(#n-ar)"/>
-          <rect x="702" y="152" width="184" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
-          <text x="794" y="174" text-anchor="middle" font-size="11.5" fill="currentColor">네이버 스마트플레이스</text>
-          <text x="794" y="191" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">쿠키 · 200건 페이징</text>
+          <rect x="140" y="156" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <text x="156" y="178" font-size="12.5" font-weight="600" fill="currentColor">1 · 네이버에서 예약 목록 받아오기</text>
+          <text x="156" y="196" font-size="10.5" fill="currentColor" opacity=".65">두 갈래로 확인 → 중복 제거</text>
+          <circle cx="120" cy="182" r="4" fill="currentColor"/>
+          <line x1="476" y1="182" x2="700" y2="182" stroke="currentColor" stroke-width="1.1" marker-end="url(#n-ar)"/>
+          <rect x="702" y="156" width="184" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <text x="794" y="178" text-anchor="middle" font-size="11.5" fill="currentColor">네이버</text>
+          <text x="794" y="195" text-anchor="middle" font-size="10" fill="currentColor" opacity=".6">로그인 쿠키로 접속</text>
         </g>
 
         <g>
-          <rect x="140" y="216" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
-          <text x="156" y="238" font-size="12.5" font-weight="600" fill="currentColor">P2 · 정규화</text>
-          <text x="156" y="256" font-size="10.5" fill="currentColor" opacity=".65">상품명 · 인원 · 성별 · 섹션 힌트 주입</text>
-          <circle cx="120" cy="242" r="4" fill="currentColor"/>
-          <text x="486" y="240" font-size="10.5" fill="currentColor" opacity=".7">분기: 액티비티 / 도미토리</text>
-          <text x="486" y="256" font-size="10.5" fill="currentColor" opacity=".7">/ 일반실 / 언스테이블</text>
+          <rect x="140" y="220" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <text x="156" y="242" font-size="12.5" font-weight="600" fill="currentColor">2 · 모자란 정보 채우기</text>
+          <text x="156" y="260" font-size="10.5" fill="currentColor" opacity=".65">방 이름 · 실제 인원 · 남녀 · 도미토리 여부</text>
+          <circle cx="120" cy="246" r="4" fill="currentColor"/>
         </g>
 
         <g>
-          <rect x="140" y="280" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
-          <text x="156" y="302" font-size="12.5" font-weight="600" fill="currentColor">P2.5 · 다객실 분할</text>
-          <text x="156" y="320" font-size="10.5" fill="currentColor" opacity=".65">bookingCount N → primary 1 + sibling N−1</text>
-          <circle cx="120" cy="306" r="4" fill="currentColor"/>
+          <rect x="140" y="284" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <text x="156" y="306" font-size="12.5" font-weight="600" fill="currentColor">3 · 방 여러 개 예약을 여러 건으로 나누기</text>
+          <text x="156" y="324" font-size="10.5" fill="currentColor" opacity=".65">방 3개 예약 1건 → 우리 장부에서는 3건</text>
+          <circle cx="120" cy="310" r="4" fill="currentColor"/>
         </g>
 
         <g>
-          <rect x="140" y="344" width="330" height="52" fill="none" stroke="#3182F6" stroke-width="1.4"/>
-          <text x="156" y="366" font-size="12.5" font-weight="600" fill="#3182F6">P2 · 업서트</text>
-          <text x="156" y="384" font-size="10.5" fill="currentColor" opacity=".65">_create_reservation / _update_reservation</text>
-          <polygon points="120,364 126,370 120,376 114,370" fill="#3182F6"/>
-          <text x="486" y="374" font-size="10.5" fill="#3182F6">commit ①</text>
+          <rect x="140" y="348" width="336" height="52" fill="none" stroke="#3182F6" stroke-width="1.5"/>
+          <text x="156" y="370" font-size="12.5" font-weight="600" fill="#3182F6">4 · 우리 장부에 저장</text>
+          <text x="156" y="388" font-size="10.5" fill="currentColor" opacity=".65">없으면 새로 만들고, 있으면 바뀐 것만 수정</text>
+          <polygon points="120,368 126,374 120,380 114,374" fill="#3182F6"/>
+          <text x="492" y="378" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
         </g>
 
         <g>
-          <rect x="140" y="408" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
-          <text x="156" y="430" font-size="12.5" font-weight="600" fill="currentColor">P2.8 · 분할그룹 정합 가드</text>
-          <text x="156" y="448" font-size="10.5" fill="currentColor" opacity=".65">취소고아 · 개수 drift · 부활 경보</text>
-          <polygon points="120,428 126,434 120,440 114,434" fill="#3182F6"/>
-          <text x="486" y="438" font-size="10.5" fill="#3182F6">commit ②</text>
+          <rect x="140" y="412" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
+          <text x="156" y="434" font-size="12.5" font-weight="600" fill="currentColor">5 · 나뉜 예약끼리 어긋났는지 검사</text>
+          <text x="156" y="452" font-size="10.5" fill="currentColor" opacity=".65">한쪽만 취소됐는지 등 — 이상하면 알림</text>
+          <polygon points="120,432 126,438 120,444 114,438" fill="#3182F6"/>
+          <text x="492" y="442" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
         </g>
 
         <g>
-          <rect x="140" y="472" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
-          <text x="156" y="494" font-size="12.5" font-weight="600" fill="currentColor">P4 · 연박 감지</text>
-          <text x="156" y="512" font-size="10.5" fill="currentColor" opacity=".65">이름+전화 연속 날짜 → stay_group 링크</text>
-          <circle cx="120" cy="498" r="4" fill="currentColor"/>
+          <rect x="140" y="476" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
+          <text x="156" y="498" font-size="12.5" font-weight="600" fill="currentColor">6 · 연박 손님 묶기</text>
+          <text x="156" y="516" font-size="10.5" fill="currentColor" opacity=".65">같은 이름·전화 + 이어지는 날짜</text>
+          <circle cx="120" cy="502" r="4" fill="currentColor"/>
         </g>
 
         <g>
-          <rect x="140" y="536" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
-          <text x="156" y="558" font-size="12.5" font-weight="600" fill="currentColor">P5 · 객실 자동배정</text>
-          <text x="156" y="576" font-size="10.5" fill="currentColor" opacity=".65">신규·날짜변경 예약의 날짜만 · 15시 컷오프</text>
-          <circle cx="120" cy="562" r="4" fill="currentColor"/>
+          <rect x="140" y="540" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
+          <text x="156" y="562" font-size="12.5" font-weight="600" fill="currentColor">7 · 객실 자동 배정</text>
+          <text x="156" y="580" font-size="10.5" fill="currentColor" opacity=".65">오후 3시 이후 들어온 당일 예약은 제외</text>
+          <circle cx="120" cy="566" r="4" fill="currentColor"/>
         </g>
 
         <g>
-          <rect x="140" y="600" width="330" height="52" fill="none" stroke="#3182F6" stroke-width="1.4" stroke-dasharray="4 3"/>
-          <text x="156" y="622" font-size="12.5" font-weight="600" fill="#3182F6">P5.5 · SMS 칩 재계산</text>
-          <text x="156" y="640" font-size="10.5" fill="currentColor" opacity=".65">표준칩 + 초과요금 + 업그레이드 약속/후기</text>
-          <polygon points="120,620 126,626 120,632 114,626" fill="#3182F6"/>
-          <text x="486" y="630" font-size="10.5" fill="#3182F6">commit ③</text>
+          <rect x="140" y="604" width="336" height="52" fill="none" stroke="#3182F6" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="156" y="626" font-size="12.5" font-weight="600" fill="#3182F6">8 · 보낼 문자 목록 다시 계산</text>
+          <text x="156" y="644" font-size="10.5" fill="currentColor" opacity=".65">방이 정해진 뒤라야 정확히 계산됨</text>
+          <polygon points="120,624 126,630 120,636 114,630" fill="#3182F6"/>
+          <text x="492" y="634" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
         </g>
 
         <g>
-          <rect x="140" y="664" width="330" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
-          <text x="156" y="686" font-size="12.5" font-weight="600" fill="currentColor">P6 · 이벤트 SMS 즉시 발송</text>
-          <text x="156" y="704" font-size="10.5" fill="currentColor" opacity=".65">별도 세션 · fire-and-forget</text>
-          <circle cx="120" cy="690" r="4" fill="currentColor"/>
-          <line x1="470" y1="690" x2="700" y2="690" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#n-ar)"/>
-          <rect x="702" y="664" width="184" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
-          <text x="794" y="694" text-anchor="middle" font-size="11.5" fill="currentColor">Aligo SMS</text>
+          <rect x="140" y="668" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
+          <text x="156" y="690" font-size="12.5" font-weight="600" fill="currentColor">9 · 즉시 안내 문자 발송</text>
+          <text x="156" y="708" font-size="10.5" fill="currentColor" opacity=".65">실패해도 앞의 저장은 그대로</text>
+          <circle cx="120" cy="694" r="4" fill="currentColor"/>
+          <line x1="476" y1="694" x2="700" y2="694" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#n-ar)"/>
+          <rect x="702" y="668" width="184" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
+          <text x="794" y="698" text-anchor="middle" font-size="11.5" fill="currentColor">문자 발송 업체</text>
         </g>
 
-        <text x="702" y="290" font-size="10.5" fill="currentColor" opacity=".62">점선 테두리 = 실패해도</text>
-        <text x="702" y="306" font-size="10.5" fill="currentColor" opacity=".62">앞 단계를 되돌리지 않는</text>
-        <text x="702" y="322" font-size="10.5" fill="currentColor" opacity=".62">격리 단계 (rollback 후 계속)</text>
-        <text x="702" y="352" font-size="10.5" fill="#3182F6">◆ = 커밋 지점</text>
+        <text x="702" y="270" font-size="10.5" font-weight="600" fill="currentColor" opacity=".75">읽는 법</text>
+        <text x="702" y="292" font-size="10.5" fill="#3182F6">◆ 저장 확정 지점</text>
+        <text x="702" y="312" font-size="10.5" fill="currentColor" opacity=".62">점선 = 실패해도 앞 단계를</text>
+        <text x="702" y="328" font-size="10.5" fill="currentColor" opacity=".62">되돌리지 않는 단계</text>
+        <text x="702" y="352" font-size="10.5" fill="currentColor" opacity=".62">실패한 단계는 대개</text>
+        <text x="702" y="368" font-size="10.5" fill="currentColor" opacity=".62">5분 뒤 다시 시도된다</text>
       </svg>
     </div>
     <figcaption>
-      단계 순서가 곧 안전 설계다. 업서트(commit ①)를 먼저 확정한 뒤, 뒤따르는 배정·칩·발송은 각각
-      독립 try/except 안에서 돌아 실패해도 예약 저장 자체는 살아남는다. 실패한 뒷단은 5분 뒤 다음 회차가 자연 재시도한다.
+      순서 자체가 안전장치다. 예약 저장(4단계)을 먼저 확정한 뒤, 뒷일은 각각 따로 실패할 수 있게 만들어
+      <b>문자 발송이 안 됐다고 예약이 사라지는 일</b>이 없게 했다.
     </figcaption>
   </figure>
 </section>
 
-<!-- 03 -->
-<section id="phases">
-  <h2><span class="num">03</span>단계 상세</h2>
+<!-- ══ 04 ══ -->
+<section id="steps">
+  <h2><span class="num">04</span>단계별 설명</h2>
 
   <ol class="phases">
     <li>
-      <div class="ph-h"><span class="id">P1</span><span class="nm">조회 · 중복 제거</span><span class="loc">real/reservation.py :: sync_reservations()</span></div>
+      <div class="ph-h"><span class="id">1</span><span class="nm">네이버에서 예약 목록 받아오기</span></div>
       <p>
-        기본 모드는 <b>두 번 긁습니다.</b> ①등록일(REGDATE) 최근 1일 — 방금 새로 잡히거나 취소된 예약을 잡고,
-        ②체크인일(USEDATE) 오늘~내일 — 몇 주 전에 예약해 두고 <b>체크인 당일 취소한 손님</b>을 잡습니다.
-        USEDATE 쪽이 없으면 그런 취소는 다음 09:55 대사까지 최대 하루 동안 보이지 않습니다.
-        두 결과는 <code>bookingId</code>로 병합되고, 월 단위 청크가 겹칠 수 있어 <code>external_id</code> 기준으로 한 번 더 중복 제거됩니다.
+        두 갈래로 물어봅니다(§01) — <b>최근 등록된 예약</b>과 <b>곧 체크인하는 예약</b>. 둘을 합친 뒤
+        같은 예약이 양쪽에 들어 있으면 하나로 정리합니다. 로그인 쿠키가 만료됐으면 빈 목록을 받고 조용히 끝납니다.
       </p>
-      <dl class="kv">
-        <dt>실패 시</dt><dd>쿠키 없음 → 빈 배열 반환 후 조용히 종료. HTTP 오류 → 이 테넌트만 롤백, 다음 테넌트 계속</dd>
-        <dt>diag</dt><dd class="path">naver_sync.enter · naver_sync.fetched · naver_api.fetch_page.{enter,exit}</dd>
-      </dl>
+      <details class="dev">
+        <summary>개발자용 — 코드와 진단</summary>
+        <div class="body">
+          <p class="muted">
+            <code>real/reservation.py :: sync_reservations()</code> — REGDATE 1일 + USEDATE 오늘~내일 2-leg fetch,
+            <code>bookingId</code> 병합. <code>from_date</code> 지정 시 30일 청크 반복(USEDATE leg 생략).
+            <code>external_id</code> 기준 재중복 제거는 <code>naver_sync.py</code> 상단.
+          </p>
+          <p class="muted">diag: <code>naver_sync.enter</code> · <code>naver_sync.fetched</code> · <code>naver_api.fetch_page.{enter,exit}</code></p>
+        </div>
+      </details>
     </li>
 
     <li>
-      <div class="ph-h"><span class="id">P2</span><span class="nm">정규화 (enrichment)</span><span class="loc">naver_sync.py :: sync_naver_to_db()</span></div>
+      <div class="ph-h"><span class="id">2</span><span class="nm">모자란 정보 채우기</span></div>
       <p>
-        네이버가 주는 건 상품 ID와 예약 건수뿐입니다. 여기서 DB의 <code>NaverBizItem</code> · <code>RoomBizItemLink</code>를
-        조회해 <b>상품명 · 실제 인원 · 도미토리 여부 · 기준인원 · 섹션(파티/객실/액티비티) · 기본 파티타입</b>을 채웁니다.
-        같은 <code>bookingCount</code> 값이 상품 종류에 따라 <b>인원수</b>가 되기도 하고 <b>객실 수</b>가 되기도 하는 것이 이 단계의 핵심 분기입니다(§05).
+        네이버가 주는 건 <b>상품 번호와 “몇 건”이라는 숫자</b>뿐입니다. 우리 장부에서 그 상품이 무엇인지 찾아
+        방 이름 · 실제 인원 · 남녀 구성 · 도미토리인지 여부를 채웁니다.
       </p>
-      <dl class="kv">
-        <dt>가드</dt><dd><code>RoomBizItemLink</code> 매핑이 없는 상품(차량투어 등)은 <code>_has_room_link=False</code>로 표시돼 분할·자동배정 대상에서 제외</dd>
-      </dl>
+      <p>
+        여기서 가장 헷갈리는 게 <b>“몇 건”이라는 숫자의 의미가 상품마다 다르다</b>는 점입니다.
+        도미토리면 <b>사람 수</b>, 일반 객실이면 <b>방 개수</b>를 뜻합니다. 자세한 건 <a href="#data">§05</a>.
+      </p>
+      <details class="dev">
+        <summary>개발자용 — enrichment 규칙</summary>
+        <div class="body">
+          <p class="muted">
+            <code>NaverBizItem</code>(상품명·섹션힌트·기본 파티타입·기본 정원) + <code>RoomBizItemLink</code>→<code>Room</code>
+            (도미토리 여부·base_capacity) 을 맵으로 만들어 <code>res_data</code>에 주입.
+            매핑 없는 상품은 <code>_has_room_link=False</code> 로 표시되어 분할·자동배정 대상에서 제외됩니다.
+          </p>
+        </div>
+      </details>
     </li>
 
     <li>
-      <div class="ph-h"><span class="id">P2.5</span><span class="nm">다객실 분할</span><span class="loc">_split_multi_room_reservations()</span></div>
+      <div class="ph-h"><span class="id">3</span><span class="nm">방 여러 개 예약 나누기</span></div>
       <p>
-        일반실을 2개 이상 잡은 <b>신규</b> 예약을 primary 1건 + sibling N−1건으로 쪼갭니다. 상세는 §06.
+        일반 객실을 2개 이상 잡은 <b>새 예약</b>을 여러 건으로 쪼갭니다. 우리 시스템은 “예약 1건 = 방 1개” 구조라
+        나누지 않으면 방을 두 개 배정할 방법이 없습니다. 자세한 건 <a href="#split">§06</a>.
       </p>
     </li>
 
     <li>
-      <div class="ph-h"><span class="id">P2</span><span class="nm">업서트 → <b>commit ①</b></span><span class="loc">_create_reservation() / _update_reservation()</span></div>
+      <div class="ph-h"><span class="id">4</span><span class="nm">우리 장부에 저장 <span class="tag t-acc">◆ 저장 확정</span></span></div>
       <p>
-        <code>external_id</code>/<code>naver_booking_id</code>로 기존 예약을 <b>일괄 조회</b>한 뒤(쿼리 1회) 신규는 INSERT,
-        기존은 필드 비교 갱신입니다. 갱신 경로는 운영자 수동 편집을 덮지 않도록 <code>ReservationMutator</code>를 통과하며(§07),
-        날짜가 바뀌었으면 <code>on_dates_changed()</code>, 인원·성별이 바뀌었으면 <code>on_constraints_changed()</code>,
-        취소로 바뀌었으면 <code>on_status_cancelled()</code> 라이프사이클 훅이 걸립니다.
+        이미 있는 예약이면 <b>바뀐 것만</b> 고치고, 없으면 새로 만듭니다. 이때
+        <b>운영자가 손으로 고쳐둔 값은 건드리지 않습니다</b>(<a href="#pins">§07</a>).
+        날짜가 바뀌었으면 방 배정을 옮기고, 인원이 바뀌었으면 정원 검사를 다시 하고,
+        취소로 바뀌었으면 연박 묶음에서 빼는 뒷정리가 자동으로 따라붙습니다.
       </p>
-      <dl class="kv">
-        <dt>수집</dt><dd><code>new_reservation_ids</code>(신규) · <code>date_changed_ids</code>(날짜 변경) — 뒤 단계의 작업 대상</dd>
-        <dt>주의</dt><dd>루프 안에서는 <b>DB 쓰기/flush를 하지 않습니다.</b> 경보 후보는 파이썬 리스트에만 모아두고 commit 이후에 처리 — 세션 오염 방지</dd>
-      </dl>
+      <details class="dev">
+        <summary>개발자용 — 업서트와 라이프사이클 훅</summary>
+        <div class="body">
+          <p class="muted">
+            <code>external_id</code>/<code>naver_booking_id</code> 일괄 조회 1회 → <code>_create_reservation()</code> /
+            <code>_update_reservation()</code>. 수정 경로는 <code>ReservationMutator.apply_changes(ChangeSource.NAVER, …)</code>
+            를 통과해 pin 필드를 guarded skip 합니다.
+          </p>
+          <p class="muted">
+            후처리 훅: <code>on_dates_changed()</code> · <code>on_constraints_changed()</code> ·
+            <code>on_status_cancelled()</code>. 루프 안에서는 DB flush 금지 — 경보 후보는 파이썬 리스트에만 모읍니다.
+          </p>
+          <p class="muted">수집 결과: <code>new_reservation_ids</code>(신규) · <code>date_changed_ids</code>(날짜 변경) → 이후 단계의 작업 대상</p>
+        </div>
+      </details>
     </li>
 
     <li class="iso">
-      <div class="ph-h"><span class="id">P2.8</span><span class="nm">분할그룹 정합 가드 → <b>commit ②</b></span><span class="loc">services/split_group_guard.py</span></div>
+      <div class="ph-h"><span class="id">5</span><span class="nm">나뉜 예약끼리 어긋났는지 검사 <span class="tag t-acc">◆ 저장 확정</span></span></div>
       <p>
-        분할된 예약은 네이버 쪽 변경이 primary 에만 반영됩니다. 그래서 <b>네 가지 어긋남</b>을 감지해 경보합니다 —
-        primary 취소인데 sibling 이 남은 <b>취소 고아</b>, 네이버 객실 수와 그룹 크기가 다른 <b>drift</b>,
-        취소됐다 되살아난 <b>부활 고아</b>, 분할 안 된 예약의 객실 수가 1→N 으로 늘어난 <b>미분할 다객실</b>.
+        3단계에서 나눈 예약들은 <b>네이버 쪽에 짝이 없습니다.</b> 그래서 네이버에서 일부만 취소되면
+        우리 쪽 여러 건 중 어느 걸 지워야 할지 알 수 없습니다. 이 단계는 그런 어긋남을 감지해 <b>알림만</b> 띄웁니다 —
+        자동으로 지우지 않는 이유는 잘못 지우면 되돌릴 수 없기 때문입니다.
       </p>
-      <dl class="kv">
-        <dt>모드</dt><dd><code>SPLIT_CANCEL_MODE=alert</code>(기본) 경보만 / <code>auto</code> 보호되지 않은 sibling 자동 취소</dd>
-        <dt>격리</dt><dd>전체 <code>try/except</code>. 실패해도 P4 이후는 정상 진행 — 5분 뒤 재시도</dd>
-      </dl>
+      <details class="dev">
+        <summary>개발자용 — 4종 경보와 모드</summary>
+        <div class="body">
+          <p class="muted">
+            <code>services/split_group_guard.py</code> — 취소 고아(<code>alert_cancel_orphan</code>),
+            개수 drift(<code>alert_bc_drift</code>), 부활 고아(<code>alert_reactivated_orphan</code>),
+            미분할 다객실(<code>alert_unsplit_multi</code>).
+            <code>SPLIT_CANCEL_MODE=alert</code>(기본) / <code>auto</code>(비보호 sibling 자동 취소).
+            전체 try/except 로 격리 — 실패해도 이후 단계는 정상 진행.
+          </p>
+        </div>
+      </details>
     </li>
 
     <li class="iso">
-      <div class="ph-h"><span class="id">P4</span><span class="nm">연박 감지</span><span class="loc">services/consecutive_stay.py</span></div>
+      <div class="ph-h"><span class="id">6</span><span class="nm">연박 손님 묶기</span></div>
       <p>
-        같은 이름+전화로 날짜가 이어지는 예약들을 <code>stay_group</code>으로 묶고, 묶인 그룹 안에서
-        같은 방인데 침대 순서가 다르면 통일합니다(<code>_align_bed_orders_for_groups</code>). 청소·연박 안내 화면이 이 결과를 씁니다.
+        같은 이름·전화번호로 날짜가 이어지는 예약들을 하나의 묶음으로 연결합니다.
+        묶인 안에서 같은 방인데 침대 순서가 다르면 통일합니다. 청소팀 화면과 연박 안내 문자가 이 결과를 씁니다.
       </p>
+      <details class="dev">
+        <summary>개발자용</summary>
+        <div class="body">
+          <p class="muted"><code>consecutive_stay.detect_and_link_consecutive_stays()</code> → <code>_align_bed_orders_for_groups()</code>. 하루 4회(9~12시) 별도 잡으로도 재확인.</p>
+        </div>
+      </details>
     </li>
 
     <li class="iso">
-      <div class="ph-h"><span class="id">P5</span><span class="nm">객실 자동배정</span><span class="loc">services/room_auto_assign.py</span></div>
+      <div class="ph-h"><span class="id">7</span><span class="nm">객실 자동 배정</span></div>
       <p>
-        신규 예약과 날짜가 바뀐 예약이 걸친 <b>날짜들만</b> 골라 자동배정을 돌립니다. 여기에 운영 규칙이 하나 있습니다 —
-        <b>15시(KST) 컷오프</b>: 15시 이전이면 오늘 날짜도 자동배정하지만, 15시 이후에 들어온 당일 예약은
-        체크인이 임박했으므로 자동배정하지 않고 운영자 수동 배정에 맡깁니다. 09:55 대사 경로는 항상 오늘을 포함합니다.
+        새로 들어오거나 날짜가 바뀐 예약이 걸친 <b>날짜들만</b> 골라 배정을 돌립니다.
+        여기에 운영 규칙이 하나 있습니다 — <b>오후 3시 컷오프</b>. 3시 이전이면 오늘 날짜도 자동 배정하지만,
+        3시 이후에 들어온 <b>당일 체크인 예약은 자동 배정하지 않고</b> 운영자에게 맡깁니다.
+        아침 대조(09:55)는 항상 오늘을 포함합니다.
       </p>
-      <dl class="kv">
-        <dt>diag</dt><dd class="path">naver_sync.phase5 — 대상 날짜 · 컷오프 적용 여부 기록</dd>
-      </dl>
+      <details class="dev">
+        <summary>개발자용</summary>
+        <div class="body">
+          <p class="muted">
+            <code>SAME_DAY_AUTO_CUTOFF_HOUR = 15</code> · <code>auto_assign_rooms(db, date, created_by="sync"|"reconcile")</code>.
+            diag <code>naver_sync.phase5</code> 에 대상 날짜·컷오프 적용 여부 기록.
+          </p>
+        </div>
+      </details>
     </li>
 
     <li>
-      <div class="ph-h"><span class="id">P5.5</span><span class="nm">SMS 칩 재계산 → <b>commit ③</b></span><span class="loc">chip_reconciler · surcharge · room_upgrade_*</span></div>
+      <div class="ph-h"><span class="id">8</span><span class="nm">보낼 문자 목록 다시 계산 <span class="tag t-acc">◆ 저장 확정</span></span></div>
       <p>
-        배정이 확정된 <b>다음에</b> 칩을 계산합니다. 순서가 중요합니다 — 건물/객실 필터가 걸린 스케줄은
-        <code>RoomAssignment</code>이 없으면 칩이 만들어지지 않기 때문입니다. 예전에는 P3와 P5.5 두 번 돌렸지만
-        지금은 배정 이후 1회로 통합돼 연산이 절반입니다. 표준 칩에 이어 초과요금 · 업그레이드 약속 · 업그레이드 후기 칩도
-        같은 대상 목록으로 재계산됩니다.
+        방 배정이 끝난 <b>다음에</b> 계산합니다. 순서가 중요한 이유는, “○○동 손님에게만” 같은 조건이 붙은 문자는
+        <b>방이 정해지기 전에는 대상을 고를 수 없기</b> 때문입니다.
       </p>
-      <dl class="kv">
-        <dt>안전</dt><dd>테넌트 ID를 <b>명시 필터</b>로 한 번 더 검사. 과거에 bypass 유출로 다른 테넌트 스케줄이 딸려온 사고가 있었음</dd>
-        <dt>보호</dt><dd><code>assigned_by ∈ {manual, excluded}</code> 이거나 <code>sent_at</code>이 있는 칩은 재계산이 지우지 않음</dd>
-      </dl>
+      <p>
+        여기서 <b>이미 보낸 문자와 사람이 직접 손댄 항목은 지우지 않습니다.</b>
+        기본 안내 외에 인원 초과 안내 · 무료 업그레이드 약속/후기 안내도 함께 다시 계산됩니다.
+      </p>
+      <details class="dev">
+        <summary>개발자용 — 칩 재계산과 보호 규칙</summary>
+        <div class="body">
+          <p class="muted">
+            <code>reconcile_chips_for_reservation()</code> + <code>reconcile_surcharge_batch()</code> +
+            <code>reconcile_room_upgrade_promise_batch()</code> / <code>_review_batch()</code>.
+            보호: <code>assigned_by ∈ {manual, excluded}</code> 이거나 <code>sent_at IS NOT NULL</code> 인 칩은 삭제 대상 아님.
+          </p>
+          <p class="muted">
+            안전장치: 스케줄 조회 시 <code>tenant_id</code> 명시 필터를 한 번 더 겁니다 —
+            과거 bypass 유출로 다른 테넌트 스케줄이 딸려온 사고 이력이 있습니다.
+          </p>
+        </div>
+      </details>
     </li>
 
     <li class="iso">
-      <div class="ph-h"><span class="id">P6</span><span class="nm">이벤트 SMS 즉시 발송</span><span class="loc">services/event_sms_hook.py</span></div>
+      <div class="ph-h"><span class="id">9</span><span class="nm">즉시 안내 문자 발송</span></div>
       <p>
-        신규 예약 중 활성 이벤트 스케줄(성별 조건 · 예약 후 경과시간 등)에 맞는 건에 즉시 안내 문자를 보냅니다.
-        <b>별도 DB 세션</b>을 쓰고 어떤 예외도 위로 던지지 않습니다 — 문자 발송 실패가 예약 동기화를 되돌리면 안 되기 때문입니다.
+        새 예약 중 “예약 직후 보내기” 조건에 맞는 건에 문자를 바로 보냅니다.
+        <b>완전히 분리된 상태로 실행</b>되어 어떤 오류가 나도 위로 번지지 않습니다 —
+        문자 발송 실패가 예약 저장을 되돌리면 안 되기 때문입니다.
       </p>
+      <details class="dev">
+        <summary>개발자용</summary>
+        <div class="body">
+          <p class="muted"><code>event_sms_hook.schedule_event_sms_hook(ids, tenant_id)</code> — 별도 DB 세션, fire-and-forget, 예외 절대 전파 안 함.</p>
+        </div>
+      </details>
     </li>
   </ol>
 </section>
 
-<!-- 04 -->
-<section id="api">
-  <h2><span class="num">04</span>네이버 API 계약</h2>
-  <p class="muted">공식 API가 아니라 스마트플레이스 웹 콘솔이 쓰는 내부 엔드포인트입니다. 계약이 언제든 바뀔 수 있다는 전제로 다뤄야 합니다.</p>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>항목</th><th>값</th><th>비고</th></tr></thead>
-    <tbody>
-      <tr><td><b>베이스</b></td><td class="path">new.smartplace.naver.com</td><td>—</td></tr>
-      <tr><td><b>예약 목록</b></td><td class="path">/api/booking/v3.0/businesses/{bizId}/bookings</td><td><code>bizItemTypes=STANDARD</code></td></tr>
-      <tr><td><b>날짜 필터</b></td><td class="path">dateFilter=REGDATE | USEDATE</td><td>대사 모드는 STARTDATE 기반 조회 사용</td></tr>
-      <tr><td><b>페이징</b></td><td class="path">size=200</td><td>200건 미만이 오면 마지막 페이지</td></tr>
-      <tr><td><b>캐시 회피</b></td><td class="path">noCache={epoch_ms}</td><td>매 요청 갱신</td></tr>
-      <tr><td><b>인증</b></td><td class="path">Cookie 헤더 + X-Booking-Naver-Role: OWNER</td><td><span class="tag t-bad">만료 시 전면 중단</span></td></tr>
-      <tr><td><b>사용자 상세</b></td><td class="path">userId별 조회 (성별 · 연령 · 방문횟수)</td><td><code>Semaphore(10)</code> 동시성 제한 — 과도 호출 시 IP 차단 위험</td></tr>
-      <tr><td><b>타임아웃</b></td><td class="path">30초</td><td>httpx AsyncClient</td></tr>
-      <tr><td><b>과거 이력</b></td><td class="path">from_date 지정 시 30일 청크 반복</td><td>USEDATE 보강 조회는 생략</td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
+<!-- ══ 05 ══ -->
+<section id="data">
+  <h2><span class="num">05</span>네이버가 주는 것 / 우리가 채우는 것</h2>
 
-<!-- 05 -->
-<section id="mapping">
-  <h2><span class="num">05</span>데이터 매핑과 분기</h2>
-
-  <h3>필드 매핑</h3>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>네이버 → 파서</th><th>Reservation 컬럼</th><th>갱신 정책</th></tr></thead>
-    <tbody>
-      <tr><td class="path">external_id / bookingId</td><td class="path">external_id · naver_booking_id</td><td>매칭 키 · 변경 없음</td></tr>
-      <tr><td class="path">customer_name · phone</td><td class="path">customer_name · phone</td><td>Mutator 경유 <span class="tag t-warn">운영자 편집 시 보호</span></td></tr>
-      <tr><td class="path">visitor_name · visitor_phone</td><td class="path">visitor_name · visitor_phone</td><td>Mutator 경유</td></tr>
-      <tr><td class="path">date · end_date</td><td class="path">check_in_date · check_out_date</td><td>핀 없으면 갱신 <span class="tag t-warn">pinned 시 skip</span></td></tr>
-      <tr><td class="path">bizItemId</td><td class="path">naver_biz_item_id · naver_room_type</td><td>항상 갱신</td></tr>
-      <tr><td class="path">bookingCount</td><td class="path">booking_count · party_size</td><td>분할 관리 예약은 <b>동결</b></td></tr>
-      <tr><td class="path">customFormInputJson</td><td class="path">special_requests</td><td>Mutator 경유 · 언스테이블에선 성별 파싱 소스</td></tr>
-      <tr><td class="path">gender · age · visitCount</td><td class="path">gender · age_group · visit_count</td><td>값이 있을 때만 덮어씀</td></tr>
-      <tr><td class="path">(계산)</td><td class="path">male_count · female_count</td><td><code>gender_manual=True</code>면 재계산 안 함</td></tr>
-      <tr><td class="path">status</td><td class="path">status · cancelled_at · confirmed_at</td><td>status 핀 있으면 유지 <span class="tag t-bad">부활 차단</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-
-  <h3>인원 해석 분기 — 같은 <code>bookingCount</code>, 네 가지 의미</h3>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>상품 유형</th><th>판정 기준</th><th>bookingCount 의미</th><th>인원 산출</th><th>성별 재계산</th></tr></thead>
-    <tbody>
-      <tr><td><b>도미토리</b></td><td class="path">RoomBizItemLink → Room.is_dormitory</td><td>인원 수</td><td>그대로 인원</td><td>매 동기화</td></tr>
-      <tr><td><b>액티비티</b></td><td class="path">NaverBizItem.section_hint='activity'</td><td>신청 인원</td><td>그대로 인원</td><td>매 동기화</td></tr>
-      <tr><td><b>일반실</b></td><td class="path">위 둘 아님 + 링크 있음</td><td><b>객실 수</b></td><td>인원 옵션 → 없으면 기준인원</td><td>최초 1회만</td></tr>
-      <tr><td><b>언스테이블</b></td><td class="path">source='unstable'</td><td>인원 수</td><td>그대로 인원</td><td>요청서 텍스트 파싱 → 예약자 성별 fallback</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <div class="note">
-    <h4>여기가 사고가 가장 잘 나는 지점입니다</h4>
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
     <p>
-      상품이 <code>NaverBizItem</code>이나 <code>RoomBizItemLink</code>에 등록되지 않으면 시스템은 그 상품이 도미토리인지 일반실인지
-      알 수 없습니다. 이 경우 분할도, 자동배정도 하지 않고 <b>네이버 원본 값을 그대로</b> 둡니다 — 조용히 틀린 값을 만드는 대신
-      아무것도 안 하는 쪽을 택한 설계입니다. 새 상품을 팔기 시작했는데 배정이 안 된다면 <b>객실 설정 탭의 상품 매핑</b>부터 확인하세요.
+      네이버는 <b>“상품 번호 A, 1건, 김지현, 010-…”</b> 정도만 줍니다.
+      그게 몇 인실인지, 몇 명이 오는지, 도미토리인지는 <b>우리 장부의 상품 등록 정보를 보고 우리가 채웁니다.</b>
+    </p>
+    <p>
+      그래서 <b>상품 등록이 안 돼 있으면 시스템은 그 예약을 어떻게 다뤄야 할지 모릅니다.</b> 이게 이 기능에서 사고가 가장 잘 나는 지점입니다.
     </p>
   </div>
+
+  <h3>같은 “1건”이 상품마다 다른 뜻</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>상품 종류</th><th>“건수”의 뜻</th><th>인원은 어떻게 정하나</th><th>남녀 인원 갱신</th></tr></thead>
+    <tbody>
+      <tr><td><b>도미토리</b></td><td>사람 수</td><td>건수 = 인원</td><td>매번 다시 계산</td></tr>
+      <tr><td><b>액티비티</b><br>(투어·체험)</td><td>신청 인원</td><td>건수 = 인원</td><td>매번 다시 계산</td></tr>
+      <tr><td><b>일반 객실</b></td><td><b>방 개수</b></td><td>예약 시 고른 인원 → 없으면 방 기준 인원</td><td>처음 한 번만</td></tr>
+      <tr><td><b>제2 사업장</b></td><td>사람 수</td><td>건수 = 인원</td><td>요청서 글에서 “남 2 여 1” 같은 표기를 읽어냄</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <h4>상품이 등록 안 돼 있으면 어떻게 되나</h4>
+    <p>
+      시스템은 <b>아무것도 하지 않습니다.</b> 나누지도 않고 자동 배정도 하지 않고, 네이버가 준 값 그대로 둡니다.
+      틀린 값을 조용히 만들어내는 것보다 낫다고 판단한 설계입니다.
+    </p>
+    <p>
+      <b>증상</b>: 새로 팔기 시작한 상품의 예약이 들어오긴 하는데 방이 배정되지 않는다 →
+      <b>확인</b>: 객실 설정 탭에서 그 상품이 방과 연결돼 있는지 봅니다.
+    </p>
+  </div>
+
+  <details class="dev">
+    <summary>개발자용 — 필드 매핑표</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>네이버 → 파서</th><th>Reservation 컬럼</th><th>갱신 정책</th></tr></thead>
+        <tbody>
+          <tr><td class="path">external_id / bookingId</td><td class="path">external_id · naver_booking_id</td><td>매칭 키 · 변경 없음</td></tr>
+          <tr><td class="path">customer_name · phone</td><td class="path">customer_name · phone</td><td>Mutator 경유 (운영자 편집 시 보호)</td></tr>
+          <tr><td class="path">visitor_name · visitor_phone</td><td class="path">visitor_name · visitor_phone</td><td>Mutator 경유</td></tr>
+          <tr><td class="path">date · end_date</td><td class="path">check_in_date · check_out_date</td><td>pin 없으면 갱신</td></tr>
+          <tr><td class="path">bizItemId</td><td class="path">naver_biz_item_id · naver_room_type</td><td>항상 갱신</td></tr>
+          <tr><td class="path">bookingCount</td><td class="path">booking_count · party_size</td><td>분할 관리 예약은 동결</td></tr>
+          <tr><td class="path">customFormInputJson</td><td class="path">special_requests</td><td>Mutator 경유 · unstable 성별 파싱 소스</td></tr>
+          <tr><td class="path">gender · age · visitCount</td><td class="path">gender · age_group · visit_count</td><td>값 있을 때만 덮어씀</td></tr>
+          <tr><td class="path">(계산)</td><td class="path">male_count · female_count</td><td><code>gender_manual=True</code> 면 재계산 안 함</td></tr>
+          <tr><td class="path">status</td><td class="path">status · cancelled_at · confirmed_at</td><td>status pin 있으면 유지(부활 차단)</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">판정 근거: <code>section_hint='activity'</code> / <code>Room.is_dormitory</code> / <code>_has_room_link</code> / <code>source='unstable'</code></p>
+    </div>
+  </details>
 </section>
 
-<!-- 06 -->
+<!-- ══ 06 ══ -->
 <section id="split">
-  <h2><span class="num">06</span>다객실 분할</h2>
-  <p class="muted">
-    네이버는 “객실 3개”를 예약 <b>한 건</b>으로 보냅니다. 반면 우리 스키마는
-    <code>RoomAssignment(reservation_id, date)</code>에 유니크 제약이 있어 <b>예약 1건 = 방 1개 = 날짜 1개</b> 모델입니다.
-    그대로 저장하면 3개 방을 배정할 방법이 없습니다.
-  </p>
+  <h2><span class="num">06</span>“방 3개 예약” 문제</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      손님이 네이버에서 <b>방 3개를 한 번에 예약</b>하면 네이버는 이걸 <b>예약 1건</b>으로 보냅니다.
+      그런데 우리 시스템은 <b>“예약 1건 = 방 1개”</b> 구조라 그대로 저장하면 방 3개를 배정할 방법이 없습니다.
+    </p>
+    <p>
+      그래서 저장할 때 <b>대표 예약 1건 + 딸린 예약 2건</b>으로 나눕니다. 인원과 금액도 나눠 담되 총합은 원래와 같게 맞춥니다.
+    </p>
+  </div>
 
   <figure>
     <div class="figbox">
-      <svg viewBox="0 0 880 300" role="img" aria-label="다객실 분할: 네이버의 객실 3개짜리 예약 한 건이 primary 한 건과 sibling 두 건으로 나뉘고, sibling은 외부 ID가 비어 있으며 셋이 같은 split_group_id를 공유한다">
+      <svg viewBox="0 0 880 300" role="img" aria-label="방 3개 예약 나누기: 네이버의 예약 한 건이 대표 예약 한 건과 딸린 예약 두 건으로 나뉘고, 딸린 예약에는 네이버 예약번호가 없으며 셋은 같은 그룹 표시로 연결된다">
         <defs>
           <marker id="s-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
           </marker>
         </defs>
 
-        <text x="20" y="26" font-size="11" font-weight="600" fill="currentColor" opacity=".6">네이버 응답</text>
-        <rect x="20" y="40" width="220" height="96" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="20" y="26" font-size="11" font-weight="600" fill="currentColor" opacity=".6">네이버가 보내주는 것</text>
+        <rect x="20" y="40" width="222" height="98" fill="none" stroke="currentColor" stroke-width="1.4"/>
         <text x="36" y="64" font-size="12.5" font-weight="600" fill="currentColor">예약 1건</text>
-        <text x="36" y="86" font-size="11" fill="currentColor" opacity=".72">bookingId = 88123</text>
-        <text x="36" y="104" font-size="11" fill="currentColor" opacity=".72">bookingCount = 3 (객실)</text>
-        <text x="36" y="122" font-size="11" fill="currentColor" opacity=".72">인원 6 · 금액 300,000</text>
+        <text x="36" y="86" font-size="11" fill="currentColor" opacity=".72">방 3개</text>
+        <text x="36" y="104" font-size="11" fill="currentColor" opacity=".72">인원 6명</text>
+        <text x="36" y="122" font-size="11" fill="currentColor" opacity=".72">금액 300,000원</text>
 
-        <line x1="242" y1="88" x2="322" y2="88" stroke="currentColor" stroke-width="1.2" marker-end="url(#s-ar)"/>
-        <text x="282" y="78" text-anchor="middle" font-size="10" fill="currentColor" opacity=".7">분할</text>
+        <line x1="244" y1="88" x2="322" y2="88" stroke="currentColor" stroke-width="1.2" marker-end="url(#s-ar)"/>
+        <text x="283" y="78" text-anchor="middle" font-size="10" fill="currentColor" opacity=".7">나누기</text>
 
-        <text x="326" y="26" font-size="11" font-weight="600" fill="currentColor" opacity=".6">DB 저장 결과</text>
+        <text x="326" y="26" font-size="11" font-weight="600" fill="currentColor" opacity=".6">우리 장부에 저장되는 모습</text>
 
-        <rect x="326" y="40" width="240" height="66" fill="none" stroke="#3182F6" stroke-width="1.6"/>
-        <text x="342" y="62" font-size="12" font-weight="600" fill="#3182F6">primary</text>
-        <text x="342" y="80" font-size="10.5" fill="currentColor" opacity=".72">external_id = 88123 · 인원 2 · 100,000</text>
-        <text x="342" y="96" font-size="10.5" fill="currentColor" opacity=".72">네이버 변경이 반영되는 유일한 행</text>
+        <rect x="326" y="40" width="248" height="66" fill="none" stroke="#3182F6" stroke-width="1.6"/>
+        <text x="342" y="62" font-size="12" font-weight="600" fill="#3182F6">대표 예약</text>
+        <text x="342" y="80" font-size="10.5" fill="currentColor" opacity=".72">인원 2 · 100,000원</text>
+        <text x="342" y="96" font-size="10.5" fill="currentColor" opacity=".72">네이버 예약번호 있음 → 변경이 여기로 들어옴</text>
 
-        <rect x="326" y="116" width="240" height="58" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
-        <text x="342" y="138" font-size="12" font-weight="600" fill="currentColor">sibling #1</text>
-        <text x="342" y="156" font-size="10.5" fill="currentColor" opacity=".72">external_id = NULL · 인원 2 · 100,000</text>
+        <rect x="326" y="116" width="248" height="58" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="342" y="138" font-size="12" font-weight="600" fill="currentColor">딸린 예약 1</text>
+        <text x="342" y="156" font-size="10.5" fill="currentColor" opacity=".72">네이버 예약번호 없음 → 변경이 닿지 않음</text>
 
-        <rect x="326" y="184" width="240" height="58" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
-        <text x="342" y="206" font-size="12" font-weight="600" fill="currentColor">sibling #2</text>
-        <text x="342" y="224" font-size="10.5" fill="currentColor" opacity=".72">external_id = NULL · 인원 2 · 100,000</text>
+        <rect x="326" y="184" width="248" height="58" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="342" y="206" font-size="12" font-weight="600" fill="currentColor">딸린 예약 2</text>
+        <text x="342" y="224" font-size="10.5" fill="currentColor" opacity=".72">네이버 예약번호 없음 → 변경이 닿지 않음</text>
 
-        <line x1="576" y1="73" x2="618" y2="73" stroke="currentColor" stroke-width="1" opacity=".5"/>
-        <line x1="576" y1="145" x2="618" y2="145" stroke="currentColor" stroke-width="1" opacity=".5"/>
-        <line x1="576" y1="213" x2="618" y2="213" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="584" y1="73" x2="618" y2="73" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="584" y1="145" x2="618" y2="145" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="584" y1="213" x2="618" y2="213" stroke="currentColor" stroke-width="1" opacity=".5"/>
         <line x1="618" y1="73" x2="618" y2="213" stroke="currentColor" stroke-width="1" opacity=".5"/>
         <line x1="618" y1="143" x2="656" y2="143" stroke="currentColor" stroke-width="1.2" marker-end="url(#s-ar)"/>
 
-        <rect x="658" y="112" width="204" height="62" fill="none" stroke="currentColor" stroke-width="1.2"/>
-        <text x="674" y="134" font-size="11.5" font-weight="600" fill="currentColor">split_group_id</text>
-        <text x="674" y="152" font-size="10.5" fill="currentColor" opacity=".72">nsplit-88123</text>
-        <text x="674" y="167" font-size="10" fill="currentColor" opacity=".6">셋을 잇는 유일한 끈</text>
+        <rect x="658" y="110" width="204" height="66" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="674" y="132" font-size="11.5" font-weight="600" fill="currentColor">같은 그룹 표시</text>
+        <text x="674" y="150" font-size="10.5" fill="currentColor" opacity=".72">셋이 원래 한 건이었다는</text>
+        <text x="674" y="166" font-size="10.5" fill="currentColor" opacity=".72">유일한 단서</text>
 
-        <text x="326" y="270" font-size="10.5" fill="currentColor" opacity=".7">합계 보존: 인원·금액의 나머지는 primary 로 몰아 총합이 원본과 일치한다.</text>
-        <text x="326" y="288" font-size="10.5" fill="currentColor" opacity=".7">sibling 은 외부 ID가 없어 재동기화 매칭 후보가 아니다 — 네이버 변경은 primary 에만 닿는다.</text>
+        <text x="326" y="272" font-size="10.5" fill="currentColor" opacity=".7">인원·금액의 나머지는 대표에 몰아 담아 총합이 원래와 정확히 같다.</text>
+        <text x="326" y="290" font-size="10.5" fill="currentColor" opacity=".7">네이버에서 날짜를 바꾸면 대표에만 반영된다 — 딸린 예약은 운영자가 직접 손봐야 한다.</text>
       </svg>
     </div>
     <figcaption>
-      분할은 되돌릴 수 없는 방향의 변환이다. 그래서 <b>신규 예약에만</b> 적용하고, 이후에는
-      <code>split_group_id</code>로 묶어 그룹 정합을 감시(P2.8)하는 방식으로 관리한다.
+      나누는 건 되돌리기 어려운 변환이라 <b>새 예약에만</b> 적용한다. 이후에는 “같은 그룹” 표시로 묶어 어긋남을 감시(4·5단계)한다.
     </figcaption>
   </figure>
 
-  <h3>분할하지 않는 4가지 경우</h3>
+  <h3>나누지 않는 경우 4가지</h3>
   <div class="tablewrap">
   <table>
-    <thead><tr><th>스킵 조건</th><th>이유</th></tr></thead>
+    <thead><tr><th>이런 경우엔 안 나눔</th><th>이유</th></tr></thead>
     <tbody>
-      <tr><td class="path">bookingCount ≤ 1</td><td>나눌 것이 없음</td></tr>
-      <tr><td class="path">도미토리 상품</td><td>bookingCount 가 객실 수가 아니라 <b>인원 수</b></td></tr>
-      <tr><td class="path">RoomBizItemLink 매핑 없음</td><td>정체 불명 상품(차량투어 등)을 객실처럼 쪼개면 운영 사고</td></tr>
-      <tr><td class="path">이미 DB에 있는 예약</td><td>첫 동기화 때 처리 완료 — 재분할 금지</td></tr>
+      <tr><td><b>1건짜리 예약</b></td><td>나눌 게 없음</td></tr>
+      <tr><td><b>도미토리</b></td><td>거기서 “3”은 방 3개가 아니라 <b>사람 3명</b>이라 나누면 안 됨</td></tr>
+      <tr><td><b>상품 등록이 안 된 것</b></td><td>차량 투어 같은 비숙박 상품일 수 있음 — 방처럼 쪼개면 운영 사고</td></tr>
+      <tr><td><b>이미 저장돼 있는 예약</b></td><td>처음 들어올 때 이미 나눴음 — 또 나누면 중복</td></tr>
     </tbody>
   </table>
   </div>
 
   <div class="note bad">
-    <h4>분할 예약의 알려진 한계</h4>
+    <h4>알아둬야 할 한계</h4>
     <p>
-      sibling 은 네이버 쪽에 대응하는 행이 없습니다. 따라서 <b>네이버에서 3개 중 1개만 취소</b>해도 시스템은
-      어느 sibling 을 지워야 할지 알 수 없습니다. 이 때문에 자동 전파는 기본적으로 꺼져 있고(<code>alert</code> 모드),
-      P2.8 가드가 “그룹이 어긋났다”는 경보만 띄웁니다. 처리는 운영자 판단입니다.
+      딸린 예약은 네이버 쪽에 대응하는 짝이 없습니다. 그래서 <b>손님이 네이버에서 3개 중 1개만 취소</b>해도
+      시스템은 우리 쪽 어느 건을 지워야 할지 알 수 없습니다. 이럴 때 자동으로 지우지 않고
+      <b>활동 로그에 알림만</b> 남깁니다 — 처리는 운영자 판단입니다.
     </p>
   </div>
 </section>
 
-<!-- 07 -->
+<!-- ══ 07 ══ -->
 <section id="pins">
-  <h2><span class="num">07</span>보호 규칙 — 자동화가 사람을 덮지 않게</h2>
-  <p class="muted">
-    5분마다 도는 자동 동기화의 가장 큰 위험은 <b>운영자가 방금 손으로 고친 값을 되돌려 놓는 것</b>입니다.
-    그래서 “한번 사람이 만진 필드”에는 핀이 박히고, 네이버 값은 그 필드를 건드리지 못합니다.
-  </p>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>핀</th><th>보호 대상</th><th>동작</th><th>해제 조건</th></tr></thead>
-    <tbody>
-      <tr>
-        <td class="path">manually_edited_fields</td>
-        <td>이름 · 전화 · 방문자 정보 · 요청사항</td>
-        <td><code>ReservationMutator</code>가 <code>ChangeSource.NAVER</code> 변경을 <b>guarded → skip</b></td>
-        <td>운영자가 해당 필드를 되돌릴 때</td>
-      </tr>
-      <tr>
-        <td class="path">check_out_pinned</td>
-        <td>퇴실일(연박 연장/축소)</td>
-        <td>들어온 값이 <b>더 짧으면</b> 무시. 네이버가 따라잡으면 핀 자동 해제</td>
-        <td>1박으로 완전 철회 또는 네이버가 같은 값으로 갱신</td>
-      </tr>
-      <tr>
-        <td class="path">manually_edited_fields["status"]</td>
-        <td>운영자 수동 취소(소프트 취소)</td>
-        <td>네이버가 confirmed 를 보내도 <b>부활 차단</b></td>
-        <td>PATCH 로 confirmed 복원 시 · 양측 합의 상태면 self-heal</td>
-      </tr>
-      <tr>
-        <td class="path">gender_manual</td>
-        <td>남/여 인원</td>
-        <td>True 면 자동 재계산 자체를 하지 않음</td>
-        <td>운영자 해제</td>
-      </tr>
-      <tr>
-        <td class="path">split_group_id 보유</td>
-        <td>분할 예약의 인원·금액·객실수</td>
-        <td>네이버 원본으로 덮으면 sibling 합계가 어긋나므로 <b>동결</b></td>
-        <td>없음(설계상 유지) — 상품 매핑이 풀려도 동결 유지</td>
-      </tr>
-    </tbody>
-  </table>
-  </div>
-  <div class="note">
-    <h4>self-heal 과 경보의 구분</h4>
+  <h2><span class="num">07</span>사람이 고친 값은 건드리지 않는다</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
     <p>
-      status 핀이 있는데 예약이 CONFIRMED 이고 네이버도 confirmed 라면, 그 핀은 과거의 잔재입니다 —
-      자동으로 핀을 지우고 <code>naver_sync.status_pin_self_healed</code>를 남깁니다. 반면 핀이 있는데 양측 상태가
-      서로 다르면 <b>자동 보정하지 않고</b> <code>naver_sync.status_pin_invariant_violation</code> 경보만 냅니다.
-      확실할 때만 고치고, 애매하면 사람을 부르는 원칙입니다.
+      5분마다 자동으로 도는 기능의 가장 큰 위험은 <b>운영자가 방금 손으로 고친 걸 되돌려 놓는 것</b>입니다.
+      그래서 사람이 한 번 손댄 자리에는 <b>“건드리지 마” 스티커</b>가 붙고, 네이버 값이 그 자리를 덮지 못합니다.
     </p>
   </div>
-</section>
 
-<!-- 08 -->
-<section id="fail">
-  <h2><span class="num">08</span>실패 격리 모델</h2>
-  <p class="muted">이 파이프라인은 “전부 성공 아니면 전부 실패”가 아니라 <b>중요도 순으로 층이 나뉜</b> 구조입니다.</p>
   <div class="tablewrap">
   <table>
-    <thead><tr><th>층</th><th>범위</th><th>실패 시</th><th>회복</th></tr></thead>
+    <thead><tr><th>보호되는 것</th><th>어떤 상황에서</th><th>어떻게 동작하나</th></tr></thead>
     <tbody>
-      <tr><td><b>테넌트</b></td><td>테넌트 1곳의 전체 동기화</td><td>롤백 후 다음 테넌트 진행 · Sentry 태깅</td><td>5분 뒤 재시도</td></tr>
-      <tr><td><b>업서트 (P2)</b></td><td>예약 저장 본체</td><td>이 회차 전체 실패 — 뒷 단계 진행 안 함</td><td>5분 뒤 재시도 (멱등)</td></tr>
-      <tr><td><b>분할 가드 (P2.8)</b></td><td>경보·전파</td><td>suppress + 롤백, 본 흐름 계속</td><td>다음 회차 · 09:43 sweep 잡</td></tr>
-      <tr><td><b>연박 (P4)</b></td><td>그룹 링크</td><td>로그 후 롤백, 계속</td><td>하루 4회 전용 잡</td></tr>
-      <tr><td><b>자동배정 (P5)</b></td><td>객실 배정</td><td>로그 후 롤백, 계속 — 예약은 살아 있고 배정만 비어 있음</td><td>10:01 일일 배정 잡 · 운영자 수동</td></tr>
-      <tr><td><b>칩 (P5.5)</b></td><td>SMS 배정</td><td>로그 후 롤백, 계속</td><td>다음 회차 · 스케줄 실행 직전 refresh</td></tr>
-      <tr><td><b>즉시 발송 (P6)</b></td><td>이벤트 문자</td><td>별도 세션 · 예외를 절대 위로 던지지 않음</td><td>없음(1회성) — 로그로만 추적</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="muted">
-    핵심 원칙은 하나입니다 — <b>바깥세상(네이버·알리고)의 장애가 예약 데이터의 저장을 되돌리게 두지 않는다.</b>
-  </p>
-</section>
-
-<!-- 09 -->
-<section id="diag">
-  <h2><span class="num">09</span>진단 · 운영 점검</h2>
-
-  <h3>diag 이벤트</h3>
-  <div class="tablewrap">
-  <table>
-    <thead><tr><th>이벤트</th><th>레벨</th><th>의미</th></tr></thead>
-    <tbody>
-      <tr><td class="path">naver_sync.enter / .fetched / .exit</td><td><span class="tag t-idle">verbose</span></td><td>회차 시작 · 조회 건수 · 결과 요약</td></tr>
-      <tr><td class="path">naver_sync.split_multi_room / .split_summary</td><td><span class="tag t-idle">info</span></td><td>분할 실행 및 스킵 사유 집계</td></tr>
-      <tr><td class="path">naver_sync.phase5</td><td><span class="tag t-idle">verbose</span></td><td>자동배정 대상 날짜 · 15시 컷오프 적용 여부</td></tr>
-      <tr><td class="path">naver_sync.user_extension_preserved</td><td><span class="tag t-bad">critical</span></td><td>운영자 연박 연장을 네이버 값이 덮으려다 차단됨</td></tr>
-      <tr><td class="path">naver_sync.user_extension_overridden</td><td><span class="tag t-bad">critical</span></td><td>네이버가 따라잡아 핀 해제</td></tr>
-      <tr><td class="path">naver_sync.status_pin_self_healed</td><td><span class="tag t-bad">critical</span></td><td>stale 취소 핀 자동 제거</td></tr>
-      <tr><td class="path">naver_sync.status_pin_invariant_violation</td><td><span class="tag t-bad">critical</span></td><td>핀과 네이버 상태가 모순 — <b>사람 확인 필요</b></td></tr>
-      <tr><td class="path">naver_sync.split_freeze_rescue</td><td><span class="tag t-idle">info</span></td><td>상품 매핑이 풀린 분할 예약을 동결로 구제</td></tr>
-      <tr><td class="path">naver_sync.sms_field_changed</td><td><span class="tag t-bad">critical</span></td><td>성별·객실타입 변경 → 칩 재계산 트리거</td></tr>
-      <tr><td class="path">reservation.status_changed</td><td><span class="tag t-bad">critical</span></td><td>확정↔취소 전이 추적</td></tr>
-      <tr><td class="path">job.sync_naver_reservations.tenant_failed</td><td><span class="tag t-bad">critical</span></td><td>테넌트 단위 동기화 실패</td></tr>
+      <tr>
+        <td><b>손님 이름 · 연락처<br>요청사항</b></td>
+        <td>운영자가 직접 수정했을 때</td>
+        <td>네이버가 다른 값을 보내와도 무시하고 수정한 값 유지</td>
+      </tr>
+      <tr>
+        <td><b>퇴실 날짜</b></td>
+        <td>운영자가 연박을 늘려줬을 때</td>
+        <td>네이버가 <b>더 짧은</b> 날짜를 보내면 무시. 나중에 네이버가 따라잡으면 스티커 자동 제거</td>
+      </tr>
+      <tr>
+        <td><b>취소 상태</b></td>
+        <td>운영자가 시스템에서 직접 취소했을 때</td>
+        <td>네이버가 “확정”이라고 보내도 <b>되살아나지 않음</b></td>
+      </tr>
+      <tr>
+        <td><b>남녀 인원</b></td>
+        <td>운영자가 직접 입력했을 때</td>
+        <td>자동 재계산 자체를 하지 않음</td>
+      </tr>
+      <tr>
+        <td><b>나뉜 예약의 인원·금액</b></td>
+        <td>방 여러 개 예약을 나눈 뒤</td>
+        <td>네이버 원본으로 덮으면 나뉜 것들의 합이 어긋나므로 <b>고정</b></td>
+      </tr>
     </tbody>
   </table>
   </div>
 
   <div class="note acc">
-    <h4>“예약이 안 들어와요” 점검 순서</h4>
-    <ol>
-      <li><b>쿠키</b> — 연동 설정 탭에서 상태 확인. 만료면 조회 결과가 통째로 비어 모든 증상이 여기서 시작됩니다.</li>
-      <li><b>잡 상태</b> — <code>GET /api/scheduler/jobs</code>로 <code>sync_naver_reservations</code>의 다음 실행 시각 확인. 프로세스 재시작 후 등록 실패면 여기서 드러납니다.</li>
-      <li><b>조회 자체</b> — <code>naver_sync.fetched</code>의 <code>raw_count</code>. 0이면 API/쿠키 문제, 0이 아닌데 저장이 없으면 매칭·정규화 문제.</li>
-      <li><b>상품 매핑</b> — 특정 상품만 안 들어오면 <code>NaverBizItem</code>·<code>RoomBizItemLink</code> 등록 여부(§05 주의 박스).</li>
-      <li><b>배정만 비었나</b> — 예약은 있는데 방이 없으면 15시 컷오프이거나 P5 실패. 10:01 잡 또는 수동 배정으로 회복.</li>
-      <li><b>칩만 비었나</b> — 배정이 있는데 칩이 없으면 스케줄 필터 조건(건물/객실/컬럼 매칭) 확인.</li>
-    </ol>
+    <h4>애매하면 고치지 않고 사람을 부릅니다</h4>
+    <p>
+      스티커가 붙어 있는데 네이버 상태와 우리 상태가 서로 다르면, 시스템은 <b>자동으로 맞추지 않고 경고만</b> 남깁니다.
+      반대로 양쪽이 이미 같은 상태라면 그 스티커는 과거의 잔재이므로 <b>스스로 떼어냅니다.</b>
+      확실할 때만 고치고 애매하면 사람에게 넘기는 원칙입니다.
+    </p>
   </div>
+
+  <details class="dev">
+    <summary>개발자용 — pin 필드와 해제 조건</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>pin</th><th>동작</th><th>해제</th></tr></thead>
+        <tbody>
+          <tr><td class="path">manually_edited_fields</td><td>Mutator 가 <code>ChangeSource.NAVER</code> 변경을 guarded → skip</td><td>운영자가 해당 필드를 되돌릴 때</td></tr>
+          <tr><td class="path">check_out_pinned</td><td>들어온 값이 더 짧으면 무시 (<code>user_extension_preserved</code>)</td><td>네이버가 <code>manually_extended_until</code> 이상으로 따라잡으면 자동 (<code>user_extension_overridden</code>)</td></tr>
+          <tr><td class="path">manually_edited_fields["status"]</td><td>CANCELLED 유지, 네이버 confirmed 무시</td><td>PATCH status=confirmed · 양측 합의 시 self-heal</td></tr>
+          <tr><td class="path">gender_manual</td><td>male/female 재계산 스킵</td><td>운영자 해제</td></tr>
+          <tr><td class="path">split_group_id 보유</td><td>booking_count · total_price · party_size 동결</td><td>없음 (매핑 해제돼도 동결 유지 — <code>split_freeze_rescue</code>)</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="muted">
+        모순 상태는 <code>naver_sync.status_pin_invariant_violation</code>(critical) 경보만.
+        stale pin 은 <code>naver_sync.status_pin_self_healed</code> 로 자동 제거.
+      </p>
+    </div>
+  </details>
 </section>
 
-<!-- 10 -->
-<section id="msa">
-  <h2><span class="num">10</span>서비스 분해 관점</h2>
-  <p class="muted">
-    <a href="../index.html#split">아키텍처 맵 §03</a>에서 이 기능은 <b>1차 분리 대상(①)</b>입니다. 이유와 경계는 다음과 같습니다.
-  </p>
+<!-- ══ 08 ══ -->
+<section id="fail">
+  <h2><span class="num">08</span>실패하면 어떻게 되나</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      <b>“전부 성공 아니면 전부 실패”가 아닙니다.</b> 중요한 것부터 먼저 확정하고,
+      뒤로 갈수록 “실패해도 앞은 그대로 두는” 구조입니다.
+    </p>
+    <p>
+      한 문장으로 하면 — <b>네이버나 문자 업체 쪽 문제가 우리 예약 데이터를 지우게 두지 않는다.</b>
+    </p>
+  </div>
+
   <div class="tablewrap">
   <table>
-    <thead><tr><th>구분</th><th>분리 후 배치</th></tr></thead>
+    <thead><tr><th>어디가 실패</th><th>어떻게 되나</th><th>언제 복구되나</th></tr></thead>
     <tbody>
-      <tr><td><b>워커로 나갈 것</b></td><td class="path">real/reservation.py (외부 호출) · P1 조회 · P2 정규화 · P2.5 분할 판정</td></tr>
-      <tr><td><b>코어에 남을 것</b></td><td class="path">P2 업서트 · P2.8 가드 · P4 연박 · P5 배정 · P5.5 칩 — 모두 Stay Core 트랜잭션</td></tr>
-      <tr><td><b>경계 계약</b></td><td>“정규화된 예약” 이벤트 (테넌트 ID · external_id · 날짜 · 인원/성별 · 상품 해석 결과 · 상태). 코어는 이 이벤트를 <b>멱등 업서트</b>로 처리</td></tr>
-      <tr><td><b>얻는 것</b></td><td>쿠키 만료·레이트리밋·네이버 장애가 코어 배포/가용성과 분리. 인제스트만 독립 재시도·백오프 가능</td></tr>
-      <tr><td><b>선결 조건</b></td><td>테넌트 ID를 ContextVar가 아닌 <b>이벤트 페이로드 1급 필드</b>로 승격 (맵 §04 첫 번째 결합)</td></tr>
-      <tr><td><b>주의</b></td><td>보호 핀(§07) 판정은 <b>코어 쪽에 남아야</b> 합니다. 워커가 “덮어쓸지”를 결정하면 운영자 편집 보호가 두 곳으로 흩어집니다</td></tr>
+      <tr><td><b>한 지점의 동기화 전체</b></td><td>그 지점만 중단, 다른 지점은 정상 진행</td><td>5분 뒤 자동 재시도</td></tr>
+      <tr><td><b>예약 저장 (4단계)</b></td><td>이번 회차 전체 중단 — 뒷 단계 진행 안 함</td><td>5분 뒤 자동 재시도 (중복 없음)</td></tr>
+      <tr><td><b>어긋남 검사 (5단계)</b></td><td>기록만 남기고 넘어감</td><td>다음 회차 · 매일 09:43 별도 점검</td></tr>
+      <tr><td><b>연박 묶기 (6단계)</b></td><td>기록만 남기고 넘어감</td><td>하루 4회 전용 작업</td></tr>
+      <tr><td><b>방 배정 (7단계)</b></td><td><b>예약은 살아 있고 방만 비어 있음</b></td><td>매일 10:01 배정 작업 · 운영자 수동 배정</td></tr>
+      <tr><td><b>문자 목록 (8단계)</b></td><td>기록만 남기고 넘어감</td><td>다음 회차 · 발송 직전 최신화</td></tr>
+      <tr><td><b>즉시 발송 (9단계)</b></td><td>완전 분리 — 오류가 위로 번지지 않음</td><td>재시도 없음(1회성) — 로그로 추적</td></tr>
     </tbody>
   </table>
   </div>
+</section>
+
+<!-- ══ 09 ══ -->
+<section id="check">
+  <h2><span class="num">09</span>문제 생겼을 때 확인 순서</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      “예약이 안 들어와요”라는 말이 나올 때, <b>위에서부터 순서대로</b> 확인하면 대부분 여기서 원인이 나옵니다.
+    </p>
+  </div>
+
+  <div class="note acc">
+    <h4>운영자용 점검 순서</h4>
+    <ol>
+      <li>
+        <b>로그인 쿠키가 살아 있나?</b> — <b>연동 설정</b> 탭에서 상태를 봅니다.
+        만료됐으면 예약을 하나도 못 가져오므로 모든 증상이 여기서 시작됩니다. <b>가장 흔한 원인입니다.</b>
+      </li>
+      <li>
+        <b>자동 확인이 실제로 돌고 있나?</b> — 활동 로그에 동기화 기록이 계속 쌓이고 있는지 봅니다.
+        프로그램 재시작 후 자동 작업이 안 붙었으면 여기서 드러납니다.
+      </li>
+      <li>
+        <b>가져오기는 되는데 저장이 안 되나?</b> — 네이버에서 받아온 건수는 있는데 새 예약이 안 생긴다면
+        상품 정보 문제일 가능성이 큽니다.
+      </li>
+      <li>
+        <b>특정 상품만 안 들어오나?</b> — <b>객실 설정</b> 탭에서 그 상품이 방과 연결돼 있는지 확인합니다(<a href="#data">§05</a>).
+      </li>
+      <li>
+        <b>예약은 있는데 방만 비어 있나?</b> — 오후 3시 이후 들어온 당일 예약이면 <b>정상 동작</b>입니다(<a href="#steps">§04 7단계</a>).
+        아니면 배정 실패이므로 수동 배정하거나 다음 날 10:01 작업을 기다립니다.
+      </li>
+      <li>
+        <b>방은 있는데 문자만 안 나가나?</b> — 템플릿 설정에서 그 문자의 발송 조건(건물·객실·기타 조건)을 확인합니다.
+      </li>
+    </ol>
+  </div>
+
+  <details class="dev">
+    <summary>개발자용 — 진단 로그(diag) 목록</summary>
+    <div class="body">
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>이벤트</th><th>레벨</th><th>의미</th></tr></thead>
+        <tbody>
+          <tr><td class="path">naver_sync.enter / .fetched / .exit</td><td><span class="tag t-idle">verbose</span></td><td>회차 시작 · 조회 건수 · 결과 요약</td></tr>
+          <tr><td class="path">naver_sync.split_multi_room / .split_summary</td><td><span class="tag t-idle">info</span></td><td>분할 실행 및 스킵 사유 집계</td></tr>
+          <tr><td class="path">naver_sync.phase5</td><td><span class="tag t-idle">verbose</span></td><td>자동배정 대상 날짜 · 15시 컷오프 적용 여부</td></tr>
+          <tr><td class="path">naver_sync.user_extension_preserved</td><td><span class="tag t-bad">critical</span></td><td>운영자 연박 연장을 네이버 값이 덮으려다 차단됨</td></tr>
+          <tr><td class="path">naver_sync.user_extension_overridden</td><td><span class="tag t-bad">critical</span></td><td>네이버가 따라잡아 pin 해제</td></tr>
+          <tr><td class="path">naver_sync.status_pin_self_healed</td><td><span class="tag t-bad">critical</span></td><td>stale 취소 pin 자동 제거</td></tr>
+          <tr><td class="path">naver_sync.status_pin_invariant_violation</td><td><span class="tag t-bad">critical</span></td><td>pin 과 네이버 상태 모순 — 사람 확인 필요</td></tr>
+          <tr><td class="path">naver_sync.split_freeze_rescue</td><td><span class="tag t-idle">info</span></td><td>매핑 해제된 분할 예약을 동결로 구제</td></tr>
+          <tr><td class="path">naver_sync.sms_field_changed</td><td><span class="tag t-bad">critical</span></td><td>성별·객실타입 변경 → 칩 재계산 트리거</td></tr>
+          <tr><td class="path">reservation.status_changed</td><td><span class="tag t-bad">critical</span></td><td>확정 ↔ 취소 전이 추적</td></tr>
+          <tr><td class="path">job.sync_naver_reservations.tenant_failed</td><td><span class="tag t-bad">critical</span></td><td>테넌트 단위 동기화 실패</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ══ 10 ══ -->
+<section id="msa">
+  <h2><span class="num">10</span>나중에 쪼갠다면</h2>
+
+  <div class="plain">
+    <span class="lbl">쉽게 말하면</span>
+    <p>
+      <a href="../index.html#split">아키텍처 맵</a>에서 이 기능은 <b>가장 먼저 떼어낼 후보</b>입니다.
+      바깥(네이버)과 대화하는 부분이라, 여기서 문제가 생겨도 나머지가 멀쩡할 수 있게 분리하는 게 이득이 큽니다.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>구분</th><th>내용</th></tr></thead>
+    <tbody>
+      <tr><td><b>따로 뗄 부분</b></td><td>네이버에 접속해서 예약을 받아오고 우리 형식으로 정리하는 데까지 (순서도 1~3단계)</td></tr>
+      <tr><td><b>남길 부분</b></td><td>장부 저장부터 뒤 전부 (4~9단계) — 예약·배정·문자가 함께 계산되는 심장부</td></tr>
+      <tr><td><b>주고받을 것</b></td><td>“정리된 예약 정보” 하나. 받는 쪽은 <b>같은 걸 몇 번 받아도 결과가 같도록</b> 처리</td></tr>
+      <tr><td><b>좋아지는 점</b></td><td>쿠키 만료나 네이버 장애가 나머지 기능에 번지지 않음. 가져오기만 따로 재시도 가능</td></tr>
+      <tr><td><b>먼저 할 일</b></td><td>“어느 게스트하우스 것인지”를 <b>주고받는 정보에 반드시 적는</b> 방식으로 바꿔야 함 (맵 §05 첫 번째 매듭)</td></tr>
+      <tr><td><b>주의할 점</b></td><td>“사람이 고친 값을 덮을지 말지”(§07) 판단은 <b>남는 쪽에 있어야</b> 합니다. 떼어낸 쪽이 판단하면 보호 규칙이 두 곳으로 흩어집니다</td></tr>
+    </tbody>
+  </table>
+  </div>
+
   <p class="muted">
-    이미 이 기능은 프로바이더 인터페이스(<code>providers/base.py</code>)와 팩토리(<code>factory.py</code>)로
-    호출부가 추상화돼 있어, 분리 시 코어가 바꿔야 할 코드는 “프로바이더를 호출하던 자리”를 “이벤트를 수신하는 자리”로
-    바꾸는 정도입니다. <b>34개 서비스 중 가장 먼저 떼기 쉬운 조각</b>인 이유입니다.
+    이 기능은 이미 “외부 연결” 부분이 갈아끼울 수 있는 형태로 만들어져 있어 (연습용 가짜 연결로 바꿔 끼우는 스위치가 있음)
+    실제로 떼어낼 때 나머지 코드가 바뀔 일이 적습니다. <b>34개 부서 중 가장 떼기 쉬운 조각</b>인 이유입니다.
   </p>
 </section>
 
+<!-- ══ 11 ══ -->
+<section id="gloss">
+  <h2><span class="num">11</span>용어 사전</h2>
+
+  <dl class="gloss">
+    <dt>동기화</dt>
+    <dd>네이버 장부와 우리 장부를 대조해서 맞추는 일. 네이버가 먼저 알려주지 않아 우리가 5분마다 물어봅니다.</dd>
+
+    <dt>대조 (대사)</dt>
+    <dd>놓친 게 없는지 처음부터 다시 확인하는 일. 매일 오전 9:55에 오늘·내일 체크인 예약을 통째로 다시 봅니다.</dd>
+
+    <dt>쿠키</dt>
+    <dd>네이버에 로그인한 상태를 증명하는 열쇠. <b>만료되면 예약을 하나도 못 가져옵니다.</b> 연동 설정 탭에서 갱신합니다.</dd>
+
+    <dt>저장 확정</dt>
+    <dd>여기까지 한 작업을 장부에 확실히 기록하는 지점(순서도의 ◆). 지나고 나면 뒤에서 실패해도 되돌아가지 않습니다.</dd>
+
+    <dt>문자 예약표</dt>
+    <dd>“이 손님에게 · 이 문자를 · 이 날 보낸다”를 적어둔 한 줄. 예약이 바뀌면 다시 계산되지만, 이미 보낸 줄과 사람이 손댄 줄은 지우지 않습니다.</dd>
+
+    <dt>대표 예약 / 딸린 예약</dt>
+    <dd>방 여러 개를 한 번에 예약한 건을 나눌 때, 네이버 예약번호를 갖는 쪽이 대표, 나머지가 딸린 예약. 네이버의 변경은 대표에만 전달됩니다.</dd>
+
+    <dt>건드리지 마 스티커 (pin)</dt>
+    <dd>운영자가 손으로 고친 자리에 붙는 표시. 이 표시가 있으면 자동 동기화가 그 값을 덮지 않습니다.</dd>
+
+    <dt>오후 3시 컷오프</dt>
+    <dd>3시 이후에 들어온 <b>당일 체크인</b> 예약은 자동 배정하지 않고 운영자에게 맡기는 규칙. 체크인이 임박해 사람 판단이 필요하기 때문입니다.</dd>
+
+    <dt>제2 사업장 (언스테이블)</dt>
+    <dd>같은 시스템으로 관리하는 별도 네이버 사업장. 상품 등록이 없어 인원·성별을 예약 요청서 글에서 직접 읽어냅니다.</dd>
+
+    <dt>발자국 기록 (diag)</dt>
+    <dd>시스템이 어느 단계까지 어떻게 진행했는지 남기는 기록. 문제가 생겼을 때 어디서 멈췄는지 추적하는 데 씁니다.</dd>
+  </dl>
+</section>
+
 <footer>
-  코드 기준 <code>app/services/naver_sync.py</code> · <code>app/real/reservation.py</code> · <code>app/scheduler/jobs.py</code> ·
-  관련 문서 <code>docs/pipelines/04-naver-sync.md</code> · 스캔 기준일 2026-08-23
+  코드 확인 기준 <code>app/services/naver_sync.py</code> · <code>app/real/reservation.py</code> · <code>app/scheduler/jobs.py</code> ·
+  개발자용 도식 <code>docs/pipelines/04-naver-sync.md</code> · 기준일 2026-08-23
 </footer>
 
 </main>
