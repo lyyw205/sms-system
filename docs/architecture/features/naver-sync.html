@@ -7,10 +7,10 @@
     --ground:#FBFBFD; --panel:#FFFFFF; --panel-2:#F4F6F8;
     --ink:#191F28; --ink-2:#4E5968; --ink-3:#8B95A1;
     --line:#E3E7EB; --line-soft:#EEF1F4;
-    --accent:#3182F6; --accent-soft:#E8F3FF;
-    --ok:#00A98F; --ok-soft:#E4F7F3;
-    --warn:#C97A00; --warn-soft:#FFF3E0;
-    --bad:#E23744; --bad-soft:#FDECEE;
+    --accent:#1F63CC; --accent-soft:#E8F3FF;
+    --ok:#00806A; --ok-soft:#EDFAF7;
+    --warn:#9A6200; --warn-soft:#FFF3E0;
+    --bad:#C4292F; --bad-soft:#FDECEE;
     --sans:"IBM Plex Sans KR","Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
     --mono:"IBM Plex Mono","SF Mono",ui-monospace,Menlo,monospace;
   }
@@ -19,20 +19,20 @@
       --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
       --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
       --line:#2C2E37; --line-soft:#23252D;
-      --accent:#74A9FF; --accent-soft:#17253C;
-      --ok:#35D2B4; --ok-soft:#10312C;
+      --accent:#5A93EE; --accent-soft:#17253C;
+      --ok:#12A88A; --ok-soft:#10312C;
       --warn:#FFB13D; --warn-soft:#33260E;
-      --bad:#FF7C85; --bad-soft:#361A1E;
+      --bad:#E6565F; --bad-soft:#361A1E;
     }
   }
   :root[data-theme="dark"]{
     --ground:#121218; --panel:#1A1A21; --panel-2:#212129;
     --ink:#ECEFF3; --ink-2:#A6AEBB; --ink-3:#79828F;
     --line:#2C2E37; --line-soft:#23252D;
-    --accent:#74A9FF; --accent-soft:#17253C;
-    --ok:#35D2B4; --ok-soft:#10312C;
+    --accent:#5A93EE; --accent-soft:#17253C;
+    --ok:#12A88A; --ok-soft:#10312C;
     --warn:#FFB13D; --warn-soft:#33260E;
-    --bad:#FF7C85; --bad-soft:#361A1E;
+    --bad:#E6565F; --bad-soft:#361A1E;
   }
 
   *{box-sizing:border-box}
@@ -424,7 +424,7 @@
             <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
           </marker>
           <marker id="n-arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 L10 5 L0 10 z" fill="#3182F6"/>
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
           </marker>
         </defs>
 
@@ -446,12 +446,12 @@
         <line x1="417" y1="64" x2="350" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
         <line x1="581" y1="64" x2="370" y2="94" stroke="currentColor" stroke-width="1" opacity=".5"/>
 
-        <rect x="196" y="96" width="278" height="40" fill="none" stroke="#3182F6" stroke-width="1.6"/>
-        <text x="335" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="#3182F6">네 경로 모두 같은 작업으로 합류</text>
+        <rect x="196" y="96" width="278" height="40" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="335" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--accent)">네 경로 모두 같은 작업으로 합류</text>
 
         <line x1="120" y1="154" x2="120" y2="712" stroke="currentColor" stroke-width="1" opacity=".4"/>
-        <line x1="335" y1="136" x2="335" y2="154" stroke="#3182F6" stroke-width="1.4"/>
-        <line x1="120" y1="154" x2="335" y2="154" stroke="#3182F6" stroke-width="1.4"/>
+        <line x1="335" y1="136" x2="335" y2="154" stroke="var(--accent)" stroke-width="1.4"/>
+        <line x1="120" y1="154" x2="335" y2="154" stroke="var(--accent)" stroke-width="1.4"/>
 
         <g>
           <rect x="140" y="156" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1"/>
@@ -479,19 +479,19 @@
         </g>
 
         <g>
-          <rect x="140" y="348" width="336" height="52" fill="none" stroke="#3182F6" stroke-width="1.5"/>
-          <text x="156" y="370" font-size="12.5" font-weight="600" fill="#3182F6">4 · 우리 장부에 저장</text>
+          <rect x="140" y="348" width="336" height="52" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+          <text x="156" y="370" font-size="12.5" font-weight="600" fill="var(--accent)">4 · 우리 장부에 저장</text>
           <text x="156" y="388" font-size="10.5" fill="currentColor" opacity=".65">없으면 새로 만들고, 있으면 바뀐 것만 수정</text>
-          <polygon points="120,368 126,374 120,380 114,374" fill="#3182F6"/>
-          <text x="492" y="378" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
+          <polygon points="120,368 126,374 120,380 114,374" fill="var(--accent)"/>
+          <text x="492" y="378" font-size="10.5" fill="var(--accent)">◆ 저장 확정</text>
         </g>
 
         <g>
           <rect x="140" y="412" width="336" height="52" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="4 3"/>
           <text x="156" y="434" font-size="12.5" font-weight="600" fill="currentColor">5 · 나뉜 예약끼리 어긋났는지 검사</text>
           <text x="156" y="452" font-size="10.5" fill="currentColor" opacity=".65">한쪽만 취소됐는지 등 — 이상하면 알림</text>
-          <polygon points="120,432 126,438 120,444 114,438" fill="#3182F6"/>
-          <text x="492" y="442" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
+          <polygon points="120,432 126,438 120,444 114,438" fill="var(--accent)"/>
+          <text x="492" y="442" font-size="10.5" fill="var(--accent)">◆ 저장 확정</text>
         </g>
 
         <g>
@@ -509,11 +509,11 @@
         </g>
 
         <g>
-          <rect x="140" y="604" width="336" height="52" fill="none" stroke="#3182F6" stroke-width="1.5" stroke-dasharray="4 3"/>
-          <text x="156" y="626" font-size="12.5" font-weight="600" fill="#3182F6">8 · 보낼 문자 목록 다시 계산</text>
+          <rect x="140" y="604" width="336" height="52" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="156" y="626" font-size="12.5" font-weight="600" fill="var(--accent)">8 · 보낼 문자 목록 다시 계산</text>
           <text x="156" y="644" font-size="10.5" fill="currentColor" opacity=".65">방이 정해진 뒤라야 정확히 계산됨</text>
-          <polygon points="120,624 126,630 120,636 114,630" fill="#3182F6"/>
-          <text x="492" y="634" font-size="10.5" fill="#3182F6">◆ 저장 확정</text>
+          <polygon points="120,624 126,630 120,636 114,630" fill="var(--accent)"/>
+          <text x="492" y="634" font-size="10.5" fill="var(--accent)">◆ 저장 확정</text>
         </g>
 
         <g>
@@ -527,7 +527,7 @@
         </g>
 
         <text x="702" y="270" font-size="10.5" font-weight="600" fill="currentColor" opacity=".75">읽는 법</text>
-        <text x="702" y="292" font-size="10.5" fill="#3182F6">◆ 저장 확정 지점</text>
+        <text x="702" y="292" font-size="10.5" fill="var(--accent)">◆ 저장 확정 지점</text>
         <text x="702" y="312" font-size="10.5" fill="currentColor" opacity=".62">점선 = 실패해도 앞 단계를</text>
         <text x="702" y="328" font-size="10.5" fill="currentColor" opacity=".62">되돌리지 않는 단계</text>
         <text x="702" y="352" font-size="10.5" fill="currentColor" opacity=".62">실패한 단계는 대개</text>
@@ -818,8 +818,8 @@
 
         <text x="326" y="26" font-size="11" font-weight="600" fill="currentColor" opacity=".6">우리 장부에 저장되는 모습</text>
 
-        <rect x="326" y="40" width="248" height="66" fill="none" stroke="#3182F6" stroke-width="1.6"/>
-        <text x="342" y="62" font-size="12" font-weight="600" fill="#3182F6">대표 예약</text>
+        <rect x="326" y="40" width="248" height="66" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="342" y="62" font-size="12" font-weight="600" fill="var(--accent)">대표 예약</text>
         <text x="342" y="80" font-size="10.5" fill="currentColor" opacity=".72">인원 2 · 100,000원</text>
         <text x="342" y="96" font-size="10.5" fill="currentColor" opacity=".72">네이버 예약번호 있음 → 변경이 여기로 들어옴</text>
 
