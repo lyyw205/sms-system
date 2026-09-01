@@ -4,9 +4,9 @@
 ChangeSource 정의를 후속 단계 (#4 이후 가드 추가, #11 이후 caller 전환) 가
 참조할 수 있도록 인터페이스만 노출한다.
 
-참고: docs/plans/reservation-mutator-design.md
-      docs/plans/mutator-migration-plan.md
-      docs/plans/mutator-step-01-mutator-skeleton.md
+참고: docs/plans/_archive/reservation-mutator-design.md
+      docs/plans/_archive/mutator-migration-plan.md
+      docs/plans/_archive/mutator-step-01-mutator-skeleton.md
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ FIELD_PERMISSIONS: dict[str, dict[ChangeSource, str]] = {
     #    mef["status"]=timestamp 핀이 자동으로 박힘. 즉 DELETE(우클릭 삭제)뿐 아니라 예약관리 PATCH 취소도
     #    네이버 부활을 차단하고 is_manual_cancel=True 로 CancelledZone 에 노출됨 (어떤 경로의 운영자 취소든 통일).
     #    복구는 PATCH status=confirmed 가 핀 해제 (reservations.py update_reservation restore 블록).
-    # 설계 문서: docs/plans/delete-soft-cancel-followup-234.md §3
+    # 설계 문서: docs/plans/_archive/delete-soft-cancel-followup-234.md §3
     "status":           {ChangeSource.NAVER: "guarded", ChangeSource.MANUAL: "always", ChangeSource.SYSTEM: "never" },
     "section":          {ChangeSource.NAVER: "never",   ChangeSource.MANUAL: "always", ChangeSource.SYSTEM: "always"},
     "naver_room_type":  {ChangeSource.NAVER: "always",  ChangeSource.MANUAL: "never",  ChangeSource.SYSTEM: "never" },

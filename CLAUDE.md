@@ -145,7 +145,7 @@ ContextVar 기반 자동 테넌트 격리 (`app/db/tenant_context.py`):
   - 5개 이벤트(`on_dates_changed`, `on_room_changed`, `on_status_changed` 등)별 후처리를 일관된 순서로 실행
   - caller 가 새 필드 값을 적용한 다음 호출하는 것이 규약
 
-> 설계 문서: `docs/plans/reservation-mutator-design.md`, `docs/pipelines/05-reservation-change-routes.md`
+> 설계 문서: `docs/plans/_archive/reservation-mutator-design.md`, `docs/pipelines/05-reservation-change-routes.md`
 
 ### Chip Reconcile System
 
@@ -364,7 +364,7 @@ log_activity(db, type="sms_send", title="...", detail={...},
 설계 의도와 실제 런타임 동작의 갭을 막기 위한 문서/로그 체계:
 
 - **`docs/pipelines/`** — 핵심 비즈니스 흐름 4종 (`01-sms-template-schedule`, `02-room-assignment`, `03-multi-tenant`, `04-naver-sync`) + `05-reservation-change-routes`. 수기 Mermaid 우선, `_generated/*.svg` 는 보조.
-- **`docs/plans/`** — 진행 중인 단계적 마이그레이션 plan (현재 37개: `lifecycle-step-01..22`, `mutator-step-*`, `room-upgrade-*` 등). 서비스 파일 상단 docstring 이 자신의 단계를 명시하므로, "스켈레톤/일부만 호출됨" 형태의 모듈을 만나면 plan 부터 확인.
+- **`docs/plans/`** — 살아있는 계획만 유지 (핵심: `refactor/` 전면 리팩토링). 완료된 마이그레이션 plan 100건은 `docs/plans/_archive/` 로 이동(2026-08-31) — 서비스 docstring 이 참조하는 과거 plan 은 거기서 찾을 것. 인덱스: `docs/plans/README.md`.
 - **`docs/diag-golden/`** — Diag 정답지 시스템
   - `actions/*.yaml`: 각 액션이 찍어야 할 `diag()` 이벤트 시퀀스 (정답)
   - `state.json`: 마지막 검증 체크포인트 (`last_log_timestamp`, `last_commit_sha`, `last_coverage_scan_sha`)

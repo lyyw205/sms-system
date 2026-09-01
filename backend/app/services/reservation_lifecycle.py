@@ -8,9 +8,9 @@
 (shift_daily_records, reconcile_dates, reconcile_all_chips, invariant check 등)
 를 일관된 순서로 호출" 한다는 책임을 가진다.
 
-참고: docs/plans/room-assignment-pipeline-design.md
-      docs/plans/lifecycle-migration-plan.md
-      docs/plans/lifecycle-step-02-lifecycle-skeleton.md
+참고: docs/plans/_archive/room-assignment-pipeline-design.md
+      docs/plans/_archive/lifecycle-migration-plan.md
+      docs/plans/_archive/lifecycle-step-02-lifecycle-skeleton.md
 """
 
 from __future__ import annotations

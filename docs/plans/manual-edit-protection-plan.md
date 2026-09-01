@@ -2,7 +2,7 @@
 
 > 작성일: 2026-05-15
 > 상태: OQ 확정 — PR1 진입 가능
-> 부모 마이그레이션: ded670f (Mutator + Lifecycle), [chip-store-migration-plan.md](./chip-store-migration-plan.md), [sync-sms-tags-consolidation-plan.md](./sync-sms-tags-consolidation-plan.md)
+> 부모 마이그레이션: ded670f (Mutator + Lifecycle), [chip-store-migration-plan.md](./_archive/chip-store-migration-plan.md), [sync-sms-tags-consolidation-plan.md](./_archive/sync-sms-tags-consolidation-plan.md)
 > 사상: 운영자가 수정한 모든 필드를 "방명록" (JSON dict) 으로 추적 → 다음 naver sync 가 덮어쓰기 차단
 
 ---

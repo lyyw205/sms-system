@@ -343,7 +343,7 @@ async def update_reservation(
     #    auto-mark 규칙(reservation_mutator.py:170-173)이 mef["status"]=timestamp 를 다시 stamp 함.
     #    이 블록이 그 직후 del 로 되돌리므로 net 결과가 "핀 해제"가 됨.
     #    블록을 apply_changes 앞으로 옮기면 핀이 안 풀려 또 고아 핀 발생.
-    # 설계 문서: docs/plans/delete-soft-cancel-design.md, docs/plans/delete-soft-cancel-followup-234.md
+    # 설계 문서: docs/plans/_archive/delete-soft-cancel-design.md, docs/plans/_archive/delete-soft-cancel-followup-234.md
     if (
         "status" in update_data
         and update_data["status"] == ReservationStatus.CONFIRMED
@@ -514,7 +514,7 @@ async def delete_reservation(reservation_id: int, db: Session = Depends(get_tena
       - naver_sync 가 5분 후 confirmed 로 부활시키지 못하게 차단
     수동 예약 (naver_booking_id 없음): 기존 hard delete (cascade 전체 삭제).
 
-    설계 문서: docs/plans/delete-soft-cancel-design.md
+    설계 문서: docs/plans/_archive/delete-soft-cancel-design.md
     """
     from datetime import datetime
     from app.config import KST, today_kst

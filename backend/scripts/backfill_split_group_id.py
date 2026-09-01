@@ -17,7 +17,7 @@ P1(cf 022_add_split_group_id)이 신규 split 에만 키를 기록하므로, 기
 
 멱등: split_group_id 이미 있는 sibling 은 skip. 재실행 안전.
 보고 규약: [tid=N] res=XXX (예약자 단독 res_id 노출 금지).
-설계 문서: docs/plans/split-group-step-02-backfill-alerts.md
+설계 문서: docs/plans/_archive/split-group-step-02-backfill-alerts.md
 """
 import argparse
 import sys

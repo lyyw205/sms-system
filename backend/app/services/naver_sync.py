@@ -276,7 +276,7 @@ async def sync_naver_to_db(reservation_provider, db: Session, target_date=None, 
     # 루프 세션을 오염(PendingRollbackError)시키지 않도록 분리 (칩 phase 패턴).
     # 실패는 suppress — sync 본 흐름(Phase 3~6) 무영향, 5분 후 자연 재시도.
     # SPLIT_CANCEL_MODE: 'alert'(기본) 경보만 / 'auto' 비보호 sibling 자동 취소
-    # (auto 전환 절차: docs/plans/split-group-step-03-auto-propagation.md §7).
+    # (auto 전환 절차: docs/plans/_archive/split-group-step-03-auto-propagation.md §7).
     if (split_cancel_candidates or split_drift_candidates
             or unsplit_multi_candidates or split_reactivated_candidates):
         try:
@@ -855,7 +855,7 @@ def _update_reservation(db: Session, existing: Reservation, res_data: Dict[str, 
     # manually_edited_fields["status"] 핀 — 운영자가 DELETE 로 soft-cancel 한 row.
     # 네이버가 confirmed/cancelled 어느 쪽으로 응답해도 status 변경 차단 (부활 방지).
     # 해제는 update_reservation PATCH status=confirmed 경로에서 자동.
-    # 설계 문서: docs/plans/delete-soft-cancel-design.md
+    # 설계 문서: docs/plans/_archive/delete-soft-cancel-design.md
     naver_status = res_data.get("status", "confirmed")
     _prev_status = existing.status
     _mef = existing.manually_edited_fields or {}

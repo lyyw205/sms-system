@@ -18,7 +18,7 @@ PR 분할:
   - PR4~PR10: caller 별 이주 (sms_tracking, surcharge, party3, ...)
   - PR11: CI lint (scripts/check_chip_lint.sh)
 
-참고: docs/plans/chip-store-migration-plan.md
+참고: docs/plans/_archive/chip-store-migration-plan.md
 """
 from __future__ import annotations
 

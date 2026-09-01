@@ -13,7 +13,7 @@
 `male_count` / `female_count` 이므로, 도미토리 로직은 이 카운트를 기준으로 판정한다.
 gender 문자열은 카운트가 모두 비었을 때만 fallback 으로 파싱한다.
 
-문서: docs/plans/dorm-gender-mix-falsepositive-fix.md
+문서: docs/plans/_archive/dorm-gender-mix-falsepositive-fix.md
 """
 
 from typing import Iterable, Tuple

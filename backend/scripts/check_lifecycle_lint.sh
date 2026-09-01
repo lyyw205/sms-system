@@ -11,7 +11,7 @@
 #   bash backend/scripts/check_lifecycle_lint.sh
 #   exit code 0=pass, 1=fail
 #
-# 참고: docs/plans/lifecycle-migration-plan.md
+# 참고: docs/plans/_archive/lifecycle-migration-plan.md
 
 set -u
 

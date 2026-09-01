@@ -259,7 +259,7 @@ def _sort_candidate_rooms(rooms: List[Room], biz_item_id: str, gender: str,
     안에서는 기존 (gender priority → sort_order → id) 순서를 그대로 유지한다.
     grade 가 균일한 후보군(도미/더블/스파트윈/스위트/grade=NULL)에서는 cap_rank 가 모두
     같아 no-op. None==4 → False 라 grade 미설정 방은 안전하게 non-3인실 취급.
-    설계·안전감사: docs/plans/twin-capacity-assign-design.md
+    설계·안전감사: docs/plans/_archive/twin-capacity-assign-design.md
     """
     needs_extra = people_count >= 3
     def get_priority(room: Room) -> tuple:

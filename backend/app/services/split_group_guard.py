@@ -21,8 +21,8 @@
     네이버는 취소건도 fetch 윈도우 동안 매번 재전송)
   - primary CONFIRMED 가드 (취소된 그룹의 drift 는 노이즈)
 
-설계 문서: docs/plans/split-group-step-02-backfill-alerts.md (P2),
-          docs/plans/split-group-step-03-auto-propagation.md (P3 — auto 전환 절차 §7 필독)
+설계 문서: docs/plans/_archive/split-group-step-02-backfill-alerts.md (P2),
+          docs/plans/_archive/split-group-step-03-auto-propagation.md (P3 — auto 전환 절차 §7 필독)
 """
 import logging
 from datetime import datetime, timezone as dt_timezone

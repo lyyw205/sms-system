@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """아키텍처 계층 규칙 검사기 — 코어/모듈 2층 리팩토링의 진행률 측정 장치.
 
-  docs/plans/architecture-refactor-01-target.md §1 의 의존 규칙(R1~R6)을 강제한다.
+  docs/plans/_archive/architecture-refactor-01-target.md §1 의 의존 규칙(R1~R6)을 강제한다.
 
 규칙:
   R1  모듈 → 코어             허용

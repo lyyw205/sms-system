@@ -1,4 +1,4 @@
-"""dorm_gender 단위 테스트 — 진리표 (docs/plans/dorm-gender-mix-falsepositive-fix.md §5).
+"""dorm_gender 단위 테스트 — 진리표 (docs/plans/_archive/dorm-gender-mix-falsepositive-fix.md §5).
 
 핵심 회귀: 같은 성별이지만 gender 문자열 포맷이 다른 두 예약
 ('여'(네이버) vs '여2'(수동))이 도미토리에서 혼숙 오판되지 않아야 한다.

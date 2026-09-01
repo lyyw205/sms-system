@@ -3,7 +3,7 @@
 용도:
   1) 과거 누적 사고분 정리 (예: [tid=2] res=6296 김하린 건)
   2) SPLIT_CANCEL_MODE=auto 전환 직전 재실행 (경보 관찰 기간 누적 고아 소급 —
-     docs/plans/split-group-step-03-auto-propagation.md §7 절차 3)
+     docs/plans/_archive/split-group-step-03-auto-propagation.md §7 절차 3)
 
 탐지 2-pass:
   (a) 키 기반: 같은 split_group_id 의 primary CANCELLED × sibling CONFIRMED (backfill 후)

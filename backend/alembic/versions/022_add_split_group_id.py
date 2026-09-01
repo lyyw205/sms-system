@@ -2,7 +2,7 @@
 
 primary↔sibling 영속 연결 키 ("nsplit-{naver_booking_id}").
 split-group P1 — 연결 전용 컬럼, sibling 식별은 계속 booking_source='naver_split'.
-docs/plans/split-group-step-01-column-and-record.md 참조.
+docs/plans/_archive/split-group-step-01-column-and-record.md 참조.
 
 Revision ID: 022
 Revises: 021

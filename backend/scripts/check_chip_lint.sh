@@ -15,7 +15,7 @@
 #   bash backend/scripts/check_chip_lint.sh
 #   exit code 0=pass, 1=fail
 #
-# 참고: docs/plans/chip-store-migration-plan.md
+# 참고: docs/plans/_archive/chip-store-migration-plan.md
 
 set -u
 

@@ -7,7 +7,7 @@
      - force=True: 무조건 삭제 (cancel/delete cascade)
   3. OQ-3 가드 키 분기: schedule_id 우선 + template_key fallback
 
-참고: docs/plans/chip-store-migration-plan.md
+참고: docs/plans/_archive/chip-store-migration-plan.md
 """
 from datetime import datetime, timezone
 

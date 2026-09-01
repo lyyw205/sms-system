@@ -15,7 +15,7 @@
 #   bash backend/scripts/check_sync_sms_tags_lint.sh
 #   exit code 0=pass, 1=fail
 #
-# 참고: docs/plans/sync-sms-tags-consolidation-plan.md
+# 참고: docs/plans/_archive/sync-sms-tags-consolidation-plan.md
 
 set -u
 

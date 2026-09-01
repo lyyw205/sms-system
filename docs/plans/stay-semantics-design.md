@@ -1,5 +1,7 @@
 # Stay Semantics 재정립 설계안 (당일 vs 숙박 / check_out_date)
 
+> ⚠️ **2026-08-31**: 잔여 작업(Phase B·D)은 **전면 리팩토링 P5.5 로 흡수** — [`refactor/05-stay-개념설계.md`](./refactor/05-stay-개념설계.md) · [`refactor/07-계획갱신-2026-08-31.md`](./refactor/07-계획갱신-2026-08-31.md) §5. 이 문서는 배경 자료로만 유지.
+
 > 상태: **설계안 (구현 전)** · 작성 2026-06-19 · 브랜치 `feat/activity-product`
 > 방식: section_registry / party_type 와 동일 — **단일 명세 + 특성화 테스트 + no-op 교체 + 프론트 미러 drift-guard**
 > 근거: 8각도 전수조사(120 findings, 10 agents) + 적대적 completeness critic + 직접 코드 재검증
