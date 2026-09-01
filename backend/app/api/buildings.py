@@ -9,6 +9,12 @@ from app.api.deps import get_tenant_scoped_db, _remap_active_field
 from app.db.models import Building, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.api.shared_schemas import ActionResponse
+from app.services.room_guard import assert_settings_unlocked
+
+
+def _room_settings_guard(db: Session = Depends(get_tenant_scoped_db)) -> None:
+    """객실 설정 잠금 관문 (테넌트 스위치) — services/room_guard.py 참조."""
+    assert_settings_unlocked(db)
 from datetime import datetime
 import logging
 
@@ -90,7 +96,7 @@ async def get_building(
     return _building_to_response(building)
 
 
-@router.post("", response_model=BuildingResponse, status_code=201)
+@router.post("", response_model=BuildingResponse, status_code=201, dependencies=[Depends(_room_settings_guard)])
 async def create_building(
     building: BuildingCreate,
     db: Session = Depends(get_tenant_scoped_db),
@@ -116,7 +122,7 @@ async def create_building(
     return _building_to_response(db_building)
 
 
-@router.put("/{building_id}", response_model=BuildingResponse)
+@router.put("/{building_id}", response_model=BuildingResponse, dependencies=[Depends(_room_settings_guard)])
 async def update_building(
     building_id: int,
     building: BuildingUpdate,
@@ -152,7 +158,7 @@ async def update_building(
     return _building_to_response(db_building)
 
 
-@router.delete("/{building_id}", response_model=ActionResponse)
+@router.delete("/{building_id}", response_model=ActionResponse, dependencies=[Depends(_room_settings_guard)])
 async def delete_building(
     building_id: int,
     db: Session = Depends(get_tenant_scoped_db),

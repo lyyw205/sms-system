@@ -17,6 +17,16 @@ import logging
 from app.services.room_auto_assign import auto_assign_rooms
 from app.api.shared_schemas import ActionResponse
 from app.diag_logger import diag
+from app.services.room_guard import (
+    assert_room_hide_allowed,
+    assert_room_update_allowed,
+    assert_settings_unlocked,
+)
+
+
+def _room_settings_guard(db: Session = Depends(get_tenant_scoped_db)) -> None:
+    """객실 설정 잠금 관문 (테넌트 스위치) — services/room_guard.py 참조."""
+    assert_settings_unlocked(db)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 logger = logging.getLogger(__name__)
@@ -250,7 +260,7 @@ class BizItemUpdateRequest(BaseModel):
     grade: Optional[int] = None  # 1~5. None 은 변경 안 함 (NULL 로 되돌리기 미지원)
 
 
-@router.patch("/naver/biz-items")
+@router.patch("/naver/biz-items", dependencies=[Depends(_room_settings_guard)])
 def update_biz_items(
     items: List[BizItemUpdateRequest],
     db: Session = Depends(get_tenant_scoped_db),
@@ -304,7 +314,7 @@ class RoomGradeUpdateItem(BaseModel):
     grade: int  # 1~5 (NULL 로 되돌리기 미지원)
 
 
-@router.patch("/grades")
+@router.patch("/grades", dependencies=[Depends(_room_settings_guard)])
 def update_room_grades(
     items: List[RoomGradeUpdateItem],
     db: Session = Depends(get_tenant_scoped_db),
@@ -528,7 +538,7 @@ async def get_room_groups(
     ]
 
 
-@router.post("/groups", response_model=RoomGroupResponse)
+@router.post("/groups", response_model=RoomGroupResponse, dependencies=[Depends(_room_settings_guard)])
 async def create_room_group(
     data: RoomGroupCreate,
     db: Session = Depends(get_tenant_scoped_db),
@@ -553,7 +563,7 @@ async def create_room_group(
     )
 
 
-@router.put("/groups/{group_id}", response_model=RoomGroupResponse)
+@router.put("/groups/{group_id}", response_model=RoomGroupResponse, dependencies=[Depends(_room_settings_guard)])
 async def update_room_group(
     group_id: int,
     data: RoomGroupUpdate,
@@ -592,7 +602,7 @@ async def update_room_group(
     )
 
 
-@router.delete("/groups/{group_id}")
+@router.delete("/groups/{group_id}", dependencies=[Depends(_room_settings_guard)])
 async def delete_room_group(
     group_id: int,
     db: Session = Depends(get_tenant_scoped_db),
@@ -623,7 +633,7 @@ async def get_room(room_id: int, db: Session = Depends(get_tenant_scoped_db), cu
     return _room_to_response(room)
 
 
-@router.post("", response_model=RoomResponse)
+@router.post("", response_model=RoomResponse, dependencies=[Depends(_room_settings_guard)])
 async def create_room(room: RoomCreate, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user)):
     """Create a new room (duplicates allowed)"""
     # Resolve biz_item_links: prefer biz_item_links (with priority), fall back to biz_item_ids, then legacy
@@ -682,6 +692,7 @@ async def update_room(
         raise HTTPException(status_code=404, detail="객실을 찾을 수 없습니다")
 
     update_data = room.dict(exclude_unset=True)
+    assert_room_update_allowed(db, update_data)  # 잠금 관문 — is_active 단독 토글만 예외
     # Phase 2-5b (C-C): 배정에 영향 주는 필드 변경 감지 (remap 이전 원본 key 기준)
     _AFFECTS_ASSIGNMENT = {
         "biz_item_ids", "biz_item_links", "base_capacity",
@@ -748,7 +759,7 @@ class RoomReorderRequest(BaseModel):
     ordered_ids: List[int]  # 새 정렬 순서대로 정렬된 room id 배열
 
 
-@router.post("/reorder", response_model=ActionResponse)
+@router.post("/reorder", response_model=ActionResponse, dependencies=[Depends(_room_settings_guard)])
 def reorder_rooms(
     payload: RoomReorderRequest,
     db: Session = Depends(get_tenant_scoped_db),
@@ -784,7 +795,7 @@ def reorder_rooms(
     return {"success": True, "message": "정렬 순서가 변경되었습니다"}
 
 
-@router.delete("/{room_id}", response_model=ActionResponse)
+@router.delete("/{room_id}", response_model=ActionResponse, dependencies=[Depends(_room_settings_guard)])
 async def delete_room(room_id: int, db: Session = Depends(get_tenant_scoped_db), current_user: User = Depends(get_current_user)):
     """Delete a room"""
     diag("rooms.delete", level="critical", room_id=room_id)
@@ -844,6 +855,9 @@ async def hide_room(
     ).all()
     affected_pairs = [(a.reservation_id, a.date) for a in future_assignments]
     affected_res_ids = sorted({r for r, _ in affected_pairs})
+
+    # 잠금 상태에서는 배정 삭제 부작용을 동반한 숨김을 거부 (2026-09-01 사건 경로)
+    assert_room_hide_allowed(db, len(future_assignments))
 
     for a in future_assignments:
         db.delete(a)

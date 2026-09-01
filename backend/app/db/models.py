@@ -517,6 +517,7 @@ class Tenant(Base):
     surcharge_unit_double = Column(Integer, default=25000)    # [DEPRECATED] 옛 더블 통합 단가 — 신규 로직은 unit_standard + double_room_fee 사용
     surcharge_double_room_fee = Column(Integer, default=5000) # 더블 객실 1박당 추가 변경비 (원, 인원과 무관)
     is_active = Column(Boolean, default=True)
+    room_settings_locked = Column(Boolean, default=False)  # 객실 설정 잠금 — 객실·그룹·건물·상품메타 웹 수정 차단, 해제는 DB 로만 (services/room_guard.py)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

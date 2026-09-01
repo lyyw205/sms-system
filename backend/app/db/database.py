@@ -141,6 +141,9 @@ def init_db():
             if "aligo_testmode" not in existing_cols:
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN aligo_testmode BOOLEAN DEFAULT TRUE"))
                 print("AUTO-MIGRATE: Added aligo_testmode column to tenants table")
+            if "room_settings_locked" not in existing_cols:
+                conn.execute(text("ALTER TABLE tenants ADD COLUMN room_settings_locked BOOLEAN NOT NULL DEFAULT FALSE"))
+                print("AUTO-MIGRATE: Added room_settings_locked column to tenants table")
 
         # room_assignments.room_password_prefixed
         if "room_assignments" in inspector.get_table_names():
