@@ -203,9 +203,9 @@ is_pinned(reservation, field)  하나
 
 | 문서 | 내용 | 상태 |
 |------|------|------|
-| [`mutator-step-15a-naver-guard-consolidation.md`](../mutator-step-15a-naver-guard-consolidation.md) | `naver_sync` 의 `manually_extended_until` OR 가드 제거 → `check_out_pinned` 단독 보호 (**~7줄**) | 방안 확정 |
-| [`mutator-step-15-manually-extended-until-deprecation.md`](../mutator-step-15-manually-extended-until-deprecation.md) | 필드 완전 제거 | ⏸ **보류** — 프론트 `RoomAssignment.tsx:546` 이 사용 중 |
-| [`mutator-migration-plan.md`](../mutator-migration-plan.md) §F | 부모 계획 | 진행 중 |
+| [`mutator-step-15a-naver-guard-consolidation.md`](../_archive/mutator-step-15a-naver-guard-consolidation.md) | `naver_sync` 의 `manually_extended_until` OR 가드 제거 → `check_out_pinned` 단독 보호 (**~7줄**) | 방안 확정 |
+| [`mutator-step-15-manually-extended-until-deprecation.md`](../_archive/mutator-step-15-manually-extended-until-deprecation.md) | 필드 완전 제거 | ⏸ **보류** — 프론트 `RoomAssignment.tsx:546` 이 사용 중 |
+| [`mutator-migration-plan.md`](../_archive/mutator-migration-plan.md) §F | 부모 계획 | 진행 중 |
 
 **그리고 결론이 제 분석과 같습니다:**
 
@@ -261,7 +261,7 @@ is_pinned(reservation, field)  하나
 | **N4** | 관측 — `skipped` 가 될 비율을 diag 로 기록 | 🟨 없음 | N3 |
 | **N5** | 건너뛰기 활성화 | 🟧 | N4 |
 | **N6** | 핀 분류 (보호 / UI / 정합성) — **`manually_extended_until` 은 이미 완료**, 나머지 6종만 | 🟨 | N5 |
-| **N7** | [`mutator-step-15a`](../mutator-step-15a-naver-guard-consolidation.md) 실행 (~7줄) | 🟨 | N6 |
+| **N7** | [`mutator-step-15a`](../_archive/mutator-step-15a-naver-guard-consolidation.md) 실행 (~7줄) | 🟨 | N6 |
 | **N8** | 핀 통합 → `is_pinned()` | 🟧 | N7 |
 | **N9** | 플래그 정리 | 🟧 | N8 |
 
