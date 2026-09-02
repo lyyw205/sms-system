@@ -232,6 +232,17 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
             Reservation.status == ReservationStatus.CONFIRMED,
             Reservation.section.notin_(non_assignable_sections()),  # 명세서: = ['party','unstable','activity']
             Reservation.check_in_date <= target_date,
+            # (egress) target_date 체류 판정을 SQL 로 푸시다운 — 아래 파이썬 필터와
+            # 문자 그대로 동일한 조건이라 결과는 불변(60일 x 2테넌트 = 120건 ID 셋 일치 검증).
+            # check_in_date 에 하한이 없어 이 조건이 없으면 과거 예약 전체가 딸려온다.
+            # 실측(2026-09-02): 1콜당 4,931행 fetch → 유효 0행, 전량 아래 파이썬 필터에서 폐기.
+            # end_date=NULL 은 퇴실일 미상이라 보존, end_date=='' 는 없음(정형 검증 완료)이며
+            # 파이썬의 '' > date 가 False 인 것과 SQL 이 일치하므로 별도 분기 불필요.
+            or_(
+                Reservation.check_out_date.is_(None),
+                Reservation.check_out_date > target_date,
+                Reservation.check_in_date == target_date,
+            ),
         )
         .filter(
             ~Reservation.id.in_(
@@ -244,6 +255,7 @@ def _get_unassigned_reservations(db: Session, target_date: str) -> List[Reservat
         .all()
     )
     # Filter to only those actually active on target_date
+    # (위 SQL or_ 와 동일 조건 — 이중 안전망으로 유지. SQL 이 이미 걸러 no-op 이다.)
     return [
         r for r in unassigned
         if r.check_out_date is None or r.check_out_date > target_date or r.check_in_date == target_date
