@@ -583,43 +583,59 @@ def reconcile_stale_chips(db: Session, target_date: str, lookahead_days: int = 1
 
     repaired = 0
     failed = 0
-    for rid in candidate_ids:
-        try:
-            before = db.query(ReservationSmsAssignment).filter(
-                ReservationSmsAssignment.tenant_id == tid,
-                ReservationSmsAssignment.reservation_id == rid,
-            ).count()
-            reconcile_chips_for_reservation(db, rid, schedules=schedules)
-            after = db.query(ReservationSmsAssignment).filter(
-                ReservationSmsAssignment.tenant_id == tid,
-                ReservationSmsAssignment.reservation_id == rid,
-            ).count()
-            if before != after:
-                repaired += 1
-                # 실제로 칩 수가 바뀐 케이스만 critical 로 마킹 — log_validation 에서
-                # 어떤 res 가 stale_repair 로 영향 받았는지 즉시 식별 가능하게.
+    # (egress/blocking) 루프 동안만 expire_on_commit 해제 — 전역 SessionLocal 은 불변.
+    # 루프 안 db.commit() 마다 SQLAlchemy 가 세션의 모든 객체를 만료시켜, 위에서 한 번만
+    # 조회해 재사용하려던 schedules 와 그 template 이 예약마다 통째로 재조회되고 있었다.
+    # 즉 만료가 이 함수의 "스냅샷 1회 조회" 설계 의도를 조용히 무력화하던 상태라,
+    # 만료를 끄는 것은 동작 변경이 아니라 의도 복원이다.
+    # 실측(2026-09-03 운영 데이터): 예약당 template_schedules 1회 + message_templates 1회가
+    # 전체 쿼리의 65%. 등가 검증 = 예약 345건(handam 242 + stable 103) 전부 expected_pairs
+    # 완전 일치, 쿼리 15,578 → 5,137 (67% 감소), 소요 84.9s → 40.1s.
+    # expected_pairs 가 칩 생성/삭제를 전부 결정하므로 이것이 같으면 결과가 같다.
+    # 주의: rollback() 은 expire_on_commit 과 무관하게 객체를 만료시키므로 실패 예약
+    # 다음 회차는 자동으로 재조회된다(안전 방향).
+    _prev_expire_on_commit = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        for rid in candidate_ids:
+            try:
+                before = db.query(ReservationSmsAssignment).filter(
+                    ReservationSmsAssignment.tenant_id == tid,
+                    ReservationSmsAssignment.reservation_id == rid,
+                ).count()
+                reconcile_chips_for_reservation(db, rid, schedules=schedules)
+                after = db.query(ReservationSmsAssignment).filter(
+                    ReservationSmsAssignment.tenant_id == tid,
+                    ReservationSmsAssignment.reservation_id == rid,
+                ).count()
+                if before != after:
+                    repaired += 1
+                    # 실제로 칩 수가 바뀐 케이스만 critical 로 마킹 — log_validation 에서
+                    # 어떤 res 가 stale_repair 로 영향 받았는지 즉시 식별 가능하게.
+                    diag(
+                        "stale_chip_reconcile.res_repaired",
+                        level="critical",
+                        res_id=rid,
+                        before=before,
+                        after=after,
+                        delta=after - before,
+                    )
+                # (Tier1 egress fix 6a) 죽은 sync_denormalized_field 호출 제거 — 해당 함수는
+                # docstring 상 DEPRECATED/미사용이고 Reservation.room_number/password 를 읽는
+                # 소비자가 없음(FE/BE 확인). 남아있던 Reservation 재조회 + 2 SELECT 도 함께 제거.
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                failed += 1
+                logger.warning(f"reconcile_stale_chips failed for res={rid}: {e}")
                 diag(
-                    "stale_chip_reconcile.res_repaired",
+                    "stale_chip_reconcile.res_failed",
                     level="critical",
                     res_id=rid,
-                    before=before,
-                    after=after,
-                    delta=after - before,
+                    error=str(e)[:200],
                 )
-            # (Tier1 egress fix 6a) 죽은 sync_denormalized_field 호출 제거 — 해당 함수는
-            # docstring 상 DEPRECATED/미사용이고 Reservation.room_number/password 를 읽는
-            # 소비자가 없음(FE/BE 확인). 남아있던 Reservation 재조회 + 2 SELECT 도 함께 제거.
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            failed += 1
-            logger.warning(f"reconcile_stale_chips failed for res={rid}: {e}")
-            diag(
-                "stale_chip_reconcile.res_failed",
-                level="critical",
-                res_id=rid,
-                error=str(e)[:200],
-            )
+    finally:
+        db.expire_on_commit = _prev_expire_on_commit
 
     diag(
         "daily_chip_reconcile.stale_repair",
