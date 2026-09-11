@@ -234,6 +234,9 @@ class TemplateScheduleResponse(BaseModel):
     updated_at: datetime
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
+    # 이번 저장으로 취소된 예정 발송 수 (스케줄을 끄거나 필터를 좁힌 경우).
+    # UI 가 "예정 발송 N건이 함께 취소되었습니다" 로 알려주기 위한 값.
+    chips_removed: int = 0
 
     class Config:
         from_attributes = True
@@ -494,10 +497,55 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     # Reconcile chips when filter-affecting fields change
     # (v2: stay_filter 가 filters JSON 안으로 이관되어 별도 트래킹 불필요)
     _FILTER_FIELDS = {'filters', 'target_mode', 'date_target', 'schedule_category', 'is_active', 'template_id'}
+    chips_removed: list[dict] = []
     if _FILTER_FIELDS & set(update_data.keys()):
         from app.services.chip_reconciler import reconcile_chips_for_schedule
+        from app.db.models import ReservationSmsAssignment
         db.flush()
+        # reconcile 이 지울 미발송 칩을 미리 스냅샷 — 스케줄을 끄거나 필터를 좁히면
+        # 그 스케줄이 만든 예정 발송이 사라지는데, 지금까지 흔적이 남지 않았다.
+        # (다시 켜도 오늘 날짜분만 복구되므로 며칠 뒤 예정분은 되살아나지 않는다.)
+        before_chips = [
+            {"reservation_id": c.reservation_id, "date": c.date, "assigned_by": c.assigned_by}
+            for c in db.query(ReservationSmsAssignment).filter(
+                ReservationSmsAssignment.schedule_id == db_schedule.id,
+                ReservationSmsAssignment.sent_at.is_(None),
+            ).all()
+        ]
         reconcile_chips_for_schedule(db, db_schedule)
+        db.flush()
+        after_keys = {
+            (c.reservation_id, c.date)
+            for c in db.query(ReservationSmsAssignment).filter(
+                ReservationSmsAssignment.schedule_id == db_schedule.id,
+            ).all()
+        }
+        chips_removed = [c for c in before_chips if (c["reservation_id"], c["date"]) not in after_keys]
+        if chips_removed:
+            from app.services.activity_logger import log_activity
+            log_activity(
+                db,
+                type="schedule_chips_removed",
+                title=f"스케줄 변경으로 예정 발송 {len(chips_removed)}건 취소: {db_schedule.schedule_name}",
+                detail={
+                    "schedule_id": db_schedule.id,
+                    "schedule_name": db_schedule.schedule_name,
+                    "changed_fields": sorted(_FILTER_FIELDS & set(update_data.keys())),
+                    "is_active": db_schedule.is_active,
+                    "removed_chips": chips_removed[:200],
+                    "removed_total": len(chips_removed),
+                },
+                target_count=len(chips_removed),
+                success_count=len(chips_removed),
+                created_by=current_user.username,
+            )
+            diag(
+                "schedule.chips_removed_by_update",
+                level="critical",
+                schedule_id=db_schedule.id,
+                removed=len(chips_removed),
+                changed_fields=sorted(_FILTER_FIELDS & set(update_data.keys())),
+            )
 
     db.commit()
     db.refresh(db_schedule)
@@ -533,7 +581,10 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     except Exception as e:
         print(f"Warning: Failed to update schedule in APScheduler: {e}")
 
-    return _schedule_to_response(db_schedule)
+    # _schedule_to_response 는 dict 를 반환한다 (모델 아님) — 키로 주입.
+    response = _schedule_to_response(db_schedule)
+    response["chips_removed"] = len(chips_removed)
+    return response
 
 
 @router.delete("/{schedule_id}", response_model=ActionResponse)

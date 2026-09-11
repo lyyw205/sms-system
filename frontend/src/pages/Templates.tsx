@@ -684,8 +684,14 @@ const Templates: React.FC = () => {
 
   const toggleScheduleActiveMutation = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) => templateSchedulesAPI.update(id, { active }),
-    onSuccess: (_res, vars) => {
+    onSuccess: (res: any, vars) => {
       toast.success(vars.active ? '발송을 켰습니다' : '발송을 멈췄습니다');
+      // 끄면 그 스케줄이 만든 예정 발송(칩)이 함께 취소된다. 다시 켜도 오늘 날짜분만
+      // 복구되므로, 며칠 뒤 예정분이 사라진 사실을 반드시 알려준다.
+      const removed = res?.data?.chips_removed ?? 0;
+      if (removed > 0) {
+        toast.warning(`예정된 발송 ${removed}건이 함께 취소되었습니다`, { duration: 8000 });
+      }
       qc.invalidateQueries({ queryKey: queryKeys.templateSchedules.list() });
     },
     onError: (err: any) => toast.error(err.response?.data?.detail ?? '상태 변경 실패'),
@@ -700,6 +706,22 @@ const Templates: React.FC = () => {
     onError: (err: any) => toast.error(err.response?.data?.detail ?? '템플릿 삭제 실패'),
     onSettled: () => setDeleteTemplateTarget(null),
   });
+
+  /**
+   * 편집창 저장 payload 에서 `active` 를 떼어낸다 (수정일 때만).
+   *
+   * 편집창은 열릴 때의 on/off 값을 기억했다가 저장 때마다 같이 보냈다. 그래서
+   * 다른 사람이 목록 토글로 발송을 켠 뒤 내가 열어둔 창에서 문구/시각만 고쳐
+   * 저장하면 on/off 가 옛 값으로 되돌아갔고, 감사 로그에는 "문구 고친 사람이
+   * on/off 를 바꿨다"고 남았다 ("아무도 안 바꿨는데 바뀜"의 정체).
+   * 발송 on/off 는 목록의 토글 버튼만 담당한다. 신규 생성 때는 초기 상태가
+   * 필요하므로 그대로 싣는다.
+   */
+  const stripActiveOnUpdate = <T extends { active?: boolean }>(payload: T, isCreate: boolean): T => {
+    if (isCreate) return payload;
+    const { active: _active, ...rest } = payload;
+    return rest as T;
+  };
 
   const handleSaveTemplate = () => {
     if (!tKey.trim()) { setTKeyError('템플릿 키를 입력하세요'); return; }
@@ -730,7 +752,11 @@ const Templates: React.FC = () => {
       round_unit: tRoundUnit,
       round_mode: tRoundMode,
     };
-    saveTemplateMutation.mutate({ id: editingTemplate?.id ?? null, data });
+    const templateId = editingTemplate?.id ?? null;
+    saveTemplateMutation.mutate({
+      id: templateId,
+      data: stripActiveOnUpdate(data, templateId === null),
+    });
   };
 
   const handleDeleteTemplate = (t: Template) => deleteTemplateMutation.mutate(t.id);
@@ -899,8 +925,12 @@ const Templates: React.FC = () => {
   const saveScheduleMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number | null; payload: any }) =>
       id != null ? templateSchedulesAPI.update(id, payload) : templateSchedulesAPI.create(payload),
-    onSuccess: (_, vars) => {
+    onSuccess: (res: any, vars) => {
       toast.success(vars.id != null ? '스케줄이 수정되었습니다' : '스케줄이 생성되었습니다');
+      const removed = res?.data?.chips_removed ?? 0;
+      if (removed > 0) {
+        toast.warning(`필터 변경으로 예정된 발송 ${removed}건이 취소되었습니다`, { duration: 8000 });
+      }
       setScheduleDialogOpen(false);
       qc.invalidateQueries({ queryKey: queryKeys.templateSchedules.list() });
     },
@@ -929,7 +959,11 @@ const Templates: React.FC = () => {
     if (!sTemplateId) { toast.error('템플릿을 선택하세요'); return; }
     if (sType === 'weekly' && sDayOfWeek.length === 0) { toast.error('요일을 선택하세요'); return; }
     if (sCategory === 'event' && !sHoursSinceBooking) { toast.error('예약 시점(시간)을 입력하세요'); return; }
-    saveScheduleMutation.mutate({ id: editingSchedule?.id ?? null, payload: buildSchedulePayload() });
+    const scheduleId = editingSchedule?.id ?? null;
+    saveScheduleMutation.mutate({
+      id: scheduleId,
+      payload: stripActiveOnUpdate(buildSchedulePayload(), scheduleId === null),
+    });
   };
 
   const handleDeleteSchedule = (s: TemplateSchedule) => deleteScheduleMutation.mutate(s.id);
@@ -1318,11 +1352,14 @@ const Templates: React.FC = () => {
             )}
           </span>
           {editingTemplate && (
+            // 상태 표시 전용 — 켬/끔은 목록 토글만 담당한다. 편집창 저장은 active 를
+            // 보내지 않으므로(stripActiveOnUpdate) 여기 스위치를 두면 "껐는데 안 꺼짐"
+            // 착각을 만든다.
             <div className="flex items-center gap-2">
               <span className={`text-caption font-medium ${tActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                 {tActive ? '활성' : '비활성'}
               </span>
-              <ToggleSwitch id="t-active-header" checked={tActive} onChange={setTActive} label="" disabled={tReadOnly} />
+              <span className="text-caption text-[#B0B8C1] dark:text-gray-600">(목록에서 변경)</span>
             </div>
           )}
         </div>
@@ -1697,11 +1734,12 @@ const Templates: React.FC = () => {
             )}
           </span>
           {editingSchedule && (
+            // 상태 표시 전용 — 켬/끔은 목록 토글만 담당 (템플릿 모달과 동일한 이유).
             <div className="flex items-center gap-2">
               <span className={`text-caption font-medium ${sActive ? 'text-[#00C9A7]' : 'text-[#F04452]'}`}>
                 {sActive ? '활성' : '비활성'}
               </span>
-              <ToggleSwitch id="s-active-header" checked={sActive} onChange={setSActive} label="" disabled={sReadOnly} />
+              <span className="text-caption text-[#B0B8C1] dark:text-gray-600">(목록에서 변경)</span>
             </div>
           )}
         </div>
