@@ -5,11 +5,12 @@
 ActivityLog 스냅샷은 diag(7일 보존) 를 대체하는 영구 복구 경로다.
 """
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
-from app.db.models import ActivityLog, MessageTemplate, TemplateSchedule
+from app.db.models import ActivityLog, MessageTemplate, TemplateSchedule, UserRole
 from app.services.template_guard import (
     assert_schedule_unlocked,
     assert_template_unlocked,
@@ -68,46 +69,68 @@ class TestLockGuard:
         assert not t.is_locked
 
 
+# 가드는 current_user.role 만 읽는다 — User ORM 인스턴스까지 만들 필요 없음.
+_SUPER = SimpleNamespace(role=UserRole.SUPERADMIN)
+_ADMIN = SimpleNamespace(role=UserRole.ADMIN)
+
+
 class TestActivationException:
-    """잠겨 있어도 발송 on/off 는 가능해야 한다 — 급할 때 못 멈추면 오히려 위험."""
+    """잠긴 항목의 발송 on/off 는 SUPERADMIN 전용 — 2026-09-05~10
+    ADMIN 계정의 반복 무단 토글 사건 이후 예외 허용 범위를 좁혔다."""
 
-    def test_locked_allows_activation_toggle(self, db):
+    def test_locked_allows_activation_toggle_for_superadmin(self, db):
         t = _make_template(db, locked=True)
-        assert assert_update_allowed(t, {"is_active": False}, "템플릿") is None
+        assert assert_update_allowed(t, {"is_active": False}, "템플릿", _SUPER) is None
 
-    def test_locked_blocks_content_change(self, db):
+    def test_locked_blocks_activation_toggle_for_admin(self, db):
         t = _make_template(db, locked=True)
         with pytest.raises(HTTPException) as e:
-            assert_update_allowed(t, {"content": "바뀐 본문"}, "템플릿")
+            assert_update_allowed(t, {"is_active": False}, "템플릿", _ADMIN)
+        assert e.value.status_code == 403
+        assert "SUPERADMIN" in e.value.detail
+
+    def test_locked_blocks_content_change(self, db):
+        """문구 변경은 SUPERADMIN 이어도 웹에서 불가 — 해제는 DB 직접뿐."""
+        t = _make_template(db, locked=True)
+        with pytest.raises(HTTPException) as e:
+            assert_update_allowed(t, {"content": "바뀐 본문"}, "템플릿", _SUPER)
         assert e.value.status_code == 403
 
     def test_locked_blocks_activation_bundled_with_other_field(self, db):
         """is_active 를 끼워 넣어 다른 필드를 통과시키는 우회를 막는다."""
         t = _make_template(db, locked=True)
         with pytest.raises(HTTPException) as e:
-            assert_update_allowed(t, {"is_active": False, "content": "몰래 수정"}, "템플릿")
+            assert_update_allowed(t, {"is_active": False, "content": "몰래 수정"}, "템플릿", _SUPER)
         assert e.value.status_code == 403
 
-    def test_locked_schedule_allows_activation_toggle(self, db):
+    def test_locked_schedule_allows_activation_toggle_for_superadmin(self, db):
         t = _make_template(db)
         s = _make_schedule(db, t.id, locked=True)
-        assert assert_update_allowed(s, {"is_active": True}, "스케줄") is None
+        assert assert_update_allowed(s, {"is_active": True}, "스케줄", _SUPER) is None
+
+    def test_locked_schedule_blocks_activation_toggle_for_admin(self, db):
+        t = _make_template(db)
+        s = _make_schedule(db, t.id, locked=True)
+        with pytest.raises(HTTPException) as e:
+            assert_update_allowed(s, {"is_active": False}, "스케줄", _ADMIN)
+        assert e.value.status_code == 403
 
     def test_locked_schedule_blocks_timing_change(self, db):
         t = _make_template(db)
         s = _make_schedule(db, t.id, locked=True)
         with pytest.raises(HTTPException) as e:
-            assert_update_allowed(s, {"hour": 3}, "스케줄")
+            assert_update_allowed(s, {"hour": 3}, "스케줄", _SUPER)
         assert e.value.status_code == 403
 
     def test_unlocked_allows_anything(self, db):
+        """잠기지 않은 항목은 역할 제한 없음 (ADMIN 일상 운영 유지)."""
         t = _make_template(db, locked=False)
-        assert assert_update_allowed(t, {"content": "x", "name": "y"}, "템플릿") is None
+        assert assert_update_allowed(t, {"content": "x", "name": "y"}, "템플릿", _ADMIN) is None
 
     def test_empty_update_passes(self, db):
         """변경 필드가 없는 요청은 아무것도 바꾸지 않으므로 통과."""
         t = _make_template(db, locked=True)
-        assert assert_update_allowed(t, {}, "템플릿") is None
+        assert assert_update_allowed(t, {}, "템플릿", _ADMIN) is None
 
 
 class TestDeleteSnapshot:

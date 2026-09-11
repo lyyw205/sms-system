@@ -4,8 +4,10 @@
 
 1. **잠금 가드**
    `is_locked=True` 인 템플릿·스케줄은 웹 API 로 삭제할 수 없고, 수정도 막힌다.
-   단 **활성/비활성 토글(`is_active`)만은 예외로 허용**한다 — 발송 on/off 는
-   문구 보호와 성격이 다른 운영 행위라, 급할 때 즉시 멈출 수 없으면 오히려 위험하다.
+   **활성/비활성 토글(`is_active`)만은 예외**로 두되, **SUPERADMIN 전용**이다.
+   원래는 긴급 중지를 위해 ADMIN 이상 전원에게 열어뒀지만, 2026-09-05~10
+   ADMIN 계정이 잠긴 발송 스케줄을 새벽마다 반복해서 꺼버리는 사건이 있었다
+   — 긴급 중지 권한은 SUPERADMIN 이 보유하므로 운영상 공백은 없다.
    해제는 DB 직접 변경으로만 가능하다 — UI 에 해제 경로를 두지 않는 것이 설계 의도.
 
    - `assert_update_allowed(obj, update_data, kind)`: PUT 경로 (활성 토글 예외 적용)
@@ -26,7 +28,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 
-from app.db.models import MessageTemplate, TemplateSchedule
+from app.db.models import MessageTemplate, TemplateSchedule, UserRole
 
 # 잠금 해제는 UI 에 노출하지 않는다. 안내 문구도 그 사실을 명시한다.
 _LOCKED_MSG = (
@@ -35,8 +37,8 @@ _LOCKED_MSG = (
 )
 
 
-# 잠겨 있어도 허용하는 필드. 발송 on/off 는 "문구 보호" 와 성격이 다른 운영 행위라
-# (급할 때 즉시 멈출 수 있어야 함) 잠금에서 예외로 뺀다. 나머지 필드는 전부 차단.
+# 잠겨 있어도 SUPERADMIN 에 한해 허용하는 필드. 발송 on/off 는 "문구 보호" 와
+# 성격이 다른 운영 행위라 잠금에서 예외로 뺀다. 나머지 필드는 역할 무관 전부 차단.
 _ACTIVATION_ONLY = {"is_active"}
 
 
@@ -52,8 +54,8 @@ def assert_schedule_unlocked(schedule: TemplateSchedule) -> None:
         raise HTTPException(status_code=403, detail=_LOCKED_MSG.format(kind="스케줄"))
 
 
-def assert_update_allowed(obj, update_data: dict, kind: str) -> None:
-    """수정 요청 가드 — 잠겼어도 활성/비활성 토글만은 통과시킨다.
+def assert_update_allowed(obj, update_data: dict, kind: str, current_user) -> None:
+    """수정 요청 가드 — 잠겼어도 활성/비활성 토글만은 SUPERADMIN 에 한해 통과시킨다.
 
     update_data 는 `_remap_active_field` 를 거친 뒤(ORM 필드명 기준)여야 한다.
     빈 요청(변경 필드 없음)은 아무것도 바꾸지 않으므로 통과.
@@ -66,6 +68,14 @@ def assert_update_allowed(obj, update_data: dict, kind: str) -> None:
             detail=(
                 f"잠긴 {kind}입니다. 반복 오삭제 방지를 위해 활성/비활성 외에는 "
                 "웹에서 수정할 수 없습니다. 변경이 필요하면 관리자에게 요청하세요."
+            ),
+        )
+    if update_data and getattr(current_user, "role", None) != UserRole.SUPERADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"잠긴 {kind}의 발송 켬/끔은 SUPERADMIN 만 변경할 수 있습니다. "
+                "변경이 필요하면 관리자에게 요청하세요."
             ),
         )
 

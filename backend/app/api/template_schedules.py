@@ -439,8 +439,8 @@ def update_schedule(schedule_id: int, schedule: TemplateScheduleUpdate, db: Sess
     # (잠금 가드가 ORM 필드명 기준으로 판정하므로 검증보다 먼저 수행)
     _remap_active_field(update_data)
 
-    # 잠금 가드 — 잠긴 스케줄은 활성/비활성 토글만 허용, 나머지 필드는 403
-    assert_update_allowed(db_schedule, update_data, "스케줄")
+    # 잠금 가드 — 잠긴 스케줄은 SUPERADMIN 의 활성/비활성 토글만 허용, 나머지는 403
+    assert_update_allowed(db_schedule, update_data, "스케줄", current_user)
 
     # custom_schedule / filter 검증: 요청에 해당 필드가 포함된 경우만 검증
     # (exclude_unset 가드 — 기존 DB 에 잘못된 값이 있어도 관련 필드 수정 안 하는 경우는 락 안 걸림)

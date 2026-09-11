@@ -43,6 +43,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { useTenantStore } from '@/stores/tenant-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 
@@ -669,7 +670,9 @@ const Templates: React.FC = () => {
   const tReadOnly = !!editingTemplate?.locked;
   const sReadOnly = !!editingSchedule?.locked;
 
-  // 잠긴 항목도 활성/비활성만은 바꿀 수 있다 (서버 가드에서 is_active 만 예외 허용).
+  // 잠긴 항목의 활성/비활성 토글은 SUPERADMIN 전용 (서버 가드와 동일 규칙 —
+  // 2026-09-05~10 ADMIN 계정의 반복 무단 토글 사건 대응). 잠기지 않은 항목은 제한 없음.
+  const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   const toggleTemplateActiveMutation = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) => templatesAPI.update(id, { active }),
     onSuccess: (_res, vars) => {
@@ -1103,11 +1106,14 @@ const Templates: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center">
+                      <div
+                        className="flex items-center justify-center"
+                        title={t.locked && !isSuperadmin ? '잠긴 템플릿의 켬/끔은 SUPERADMIN만 변경할 수 있습니다' : undefined}
+                      >
                         <ToggleSwitch
                           id={`t-active-${t.id}`}
                           checked={t.active}
-                          disabled={toggleTemplateActiveMutation.isPending}
+                          disabled={toggleTemplateActiveMutation.isPending || (t.locked && !isSuperadmin)}
                           onChange={(v) => toggleTemplateActiveMutation.mutate({ id: t.id, active: v })}
                           label=""
                         />
@@ -1249,11 +1255,14 @@ const Templates: React.FC = () => {
                         <Badge color={isNextRunSoon ? 'warning' : 'gray'} size="sm">{nextRun}</Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center">
+                        <div
+                          className="flex items-center justify-center"
+                          title={s.locked && !isSuperadmin ? '잠긴 스케줄의 켬/끔은 SUPERADMIN만 변경할 수 있습니다' : undefined}
+                        >
                           <ToggleSwitch
                             id={`s-active-${s.id}`}
                             checked={s.active}
-                            disabled={toggleScheduleActiveMutation.isPending}
+                            disabled={toggleScheduleActiveMutation.isPending || (s.locked && !isSuperadmin)}
                             onChange={(v) => toggleScheduleActiveMutation.mutate({ id: s.id, active: v })}
                             label=""
                           />

@@ -368,8 +368,8 @@ def update_template(template_id: int, template: TemplateUpdate, db: Session = De
     # Remap Pydantic 'active' field to ORM 'is_active' column
     _remap_active_field(update_data)
 
-    # 잠금 가드 — 잠긴 템플릿은 활성/비활성 토글만 허용, 나머지 필드는 403
-    assert_update_allowed(db_template, update_data, "템플릿")
+    # 잠금 가드 — 잠긴 템플릿은 SUPERADMIN 의 활성/비활성 토글만 허용, 나머지는 403
+    assert_update_allowed(db_template, update_data, "템플릿", current_user)
 
     # Check if new key conflicts
     if template.template_key and template.template_key != db_template.template_key:
