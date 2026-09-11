@@ -401,6 +401,15 @@ def _do_reduce_extension(
     )
 
     # 3. Delete ReservationDailyInfo for removed dates
+    #    삭제 전 스냅샷 — 감사 로그에 남겨 복구 가능하게 (diag 는 7일치만 보존).
+    daily_info_removed = [
+        {"date": r.date, "party_type": r.party_type}
+        for r in db.query(ReservationDailyInfo).filter(
+            ReservationDailyInfo.reservation_id == reservation_id,
+            ReservationDailyInfo.date.in_(dates_to_remove),
+            ReservationDailyInfo.tenant_id == tid,
+        ).all()
+    ]
     db.query(ReservationDailyInfo).filter(
         ReservationDailyInfo.reservation_id == reservation_id,
         ReservationDailyInfo.date.in_(dates_to_remove),
@@ -408,8 +417,16 @@ def _do_reduce_extension(
     ).delete(synchronize_session=False)
 
     # 4. Delete PartyCheckin for removed dates (import here to avoid circular)
+    party_checkins_removed: list[str] = []
     try:
         from app.db.models import PartyCheckin
+        party_checkins_removed = [
+            r.date for r in db.query(PartyCheckin).filter(
+                PartyCheckin.reservation_id == reservation_id,
+                PartyCheckin.date.in_(dates_to_remove),
+                PartyCheckin.tenant_id == tid,
+            ).all()
+        ]
         db.query(PartyCheckin).filter(
             PartyCheckin.reservation_id == reservation_id,
             PartyCheckin.date.in_(dates_to_remove),
@@ -448,6 +465,31 @@ def _do_reduce_extension(
     # 6. lifecycle 단계 #17: on_dates_changed (shift_daily + reconcile_dates + reconcile_all_chips 5종)
     from app.services.reservation_lifecycle import on_dates_changed
     on_dates_changed(db, original, original.check_in_date, current_end_str)
+
+    # 감사 로그 — 체크아웃을 당기면 배정·칩·일별정보·파티출석이 함께 삭제되는데,
+    # 지금까지 그 흔적이 diag(7일 보존)에만 남아 "파티 왔었는데 기록이 없다" 를
+    # 추적할 수 없었다. 지워진 내용을 스냅샷으로 남겨 복구 가능하게 한다.
+    from app.services.activity_logger import log_activity
+    log_activity(
+        db,
+        type="stay_shrink",
+        title=f"[{original.customer_name}] 체크아웃 축소 {current_end_str} → {new_end_str}",
+        detail={
+            "reservation_id": reservation_id,
+            "customer_name": original.customer_name,
+            "old_check_out": current_end_str,
+            "new_check_out": new_end_str,
+            "removed_dates": dates_to_remove,
+            "room_assignments_deleted": room_assignments_deleted,
+            "chips_deleted_unsent": chips_deleted_unsent,
+            "sent_chips_preserved": sent_chips_preserved,
+            "daily_info_removed": daily_info_removed,
+            "party_checkins_removed": party_checkins_removed,
+        },
+        target_count=len(dates_to_remove),
+        success_count=len(dates_to_remove),
+        created_by=actor or "system",
+    )
 
     duration_ms = int((time.monotonic() - _t0) * 1000)
     diag(

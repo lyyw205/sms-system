@@ -606,15 +606,28 @@ const RoomAssignment = () => {
           const nameList = names.join(', ') + (targetIds.length > 5 ? ` 외 ${targetIds.length - 5}명` : '');
           showConfirm('게스트 일괄 삭제', `${nameList} (총 ${targetIds.length}명) 을 삭제하시겠습니까?`, async () => {
             // 네이버/수동 혼재 가능 — 네이버 예약은 soft-cancel(CancelledZone 이동), 수동 예약은 hard delete.
+            // 실패를 삼키면 "N명 처리 완료" 만 뜨고 일부가 남아 있는 걸 모른다 → 실패자를 이름으로 알린다.
+            const failed: string[] = [];
             for (const id of targetIds) {
               try {
                 // DIAG_BLOCK_START
                 window.__diagAction = 'ctx_menu:delete_guest';
                 // DIAG_BLOCK_END
                 await reservationsAPI.delete(id);
-              } catch { /* skip */ }
+              } catch {
+                failed.push(findReservation(id)?.res.customer_name?.trim() || `#${id}`);
+              }
             }
-            toast.success(`${targetIds.length}명 처리 완료`);
+            const okCount = targetIds.length - failed.length;
+            if (failed.length > 0) {
+              toast.error(
+                `${okCount}명 처리 완료 · ${failed.length}명 실패: ${failed.slice(0, 5).join(', ')}`
+                + (failed.length > 5 ? ` 외 ${failed.length - 5}명` : ''),
+                { duration: 10000 },
+              );
+            } else {
+              toast.success(`${targetIds.length}명 처리 완료`);
+            }
             _invalidateReservations();
           });
         } else {
@@ -1185,38 +1198,33 @@ const RoomAssignment = () => {
         roomInfoMap={roomInfoMap}
         onSaveDividers={async (dividers, dividerColors) => {
           try {
-            // Delete all existing groups
-            for (const rg of roomGroups) {
-              await roomsAPI.deleteGroup(rg.id);
-            }
-
-            // Convert dividers → groups
+            // Convert dividers → groups.
+            // 기존 그룹의 id 를 순서대로 재사용해 이름·색을 보존한다. 예전에는
+            // 전체 DELETE 후 재생성이라 그룹 수가 줄면 뒤쪽 이름이 통째로 사라졌고
+            // (2026-08-31 그룹 13개 유실 사고), 삭제와 생성 사이가 원자적이지도 않았다.
             const roomIds = activeRoomEntries.filter(e => e.isActive !== false).map(e => e.room_id);
-            const groups: { name: string; room_ids: number[]; sort_order: number; color?: string }[] = [];
+            const groups: { id?: number; name: string; room_ids: number[]; sort_order: number; color?: string }[] = [];
             let current: number[] = [];
             let groupIdx = 0;
 
             roomIds.forEach((id, i) => {
               current.push(id);
               if (dividers.has(i) || i === roomIds.length - 1) {
-                const existingName = roomGroups[groupIdx]?.name;
+                const existing = roomGroups[groupIdx];
                 groups.push({
-                  name: existingName || `그룹 ${groupIdx + 1}`,
+                  id: existing?.id,
+                  name: existing?.name || `그룹 ${groupIdx + 1}`,
                   room_ids: current,
                   sort_order: groupIdx,
-                  color: dividerColors.get(i) || undefined,
+                  color: dividerColors.get(i) || existing?.color || undefined,
                 });
                 current = [];
                 groupIdx++;
               }
             });
 
-            // Only create groups if there are dividers (more than 1 group)
-            if (groups.length > 1) {
-              for (const g of groups) {
-                await roomsAPI.createGroup(g);
-              }
-            }
+            // 구분선이 하나도 없으면(그룹 1개) 그룹 구성을 비운다 — 서버가 남는 그룹을 정리한다.
+            await roomsAPI.replaceGroups(groups.length > 1 ? groups : []);
 
             toast.success('구분선 설정이 저장되었습니다');
             setTableSettingsOpen(false);

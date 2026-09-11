@@ -256,6 +256,10 @@ export const roomsAPI = {
   createGroup: (data: { name: string; sort_order?: number; color?: string; room_ids?: number[] }) => api.post('/api/rooms/groups', data),
   updateGroup: (id: number, data: { name?: string; sort_order?: number; color?: string; room_ids?: number[] }) => api.put(`/api/rooms/groups/${id}`, data),
   deleteGroup: (id: number) => api.delete(`/api/rooms/groups/${id}`),
+  // 그룹 구성 전체를 한 트랜잭션으로 교체 (구분선 저장 전용).
+  // id 를 실어 보내면 기존 그룹이 이름을 유지한 채 수정된다.
+  replaceGroups: (groups: Array<{ id?: number; name: string; sort_order: number; color?: string; room_ids: number[] }>) =>
+    api.put('/api/rooms/groups/bulk', { groups }),
 };
 
 // Dashboard API

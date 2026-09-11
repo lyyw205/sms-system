@@ -10,6 +10,7 @@ from app.db.models import Building, User
 from app.auth.dependencies import get_current_user, require_admin_or_above
 from app.api.shared_schemas import ActionResponse
 from app.services.room_guard import assert_settings_unlocked
+from app.services.activity_logger import log_activity
 
 
 def _room_settings_guard(db: Session = Depends(get_tenant_scoped_db)) -> None:
@@ -115,6 +116,16 @@ async def create_building(
         sort_order=building.sort_order,
     )
     db.add(db_building)
+    db.flush()
+    log_activity(
+        db,
+        type="building_created",
+        title=f"건물 생성: {db_building.name}",
+        detail={"id": db_building.id, "name": db_building.name,
+                "description": db_building.description, "sort_order": db_building.sort_order},
+        target_count=1, success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
     db.refresh(db_building)
 
@@ -139,6 +150,15 @@ async def update_building(
 
     update_data = building.dict(exclude_unset=True)
 
+    # 변경 전 스냅샷 — 건물 이름/설명이 언제 누구에 의해 바뀌었는지 남긴다
+    # (2026-09-01 건물 9개 소실 때 감사 기록이 전혀 없었다).
+    _before = {
+        "name": db_building.name,
+        "description": db_building.description,
+        "is_active": db_building.is_active,
+        "sort_order": db_building.sort_order,
+    }
+
     # Remap JSON key to ORM column name
     _remap_active_field(update_data)
 
@@ -151,6 +171,16 @@ async def update_building(
     for field, value in update_data.items():
         setattr(db_building, field, value)
 
+    log_activity(
+        db,
+        type="building_updated",
+        title=f"건물 수정: {db_building.name}",
+        detail={"id": db_building.id,
+                "before": {k: _before[k] for k in update_data if k in _before},
+                "after": update_data},
+        target_count=1, success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
     db.refresh(db_building)
 
@@ -180,7 +210,21 @@ async def delete_building(
         )
 
     name = db_building.name
+    snapshot = {
+        "id": db_building.id, "name": name,
+        "description": db_building.description,
+        "is_active": db_building.is_active,
+        "sort_order": db_building.sort_order,
+    }
     db.delete(db_building)
+    log_activity(
+        db,
+        type="building_deleted",
+        title=f"건물 삭제: {name}",
+        detail=snapshot,
+        target_count=1, success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
 
     logger.info(f"Deleted building: {name}")

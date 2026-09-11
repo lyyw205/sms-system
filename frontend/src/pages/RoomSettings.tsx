@@ -1,6 +1,6 @@
 import { useEffect, useState, DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ArrowUpDown, Settings, Undo2 } from 'lucide-react';
+import { Home, Plus, Pencil, Trash2, GripVertical, RefreshCw, Building2, ArrowUpDown, Settings, Undo2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { roomsAPI, buildingsAPI } from '@/services/api';
 import { queryKeys } from '@/lib/queryKeys';
@@ -67,15 +67,19 @@ const GRADE_OPTIONS = [1, 2, 3, 4, 5];
 interface RoomForm {
   room_number: string;
   room_type: string;
-  base_capacity: number;
-  max_capacity: number;
+  // 정원 3종은 null 을 허용한다 = "입력칸이 비어 있음".
+  // 예전에는 빈 칸을 `parseInt(...) || 1` 로 삼켜 조용히 1 이 저장됐고,
+  // 그게 2026-09-01 객실 정원 대량 오염의 실제 경로였다. 이제는 비어 있으면
+  // 저장을 막는다 (handleSubmit 검증).
+  base_capacity: number | null;
+  max_capacity: number | null;
   sort_order: number;
   active: boolean;
   hidden: boolean;
   biz_item_ids: string[];
   biz_item_priorities: Record<string, { male_priority: number; female_priority: number }>;
   dormitory: boolean;
-  bed_capacity: number;
+  bed_capacity: number | null;
   door_password: string;
   no_door_password: boolean;
   building_id: number | null;
@@ -91,6 +95,20 @@ interface NaverBizItem {
 }
 
 // ── Constants ─────────────────────────────────────────
+
+/**
+ * 정원 입력칸 파서 — 빈 칸은 `null`(미입력)로 남기고 절대 기본값으로 삼키지 않는다.
+ *
+ * 이전 구현은 `parseInt(v) || 1` 이었다. 입력칸을 비우거나 모바일에서 폼이 제대로
+ * 안 뜬 채 저장하면 정원이 조용히 1 로 덮였고, 그 상태로 저장된 방들은
+ * "2인 예약이 인원 초과" 판정을 받아 추가요금 칩이 대량 생성됐다 (2026-09-01).
+ * 이제는 null 로 남겨 두고 저장 시점에 막는다.
+ */
+const parseCapacityInput = (raw: string): number | null => {
+  if (raw.trim() === '') return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+};
 
 const EMPTY_ROOM_FORM: RoomForm = {
   room_number: '',
@@ -122,6 +140,10 @@ const RoomSettings = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<RoomForm>(EMPTY_ROOM_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Room | null>(null);
+  // 상품 연결을 전부 해제하는 저장 대기 상태 (확인 모달용)
+  const [linkWipeConfirm, setLinkWipeConfirm] = useState<
+    { payload: any; roomNumber: string; previousLinkCount: number } | null
+  >(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   // ── Buildings state ──
   const [buildingManageOpen, setBuildingManageOpen] = useState(false);
@@ -149,7 +171,8 @@ const RoomSettings = () => {
   }
   const [bizItemModalOpen, setBizItemModalOpen] = useState(false);
   // bizItemSettingsList 는 useQuery 로 대체 (아래 bizItemSettingsQuery)
-  const [bizItemEdits, setBizItemEdits] = useState<Record<string, {display_name?: string; default_capacity?: number; section_hint?: string; default_party_type?: string; grade?: number}>>({});
+  // default_capacity 에 null = "입력칸을 비웠음". 저장 시 막는다 (객실 정원과 동일 규칙).
+  const [bizItemEdits, setBizItemEdits] = useState<Record<string, {display_name?: string; default_capacity?: number | null; section_hint?: string; default_party_type?: string; grade?: number}>>({});
   // (bizItemSaving / bizItemSyncing 제거 — mutation.isPending 으로)
 
   // ── Room grade modal state ──
@@ -180,6 +203,14 @@ const RoomSettings = () => {
   });
   const buildings = buildingsQuery.data ?? [];
   const buildingsLoading = buildingsQuery.isFetching;
+
+  // 객실 저장은 상품·건물 목록이 **실제로 도착한 뒤에만** 허용한다.
+  // 저장 payload 에는 상품 연결과 건물 소속이 항상 함께 실리는데, 목록이 아직
+  // 안 왔으면 폼이 "연결 없음 / 건물 없음" 상태라 저장하는 순간 기존 연결과
+  // 소속이 지워진다. 상품 연결이 사라지면 자동 배정이 멈추고, 건물에서 방이
+  // 빠지면 그 건물이 "빈 건물"이 되어 삭제 가능 상태가 된다
+  // (2026-09-01 상품 연결 전멸·건물 9개 소실 경로).
+  const refDataReady = bizItemsQuery.isSuccess && buildingsQuery.isSuccess;
 
   // ── Error logging — Step #2 패턴 ──
   useEffect(() => {
@@ -214,7 +245,7 @@ const RoomSettings = () => {
     if (bizItemSettingsQuery.error) toast.error('상품 목록을 불러오지 못했습니다.');
   }, [bizItemSettingsQuery.error]);
 
-  const handleBizItemEdit = (bizItemId: string, field: string, value: string | number) => {
+  const handleBizItemEdit = (bizItemId: string, field: string, value: string | number | null) => {
     setBizItemEdits(prev => ({
       ...prev,
       [bizItemId]: { ...prev[bizItemId], [field]: value }
@@ -244,6 +275,16 @@ const RoomSettings = () => {
   const bizItemSyncing = syncBizItemMutation.isPending;
 
   const handleBizItemSave = () => {
+    // 정원 칸을 비운 채 저장하면 예전에는 1 이 들어갔다 — 2인 예약이 전부 인원초과로
+    // 판정돼 추가요금 칩이 대량 생성된 2026-09-01 사고의 원인. 이제는 저장을 막는다.
+    const blankCapacity = Object.entries(bizItemEdits).find(
+      ([, edits]) => 'default_capacity' in edits
+        && (edits.default_capacity === null || (edits.default_capacity ?? 0) < 1),
+    );
+    if (blankCapacity) {
+      toast.error('상품 기준인원을 1 이상으로 입력해주세요');
+      return;
+    }
     const changes = Object.entries(bizItemEdits).map(([biz_item_id, edits]) => ({
       biz_item_id,
       ...edits,
@@ -406,12 +447,36 @@ const RoomSettings = () => {
   const saving = saveRoomMutation.isPending;
 
   const handleSubmit = () => {
+    if (!refDataReady) {
+      toast.error('상품·건물 목록을 아직 불러오는 중입니다. 잠시 후 저장해주세요');
+      return;
+    }
     if (!form.room_number.trim() || !form.room_type.trim()) {
       toast.error('객실 번호와 타입은 필수입니다');
       return;
     }
+    // 정원 검증 — 빈 칸을 기본값으로 삼켜 기존 값을 덮어쓰는 사고를 막는다.
+    // 도미토리는 기준/최대 인원 입력이 비활성이므로 베드 수만 본다.
+    const capacityChecks: Array<[string, number | null]> = form.dormitory
+      ? [['베드 수', form.bed_capacity]]
+      : [['기준 인원', form.base_capacity], ['최대 인원', form.max_capacity]];
+    const blank = capacityChecks.find(([, v]) => v === null || v < 1);
+    if (blank) {
+      toast.error(`${blank[0]}을(를) 1 이상으로 입력해주세요`);
+      return;
+    }
+    if (!form.dormitory && form.base_capacity !== null && form.max_capacity !== null
+        && form.base_capacity > form.max_capacity) {
+      toast.error('기준 인원이 최대 인원보다 클 수 없습니다');
+      return;
+    }
     // Build biz_item_links with priority for API
     const { biz_item_ids, biz_item_priorities, ...rest } = form;
+    // 미입력(null) 정원은 아예 전송하지 않는다 — 서버는 안 보낸 필드를 건드리지 않으므로
+    // 기존 값이 그대로 보존된다. null 을 보내면 컬럼이 NULL 로 덮인다.
+    (['base_capacity', 'max_capacity', 'bed_capacity'] as const).forEach((k) => {
+      if (rest[k] === null) delete (rest as Record<string, unknown>)[k];
+    });
     const payload = {
       ...rest,
       biz_item_links: biz_item_ids.map((id) => ({
@@ -420,6 +485,17 @@ const RoomSettings = () => {
         female_priority: biz_item_priorities[id]?.female_priority ?? 0,
       })),
     };
+
+    // 연결돼 있던 상품을 전부 해제하는 저장은 한 번 더 묻는다.
+    // 서버는 "보내온 목록"을 정답으로 보고 빠진 연결을 삭제하므로, 실수로 0개를
+    // 보내면 그 방은 자동 배정 대상에서 통째로 빠진다.
+    const previousLinkCount =
+      editingId != null ? (rooms.find((r) => r.id === editingId)?.biz_item_ids?.length ?? 0) : 0;
+    if (previousLinkCount > 0 && biz_item_ids.length === 0) {
+      setLinkWipeConfirm({ payload, roomNumber: form.room_number, previousLinkCount });
+      return;
+    }
+
     saveRoomMutation.mutate({ id: editingId, payload });
   };
 
@@ -938,8 +1014,8 @@ const RoomSettings = () => {
                   id="base-capacity"
                   type="number"
                   min={1}
-                  value={String(form.base_capacity ?? 2)}
-                  onChange={(e) => setForm((f) => ({ ...f, base_capacity: parseInt(e.target.value) || 1 }))}
+                  value={form.base_capacity === null ? '' : String(form.base_capacity)}
+                  onChange={(e) => setForm((f) => ({ ...f, base_capacity: parseCapacityInput(e.target.value) }))}
                   disabled={form.dormitory}
                 />
               </div>
@@ -949,8 +1025,8 @@ const RoomSettings = () => {
                   id="max-capacity"
                   type="number"
                   min={1}
-                  value={String(form.max_capacity ?? 4)}
-                  onChange={(e) => setForm((f) => ({ ...f, max_capacity: parseInt(e.target.value) || 1 }))}
+                  value={form.max_capacity === null ? '' : String(form.max_capacity)}
+                  onChange={(e) => setForm((f) => ({ ...f, max_capacity: parseCapacityInput(e.target.value) }))}
                   disabled={form.dormitory}
                 />
               </div>
@@ -1045,8 +1121,8 @@ const RoomSettings = () => {
                     type="number"
                     min={1}
                     max={20}
-                    value={String(form.bed_capacity ?? 1)}
-                    onChange={(e) => setForm((f) => ({ ...f, bed_capacity: parseInt(e.target.value) || 1 }))}
+                    value={form.bed_capacity === null ? '' : String(form.bed_capacity)}
+                    onChange={(e) => setForm((f) => ({ ...f, bed_capacity: parseCapacityInput(e.target.value) }))}
                     disabled={!form.dormitory}
                   />
                 </div>
@@ -1056,11 +1132,16 @@ const RoomSettings = () => {
         </ModalBody>
         <ModalFooter>
           <Button color="light" onClick={() => setDialogOpen(false)}>취소</Button>
-          <Button color="blue" onClick={handleSubmit} disabled={saving}>
+          <Button color="blue" onClick={handleSubmit} disabled={saving || !refDataReady}>
             {saving ? (
               <>
                 <Spinner size="sm" className="mr-2" />
                 저장 중...
+              </>
+            ) : !refDataReady ? (
+              <>
+                <Spinner size="sm" className="mr-2" />
+                목록 불러오는 중...
               </>
             ) : (
               '저장'
@@ -1070,6 +1151,36 @@ const RoomSettings = () => {
       </Modal>
 
       {/* ── Room Delete Confirm ── */}
+      {/* ── 상품 연결 전체 해제 확인 ── */}
+      <Modal show={!!linkWipeConfirm} onClose={() => setLinkWipeConfirm(null)} size="md" popup>
+        <ModalHeader />
+        <ModalBody>
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFF4E5] dark:bg-[#FF9F00]/10">
+              <AlertTriangle className="h-6 w-6 text-[#FF9F00]" />
+            </div>
+            <h3 className="mb-2 text-heading font-semibold text-[#191F28] dark:text-white">상품 연결을 모두 해제합니다</h3>
+            <p className="mb-5 text-body text-[#8B95A1] dark:text-gray-400">
+              객실 <strong>"{linkWipeConfirm?.roomNumber}"</strong>의 네이버 상품 연결{' '}
+              <strong>{linkWipeConfirm?.previousLinkCount}개</strong>가 삭제됩니다.
+              연결이 없으면 이 객실은 <strong>자동 배정 대상에서 제외</strong>됩니다.
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button
+                color="failure"
+                onClick={() => {
+                  if (linkWipeConfirm) saveRoomMutation.mutate({ id: editingId, payload: linkWipeConfirm.payload });
+                  setLinkWipeConfirm(null);
+                }}
+              >
+                해제하고 저장
+              </Button>
+              <Button color="light" onClick={() => setLinkWipeConfirm(null)}>취소</Button>
+            </div>
+          </div>
+        </ModalBody>
+      </Modal>
+
       <Modal show={!!deleteTarget} onClose={() => setDeleteTarget(null)} size="md" popup>
         <ModalHeader />
         <ModalBody>
@@ -1329,8 +1440,8 @@ const RoomSettings = () => {
                               type="number"
                               min={1}
                               max={20}
-                              value={edits.default_capacity ?? item.default_capacity ?? 1}
-                              onChange={e => handleBizItemEdit(item.biz_item_id, 'default_capacity', parseInt(e.target.value) || 1)}
+                              value={edits.default_capacity === null ? '' : (edits.default_capacity ?? item.default_capacity ?? '')}
+                              onChange={e => handleBizItemEdit(item.biz_item_id, 'default_capacity', parseCapacityInput(e.target.value))}
                             />
                           </TableCell>
                           <TableCell>

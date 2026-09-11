@@ -267,13 +267,33 @@ def update_biz_items(
     current_user: User = Depends(get_current_user),
 ):
     """Batch update NaverBizItem settings (display_name, default_capacity, section_hint)"""
+    from app.services.activity_logger import log_activity
+
     updated = []
+    changes_log: List[dict] = []
     for item_data in items:
         biz_item = db.query(NaverBizItem).filter(
             NaverBizItem.biz_item_id == item_data.biz_item_id
         ).first()
         if not biz_item:
             continue
+        # 변경 전 값 스냅샷 — 2026-09-01 상품 정원 대량 오염 때 감사 기록이 없어
+        # 발송 이력을 역추적해야 했다. 이제 before/after 가 남는다.
+        _before = {
+            "display_name": biz_item.display_name,
+            "default_capacity": biz_item.default_capacity,
+            "section_hint": biz_item.section_hint,
+            "default_party_type": biz_item.default_party_type,
+            "grade": biz_item.grade,
+        }
+        _requested = item_data.dict(exclude_unset=True, exclude={"biz_item_id"})
+        if _requested:
+            changes_log.append({
+                "biz_item_id": biz_item.biz_item_id,
+                "name": biz_item.name,
+                "before": {k: _before[k] for k in _requested if k in _before},
+                "after": _requested,
+            })
         if item_data.display_name is not None:
             biz_item.display_name = item_data.display_name or None  # empty string → None
         if item_data.default_capacity is not None:
@@ -303,6 +323,17 @@ def update_biz_items(
     if grade_changed_biz_ids:
         _reconcile_room_upgrade_after_grade_change(
             db, biz_item_ids=grade_changed_biz_ids,
+        )
+
+    if changes_log:
+        log_activity(
+            db,
+            type="biz_item_updated",
+            title=f"상품 설정 수정 {len(changes_log)}건",
+            detail={"changes": changes_log},
+            target_count=len(changes_log),
+            success_count=len(changes_log),
+            created_by=current_user.username,
         )
 
     db.commit()
@@ -446,6 +477,17 @@ async def sync_naver_biz_items(request: Request, db: Session = Depends(get_tenan
     provider = get_reservation_provider_for_tenant(tenant)
     items = await provider.fetch_biz_items()
 
+    # ★ 빈 응답 방어 — 쿠키 만료/네이버 장애로 목록이 비어 오면 아래 "동기화에 없는
+    #   상품 비활성화" 로직이 전체 상품을 꺼버린다 (notin_([]) 는 전건 참).
+    #   실제 상품이 0개인 업장은 없으므로 빈 응답은 곧 실패로 간주하고 중단한다.
+    if not items:
+        diag("rooms.biz_items.sync_empty_response", level="critical", tenant_id=tenant.id)
+        logger.warning("Naver biz item sync returned 0 items — aborting to avoid mass deactivation")
+        raise HTTPException(
+            status_code=502,
+            detail="네이버에서 상품 목록을 가져오지 못했습니다 (응답 0건). 쿠키를 갱신한 뒤 다시 시도해주세요. 기존 상품은 변경되지 않았습니다.",
+        )
+
     added = 0
     updated = 0
     synced_biz_ids = set()
@@ -511,6 +553,19 @@ class RoomGroupUpdate(BaseModel):
     room_ids: Optional[List[int]] = None
 
 
+class RoomGroupBulkItem(BaseModel):
+    """bulk 저장 1건. id 가 있으면 기존 그룹 수정, 없으면 신규 생성."""
+    id: Optional[int] = None
+    name: str
+    sort_order: int = 0
+    color: Optional[str] = None
+    room_ids: List[int] = []
+
+
+class RoomGroupBulkRequest(BaseModel):
+    groups: List[RoomGroupBulkItem]
+
+
 class RoomGroupResponse(BaseModel):
     id: int
     name: str
@@ -544,6 +599,8 @@ async def create_room_group(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(require_admin_or_above),
 ):
+    from app.services.activity_logger import log_activity
+
     group = RoomGroup(name=data.name, sort_order=data.sort_order, color=data.color)
     db.add(group)
     db.flush()
@@ -554,6 +611,16 @@ async def create_room_group(
             {Room.room_group_id: group.id}, synchronize_session="fetch"
         )
 
+    log_activity(
+        db,
+        type="room_group_created",
+        title=f"객실 그룹 생성: {group.name}",
+        detail={"id": group.id, "name": group.name, "sort_order": group.sort_order,
+                "color": group.color, "room_ids": sorted(data.room_ids)},
+        target_count=1,
+        success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
     db.refresh(group)
     return RoomGroupResponse(
@@ -563,6 +630,133 @@ async def create_room_group(
     )
 
 
+def _group_snapshot(group: RoomGroup) -> dict:
+    """그룹 감사/복구용 스냅샷 — 이름·순서·색·소속 객실 전부."""
+    return {
+        "id": group.id,
+        "name": group.name,
+        "sort_order": group.sort_order,
+        "color": group.color,
+        "room_ids": sorted(r.id for r in group.rooms),
+    }
+
+
+@router.put("/groups/bulk", response_model=List[RoomGroupResponse], dependencies=[Depends(_room_settings_guard)])
+async def replace_room_groups(
+    data: RoomGroupBulkRequest,
+    db: Session = Depends(get_tenant_scoped_db),
+    current_user: User = Depends(require_admin_or_above),
+):
+    """그룹 구성 전체를 **한 트랜잭션**으로 교체한다.
+
+    구분선(칸막이) 저장처럼 "그룹 집합을 통째로 다시 정의"하는 화면 전용.
+    기존 UI 는 그룹을 전부 DELETE 한 뒤 다시 POST 했는데, 그 방식은
+    ① 이름을 id 가 아니라 순번으로 옮겨 붙여 그룹명이 유실되고
+    ② 삭제와 생성 사이가 원자적이지 않아 중간 실패 시 그룹이 전멸했다
+    (2026-08-31 그룹 13개 유실 사고). 이 엔드포인트는 id 기준으로
+    수정/생성/삭제를 판정하므로 이름이 보존되고, 실패 시 전부 롤백된다.
+
+    - `id` 있는 항목: 해당 그룹 수정
+    - `id` 없는 항목: 신규 생성
+    - 요청에 없는 기존 그룹: 삭제
+    - 어떤 그룹에도 안 들어간 객실: 그룹 없음 상태로 정리
+    """
+    from app.services.activity_logger import log_activity
+
+    tid = get_session_tenant_id(db)
+    existing = {
+        g.id: g
+        for g in db.query(RoomGroup).options(selectinload(RoomGroup.rooms)).all()
+    }
+    before = [_group_snapshot(g) for g in sorted(existing.values(), key=lambda x: x.sort_order)]
+
+    incoming_ids = {item.id for item in data.groups if item.id is not None}
+    unknown = incoming_ids - set(existing)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"존재하지 않는 그룹 id: {sorted(unknown)}")
+
+    # 요청에 실린 객실 id 가 이 테넌트 것인지 검증 (없는 id 는 조용히 무시되면 안 됨)
+    requested_room_ids = {rid for item in data.groups for rid in item.room_ids}
+    if requested_room_ids:
+        valid_room_ids = {
+            r[0] for r in db.query(Room.id).filter(Room.id.in_(requested_room_ids)).all()
+        }
+        missing_rooms = requested_room_ids - valid_room_ids
+        if missing_rooms:
+            raise HTTPException(status_code=400, detail=f"존재하지 않는 객실 id: {sorted(missing_rooms)}")
+
+    # 1) 전체 그룹 소속 해제 후 재배치 (요청에 없는 객실은 그룹 없음으로 정리)
+    db.query(Room).filter(
+        Room.tenant_id == tid, Room.room_group_id.isnot(None)
+    ).update({Room.room_group_id: None}, synchronize_session="fetch")
+
+    # 2) 요청에 없는 기존 그룹 삭제 — 반드시 재배치(3) **이전**에 flush 까지 끝낸다.
+    #    db.delete() 는 flush 시점에 그 그룹의 (stale) rooms 관계를 따라 FK 를 NULL 로
+    #    만드는데, 재배치 후에 실행되면 "삭제 그룹 → 다른 그룹" 으로 옮긴 객실의
+    #    새 배정을 덮어써 유실시킨다. 지금은 1)에서 전부 NULL 이라 nullify 가 무해하다.
+    removed = [g for gid, g in existing.items() if gid not in incoming_ids]
+    removed_ids = sorted(g.id for g in removed)
+    for group in removed:
+        db.delete(group)
+    db.flush()
+
+    # 3) upsert + 재배치
+    saved: List[RoomGroup] = []
+    for item in data.groups:
+        if item.id is not None:
+            group = existing[item.id]
+            group.name = item.name
+            group.sort_order = item.sort_order
+            group.color = item.color
+        else:
+            group = RoomGroup(name=item.name, sort_order=item.sort_order, color=item.color)
+            db.add(group)
+            db.flush()
+        if item.room_ids:
+            db.query(Room).filter(
+                Room.id.in_(item.room_ids), Room.tenant_id == tid
+            ).update({Room.room_group_id: group.id}, synchronize_session="fetch")
+        saved.append(group)
+
+    diag(
+        "rooms.groups.bulk_replace",
+        level="critical",
+        before_count=len(existing),
+        after_count=len(saved),
+        removed_count=len(removed),
+        created_count=sum(1 for item in data.groups if item.id is None),
+    )
+    log_activity(
+        db,
+        type="room_group_bulk",
+        title=f"객실 그룹 일괄 저장 ({len(existing)}개 → {len(saved)}개)",
+        detail={
+            "before": before,
+            "after": [
+                {
+                    "id": g.id, "name": g.name, "sort_order": g.sort_order, "color": g.color,
+                    "room_ids": sorted(item.room_ids),
+                }
+                for g, item in zip(saved, data.groups)
+            ],
+            "removed_ids": removed_ids,
+        },
+        target_count=len(data.groups),
+        success_count=len(saved),
+        created_by=current_user.username,
+    )
+
+    db.commit()
+
+    fresh = db.query(RoomGroup).options(selectinload(RoomGroup.rooms)).order_by(RoomGroup.sort_order).all()
+    return [
+        RoomGroupResponse(
+            id=g.id, name=g.name, sort_order=g.sort_order, color=g.color,
+            room_ids=[r.id for r in g.rooms], created_at=g.created_at,
+        ) for g in fresh
+    ]
+
+
 @router.put("/groups/{group_id}", response_model=RoomGroupResponse, dependencies=[Depends(_room_settings_guard)])
 async def update_room_group(
     group_id: int,
@@ -570,9 +764,13 @@ async def update_room_group(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(require_admin_or_above),
 ):
-    group = db.query(RoomGroup).filter(RoomGroup.id == group_id).first()
+    from app.services.activity_logger import log_activity
+
+    group = db.query(RoomGroup).options(selectinload(RoomGroup.rooms)).filter(RoomGroup.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="그룹을 찾을 수 없습니다")
+
+    before = _group_snapshot(group)
 
     if data.name is not None:
         group.name = data.name
@@ -593,6 +791,15 @@ async def update_room_group(
                 {Room.room_group_id: group.id}, synchronize_session="fetch"
             )
 
+    log_activity(
+        db,
+        type="room_group_updated",
+        title=f"객실 그룹 수정: {group.name}",
+        detail={"before": before, "changes": data.dict(exclude_unset=True)},
+        target_count=1,
+        success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
     db.refresh(group)
     return RoomGroupResponse(
@@ -608,9 +815,15 @@ async def delete_room_group(
     db: Session = Depends(get_tenant_scoped_db),
     current_user: User = Depends(require_admin_or_above),
 ):
-    group = db.query(RoomGroup).filter(RoomGroup.id == group_id).first()
+    from app.services.activity_logger import log_activity
+
+    group = db.query(RoomGroup).options(selectinload(RoomGroup.rooms)).filter(RoomGroup.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="그룹을 찾을 수 없습니다")
+
+    # 삭제 전 전문 스냅샷 — 이것만 있으면 이름·소속 객실을 그대로 복구할 수 있다.
+    snapshot = _group_snapshot(group)
+    diag("rooms.groups.delete", level="critical", group_id=group.id, name=group.name)
 
     # Clear room assignments
     tid = get_session_tenant_id(db)
@@ -618,6 +831,15 @@ async def delete_room_group(
         {Room.room_group_id: None}, synchronize_session="fetch"
     )
     db.delete(group)
+    log_activity(
+        db,
+        type="room_group_deleted",
+        title=f"객실 그룹 삭제: {snapshot['name']}",
+        detail=snapshot,
+        target_count=1,
+        success_count=1,
+        created_by=current_user.username,
+    )
     db.commit()
     return {"success": True}
 
