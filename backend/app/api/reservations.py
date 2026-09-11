@@ -28,6 +28,24 @@ router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 logger = logging.getLogger(__name__)
 
 
+def _audit_safe(v):
+    """ActivityLog.detail 은 JSON 직렬화되므로 before/after 값을 원시 타입으로 낮춘다.
+
+    `deps._diff_fields._safe` 와 같은 역할이지만 Enum(ReservationStatus) 까지 처리한다 —
+    예약 감사에는 status 변경이 들어오기 때문.
+    """
+    from datetime import date, datetime, time
+    from enum import Enum
+
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return v
+    if isinstance(v, Enum):
+        return v.value
+    if isinstance(v, (datetime, date, time)):
+        return v.isoformat()
+    return str(v)
+
+
 @router.get("")
 async def get_reservations(
     skip: int = 0,
@@ -331,7 +349,30 @@ async def update_reservation(
     # '부분취소 정상 상태'(primary CONFIRMED + sibling CANCELLED 의도 유지)의 일반
     # 편집/멱등 재호출에서 오경보 (apply_changes 이전 스냅샷 필수)
     old_status_for_split = db_reservation.status
-    ReservationMutator.apply_changes(db, db_reservation, ChangeSource.MANUAL, update_data)
+    _applied = ReservationMutator.apply_changes(db, db_reservation, ChangeSource.MANUAL, update_data)
+
+    # 예약 필드 수정 감사 — 객실/템플릿/건물과 달리 예약만 행위자 기록이 없어
+    # 2026-09 전화번호 무단 변조(44건) 때 nginx 로그 없이는 "누가" 를 못 밝혔다.
+    # 권한 필터를 통과해 **실제로 값이 바뀐** 필드만(`apply_changes` 반환값) 기록한다.
+    # payload diff 가 아니라 mutator 결과를 쓰는 이유: guarded 로 거부된 필드까지
+    # "바꿨다" 고 남으면 감사가 거짓말을 한다.
+    if _applied:
+        log_activity(
+            db, type="reservation_updated",
+            title=f"[{db_reservation.customer_name}] 예약 정보 수정: {', '.join(sorted(_applied))}",
+            detail={
+                "reservation_id": reservation_id,
+                "customer_name": db_reservation.customer_name,
+                "action": "updated",
+                "kind": "예약",
+                "changes": {
+                    f: {"before": _audit_safe(old), "after": _audit_safe(new)}
+                    for f, (old, new) in _applied.items()
+                },
+            },
+            target_count=1, success_count=1,
+            created_by=current_user.username if current_user else "unknown",
+        )
 
     # CANCELLED → CONFIRMED 복구 경로 — 운영자가 "삭제 취소" 액션 실행.
     # delete_reservation soft-cancel 이 박은 mef["status"]=True 핀을 여기서 해제.
