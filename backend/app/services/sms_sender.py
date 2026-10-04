@@ -289,6 +289,7 @@ class SmsSender:
             raise ValueError(f"Template not found: {template_key}")
 
         from app.services.filters import stay_coverage_filter
+        from app.services.chip_store import not_excluded
         assignments = self.db.query(ReservationSmsAssignment).join(
             Reservation, and_(
                 ReservationSmsAssignment.reservation_id == Reservation.id,
@@ -298,6 +299,7 @@ class SmsSender:
             ReservationSmsAssignment.template_key == template_key,
             ReservationSmsAssignment.date == date,
             ReservationSmsAssignment.sent_at.is_(None),
+            not_excluded(),
             stay_coverage_filter(date),
             Reservation.status == ReservationStatus.CONFIRMED,
         ).all()

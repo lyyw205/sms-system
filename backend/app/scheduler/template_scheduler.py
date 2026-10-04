@@ -536,6 +536,15 @@ class TemplateScheduleExecutor:
                 done_conditions = done_conditions & (ReservationSmsAssignment.date == target_date)
             query = query.filter(~exists().where(done_conditions))
 
+        # 운영자가 체크해제(excluded)한 칩은 발송 금지 — exclude_sent 옵션과 무관하게 항상
+        from app.services.chip_store import excluded_chip_exists
+        query = query.filter(~excluded_chip_exists(
+            tenant_id=schedule.tenant_id,
+            reservation_id=Reservation.id,
+            template_key=schedule.template.template_key,
+            date=target_date,
+        ))
+
         results = query.all()
 
         # last_night: keep only reservations on their group's last calendar day
@@ -583,7 +592,8 @@ class TemplateScheduleExecutor:
         if not template_key or not target_date:
             return
 
-        # 1) chip 보유 res (= eligible_set, decide_chip 통과)
+        # 1) chip 보유 res (= eligible_set, decide_chip 통과). 운영자가 끈 칩은 후보 아님.
+        from app.services.chip_store import not_excluded
         chip_holders = {
             r[0] for r in
             self.db.query(ReservationSmsAssignment.reservation_id).filter(
@@ -595,6 +605,7 @@ class TemplateScheduleExecutor:
                     ReservationSmsAssignment.send_status.is_(None),
                     ReservationSmsAssignment.send_status != 'failed',
                 ),
+                not_excluded(),
             ).all()
         }
         result_ids = {r.id for r in results}
@@ -767,6 +778,17 @@ class TemplateScheduleExecutor:
                 ).all()
             }
             results = [r for r in results if r.id not in already_done_ids]
+
+        # 7) 운영자가 체크해제(excluded)한 칩은 발송 금지 — 이벤트는 날짜 무관 1회라 날짜 무관 차단
+        from app.services.chip_store import EXCLUDED
+        excluded_ids = {
+            row.reservation_id for row in
+            self.db.query(ReservationSmsAssignment.reservation_id).filter(
+                ReservationSmsAssignment.template_key == schedule.template.template_key,
+                ReservationSmsAssignment.assigned_by == EXCLUDED,
+            ).all()
+        }
+        results = [r for r in results if r.id not in excluded_ids]
 
         return results
 

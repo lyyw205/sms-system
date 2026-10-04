@@ -207,6 +207,122 @@ def remove_chip(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 운영자 체크/체크해제 — excluded 상태 전이
+# ═══════════════════════════════════════════════════════════════════
+#
+# excluded = 운영자가 명시적으로 끈 칩. 행을 지우지 않고 마크로 남기는 이유는
+# 지우면 reconcile 이 재생성하기 때문. 이 상태는 세 곳에서 지켜진다:
+#   - reconcile 재생성 차단 (chip_reconciler excluded_pairs)
+#   - 발송 대상 차단 (excluded_chip_exists / not_excluded)
+#   - 되돌리기는 운영자 체크(assign_manual_chip) 에서만
+
+EXCLUDED = 'excluded'
+
+
+def _get_chip(
+    db: 'Session', *, reservation_id: int, template_key: str, date: Optional[str],
+) -> Optional[ReservationSmsAssignment]:
+    q = db.query(ReservationSmsAssignment).filter(
+        ReservationSmsAssignment.reservation_id == reservation_id,
+        ReservationSmsAssignment.template_key == template_key,
+    )
+    if date is not None:
+        q = q.filter(ReservationSmsAssignment.date == date)
+    return q.first()
+
+
+def assign_manual_chip(
+    db: 'Session',
+    *,
+    reservation_id: int,
+    template_key: str,
+    date: str,
+    assigned_by: str = "manual",
+) -> Optional[ReservationSmsAssignment]:
+    """운영자 체크 — 칩을 활성 상태로 만든다.
+
+    - 칩 없음 → 생성
+    - excluded 칩 → assigned_by 복원 (exclude_chip 의 역연산 — 처음 체크한 것과 같은 상태)
+    - 이미 활성 칩 → None (호출측이 중복으로 처리)
+
+    ensure_chip 은 excluded 칩을 그대로 반환한다 — reconcile/custom 자동 경로가
+    운영자가 끈 칩을 되살리지 않도록. 복원은 운영자 의도가 명시된 이 함수에서만.
+    """
+    existing = _get_chip(
+        db, reservation_id=reservation_id, template_key=template_key, date=date,
+    )
+    if existing is None:
+        return ensure_chip(
+            db,
+            reservation_id=reservation_id,
+            template_key=template_key,
+            date=date,
+            assigned_by=assigned_by,
+        )
+    if existing.assigned_by != EXCLUDED:
+        return None
+
+    existing.assigned_by = assigned_by
+    diag(
+        "chip_store.assign.restored",
+        level="verbose",
+        res_id=reservation_id,
+        template_key=template_key,
+        date=date,
+        assigned_by=assigned_by,
+        has_sent_at=(existing.sent_at is not None),
+    )
+    return existing
+
+
+def exclude_chip(
+    db: 'Session',
+    *,
+    reservation_id: int,
+    template_key: str,
+    date: Optional[str] = None,
+) -> Optional[ReservationSmsAssignment]:
+    """운영자 체크해제 — 삭제 대신 excluded 마크 + 발송 상태 초기화.
+
+    date=None 이면 날짜 무관 첫 칩 (기존 unassign 엔드포인트 동작 보존).
+
+    Returns:
+        대상 칩, 없으면 None.
+    """
+    chip = _get_chip(
+        db, reservation_id=reservation_id, template_key=template_key, date=date,
+    )
+    if chip is None:
+        return None
+    chip.assigned_by = EXCLUDED
+    chip.sent_at = None
+    chip.send_status = None
+    chip.send_error = None
+    return chip
+
+
+def not_excluded():
+    """칩 행 필터 — excluded 가 아닌 칩 (assigned_by NULL 포함)."""
+    return ReservationSmsAssignment.assigned_by.is_distinct_from(EXCLUDED)
+
+
+def excluded_chip_exists(*, tenant_id: int, reservation_id, template_key: str, date: str):
+    """예약 행 필터용 — 이 예약의 (template_key, date) 칩을 운영자가 껐는가.
+
+    reservation_id 에 Reservation.id 를 넘기면 correlated EXISTS.
+    exists() 는 Core 라 before_compile 테넌트 필터가 안 탄다 — tenant_id 명시 필수.
+    """
+    from sqlalchemy import exists
+    return exists().where(
+        ReservationSmsAssignment.tenant_id == tenant_id,
+        ReservationSmsAssignment.reservation_id == reservation_id,
+        ReservationSmsAssignment.template_key == template_key,
+        ReservationSmsAssignment.date == date,
+        ReservationSmsAssignment.assigned_by == EXCLUDED,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
 # 스켈레톤 — 후속 PR 에서 구현
 # ═══════════════════════════════════════════════════════════════════
 

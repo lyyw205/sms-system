@@ -54,28 +54,21 @@ async def assign_sms_template(
 
     _guard_activity_room_template(db, reservation_id, request.template_key)  # §4-6
 
-    # Check if already assigned
-    existing = db.query(ReservationSmsAssignment).filter(
-        ReservationSmsAssignment.reservation_id == reservation_id,
-        ReservationSmsAssignment.template_key == request.template_key,
-        ReservationSmsAssignment.date == (request.date or ''),
-    ).first()
-    if existing:
-        diag("sms_assignment.duplicate", level="critical",
-             reservation_id=reservation_id,
-             template_key=request.template_key,
-             date=request.date or '',
-             existing_sent=(existing.sent_at is not None))
-        raise HTTPException(status_code=409, detail="이미 배정된 템플릿입니다")
-
-    from app.services.chip_store import ensure_chip
-    assignment = ensure_chip(
+    # 없으면 생성, 체크해제(excluded)된 칩이면 복원, 이미 활성이면 중복
+    from app.services.chip_store import assign_manual_chip
+    assignment = assign_manual_chip(
         db,
         reservation_id=reservation_id,
         template_key=request.template_key,
         date=request.date or '',
         assigned_by=request.assigned_by,
     )
+    if assignment is None:
+        diag("sms_assignment.duplicate", level="critical",
+             reservation_id=reservation_id,
+             template_key=request.template_key,
+             date=request.date or '')
+        raise HTTPException(status_code=409, detail="이미 배정된 템플릿입니다")
     db.commit()
     return {"success": True, "template_key": request.template_key}
 
@@ -89,21 +82,16 @@ async def unassign_sms_template(
     current_user: User = Depends(get_current_user),
 ):
     """Remove an SMS template assignment from a reservation"""
-    query = db.query(ReservationSmsAssignment).filter(
-        ReservationSmsAssignment.reservation_id == reservation_id,
-        ReservationSmsAssignment.template_key == template_key,
+    # 삭제 대신 excluded로 표시 — sync_sms_tags가 재생성하지 않도록
+    from app.services.chip_store import exclude_chip
+    assignment = exclude_chip(
+        db,
+        reservation_id=reservation_id,
+        template_key=template_key,
+        date=date or None,
     )
-    if date:
-        query = query.filter(ReservationSmsAssignment.date == date)
-    assignment = query.first()
     if not assignment:
         raise HTTPException(status_code=404, detail="배정을 찾을 수 없습니다")
-
-    # 삭제 대신 excluded로 표시 — sync_sms_tags가 재생성하지 않도록
-    assignment.assigned_by = 'excluded'
-    assignment.sent_at = None
-    assignment.send_status = None
-    assignment.send_error = None
     db.commit()
     return {"success": True}
 
