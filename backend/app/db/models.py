@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, Enum, ForeignKey, UniqueConstraint, Index, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, Enum, ForeignKey, UniqueConstraint, Index, JSON, LargeBinary
 from sqlalchemy.orm import relationship, declared_attr
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime, timezone
@@ -610,6 +610,111 @@ class OnsiteFemaleInvite(TenantMixin, Base):
 
 
 # ---------------------------------------------------------------------------
+# SMS Gateway — 안드로이드 게이트웨이 폰 연동 (수신/발신 캡처 + 개별 답장 발송)
+#
+# 설계 메모:
+#   - 알리고(app/real/sms.py)는 "우리가 먼저 보내는 안내/장문/MMS" 전용으로 유지.
+#     게이트웨이는 "고객이 보낸 문자 수신 + 그에 대한 개별 답장" 전용.
+#   - 폰 → 서버 단방향 폴링 구조. 서버가 폰을 호출하지 않으므로 NAT/고정IP 불필요.
+#   - MMS 첨부는 드물어서(주로 입금 캡처) 별도 스토리지 없이 DB 에 직접 보관한다.
+#     운영 컨테이너에 첨부용 볼륨이 없어 파일로 두면 재배포 때 유실되기 때문.
+# ---------------------------------------------------------------------------
+
+class SmsDevice(TenantMixin, Base):
+    """게이트웨이 앱이 설치된 폰 1대.
+
+    페어링 흐름 (사용자가 파라미터를 직접 입력할 필요 없게):
+      1) 앱 최초 실행 → device_uid 자체 생성 → POST /api/gateway/enroll
+      2) 서버가 token + pairing_code 발급, is_active=False 로 대기
+      3) 앱 화면에 pairing_code 표시 → 운영자가 관리 화면에서 승인
+      4) is_active=True → 그때부터 수신/발신 동작
+    """
+    __tablename__ = "sms_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_uid = Column(String(64), nullable=False)              # 앱이 최초 1회 생성하는 UUID
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    pairing_code = Column(String(20), nullable=False, index=True)  # 운영자에게 불러줄 코드
+    label = Column(String(100), nullable=True)
+    phone_number = Column(String(20), nullable=True)             # 이 폰의 회선번호 (앱 보고값)
+    model = Column(String(100), nullable=True)
+    app_version = Column(String(20), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default='false', default=False)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by = Column(String(50), nullable=True)
+    last_seen_at = Column(DateTime, nullable=True, index=True)
+    battery_level = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "device_uid", name="uq_sms_device_tenant_uid"),
+    )
+
+
+class SmsMessage(TenantMixin, Base):
+    """게이트웨이로 오간 문자 1건 — 수신/발신 통합 원장.
+
+    status 전이:
+      direction='in'  : received (종단)
+      direction='out' : pending → sending → sent | failed
+
+    중복 방지 2중화:
+      - client_msg_id : 앱이 재시도할 때 같은 건이 두 번 적재되는 것 방지
+      - provider_id   : 폰 기본 문자앱 발신분(content://sms 의 _id) 중복 캡처 방지
+                        (전송중 type=4 → 전송완료 type=2 로 두 번 감지되므로 필요)
+    """
+    __tablename__ = "sms_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    direction = Column(String(3), nullable=False, index=True)     # 'in' | 'out'
+    peer_phone = Column(String(20), nullable=False, index=True)    # 상대 번호 (숫자만 정규화)
+    body = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="received", index=True)
+    source = Column(String(20), nullable=False, default="gateway")
+    # 'gateway' : 게이트웨이 앱이 수신했거나 앱이 발송함
+    # 'phone'   : 폰 기본 문자앱에서 직원이 직접 보낸 것을 캡처
+    # 'system'  : 우리 서버가 큐에 넣은 발신 (아직 폰이 안 가져감)
+    device_id = Column(Integer, ForeignKey("sms_devices.id", ondelete="SET NULL"), nullable=True)
+    provider_id = Column(String(32), nullable=True)
+    client_msg_id = Column(String(64), nullable=True)
+    reservation_id = Column(Integer, ForeignKey("reservations.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_mms = Column(Boolean, nullable=False, server_default='false', default=False)
+    error = Column(Text, nullable=True)
+    attempts = Column(Integer, nullable=False, server_default='0', default=0)
+    occurred_at = Column(DateTime, nullable=True, index=True)      # 폰 기준 실제 수·발신 시각
+    claimed_at = Column(DateTime, nullable=True)                   # 폰이 발송건을 가져간 시각
+    created_by = Column(String(50), nullable=True)                 # 답장을 큐잉한 운영자
+    created_at = Column(DateTime, default=utc_now, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    attachments = relationship(
+        "SmsAttachment", back_populates="message", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "client_msg_id", name="uq_sms_message_client_id"),
+        UniqueConstraint("tenant_id", "direction", "provider_id", name="uq_sms_message_provider_id"),
+        Index("ix_sms_message_peer_time", "tenant_id", "peer_phone", "occurred_at"),
+        Index("ix_sms_message_outbox", "tenant_id", "direction", "status"),
+    )
+
+
+class SmsAttachment(TenantMixin, Base):
+    """MMS 첨부 (주로 입금 확인 캡처). 건수가 드물어 DB 직접 보관."""
+    __tablename__ = "sms_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("sms_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_type = Column(String(100), nullable=True)
+    filename = Column(String(255), nullable=True)
+    size_bytes = Column(Integer, nullable=False, default=0)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+
+    message = relationship("SmsMessage", back_populates="attachments")
+
+
+# ---------------------------------------------------------------------------
 # Register tenant models for automatic SELECT filtering
 # ---------------------------------------------------------------------------
 from app.db.tenant_context import register_tenant_model as _register  # noqa: E402
@@ -620,5 +725,6 @@ for _model in [
     NaverBizItem, TemplateSchedule, ActivityLog, PartyCheckin, ReservationDailyInfo,
     ParticipantSnapshot, DailyHost, PartyHost,
     DailyReviewCount, OnsiteFemaleInvite,
+    SmsDevice, SmsMessage, SmsAttachment,
 ]:
     _register(_model)
